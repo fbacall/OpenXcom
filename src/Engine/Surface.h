@@ -125,6 +125,8 @@ public:
 	void loadSpk(const std::string &filename);
 	/// Loads a TFTD BDY graphic.
 	void loadBdy(const std::string &filename);
+	/// Eats an SDL_Surface
+	void fromSDL(SDL_Surface *surface, const std::string& filename);
 	/// Loads a general image file.
 	void loadImage(const std::string &filename);
 	/// Clears the surface's contents eith a specified colour.

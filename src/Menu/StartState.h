@@ -27,6 +27,7 @@ class Text;
 class Font;
 class Timer;
 class Language;
+class Surface;
 
 enum LoadingPhase { LOADING_STARTED, LOADING_FAILED, LOADING_SUCCESSFUL, LOADING_DONE };
 
@@ -41,9 +42,15 @@ private:
 	Timer *_timer;
 	Language *_lang;
 	int _anim;
+	Surface *_splash;
+	bool _splash_set;
 
+	SDL_mutex *_splash_mtx;
 	SDL_Thread *_thread;
 	std::ostringstream _output;
+
+	/// Sets a splash surface.
+	void setSplash(Surface *surface);
 public:
 	static LoadingPhase loading;
 	static std::string error;
@@ -63,7 +70,7 @@ public:
 	/// Adds a line of text.
 	void addLine(const std::string &str);
 	/// Loads the game resources.
-	static int load(void *game_ptr);
+	static int load(void *this_ptr);
 };
 
 }
