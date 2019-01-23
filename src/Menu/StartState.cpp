@@ -37,6 +37,7 @@
 #include "CutsceneState.h"
 #include <SDL_mixer.h>
 #include <SDL_thread.h>
+#include <SDL_rotozoom.h>
 
 namespace OpenXcom
 {
@@ -48,7 +49,7 @@ std::string StartState::error;
  * Initializes all the elements in the Loading screen.
  * @param game Pointer to the core game.
  */
-StartState::StartState() : _anim(0)
+StartState::StartState() : _anim(0), _splash(0), _splash_set(false), _splash_mtx(0), _thread(0)
 {
 	//updateScale() uses newDisplayWidth/Height and needs to be set ahead of time
 	Options::newDisplayWidth = Options::displayWidth;
@@ -60,7 +61,7 @@ StartState::StartState() : _anim(0)
 	_game->getScreen()->resetDisplay(false, true);
 
 	// Create objects
-	_thread = 0;
+	_splash_mtx = SDL_CreateMutex();
 	loading = LOADING_STARTED;
 	error = "";
 
@@ -115,10 +116,8 @@ StartState::StartState() : _anim(0)
  */
 StartState::~StartState()
 {
-	if (_thread != 0)
-	{
-		SDL_KillThread(_thread);
-	}
+	if (_thread) { SDL_KillThread(_thread); }
+	if (_splash_mtx) { SDL_DestroyMutex(_splash_mtx); }
 	delete _font;
 	delete _timer;
 	delete _lang;
@@ -141,11 +140,11 @@ void StartState::init()
 	}
 
 	// Load the game data in a separate thread
-	_thread = SDL_CreateThread(load, (void*)_game);
+	_thread = SDL_CreateThread(load, (void *)this);
 	if (_thread == 0)
 	{
 		// If we can't create the thread, just load it as usual
-		load((void*)_game);
+		load((void *)this);
 	}
 }
 
@@ -154,12 +153,52 @@ void StartState::init()
  */
 void StartState::think()
 {
+	bool splash_notnull_edge = false;
+	if (!_splash_set) { // check if splash had been set
+		SDL_LockMutex(_splash_mtx);
+		if (_splash)  {
+			splash_notnull_edge = true;
+			_splash_set = true;
+		}
+		SDL_UnlockMutex(_splash_mtx);
+	}
+	if (splash_notnull_edge) { // display splash if it had been set
+		auto screen = _game->getScreen();
+		double zoomX = ((double)screen->getWidth()) / _splash->getWidth();
+		double zoomY = ((double)screen->getHeight()) / _splash->getHeight();
+		double zoom  = zoomX < zoomY ? zoomX : zoomY;
+		auto splash_sdl_zoomed = zoomSurface(_splash->getSurface(), zoom, zoom, SDL_FALSE);
+		if (!splash_sdl_zoomed) {
+			std::string err = "zooming splash surface failed: ";
+			err += SDL_GetError();
+			Log(LOG_ERROR) << err;
+			throw Exception(err);
+		}
+		_splash->fromSDL(splash_sdl_zoomed, "splash zoomed surface"); // consumes splash_sdl_zoomed
+		int destX = (screen->getWidth() - _splash->getWidth())/2;
+		int destY = (screen->getHeight() - _splash->getHeight())/2;
+		_splash->setX(destX);
+		_splash->setY(destY);
+		_text->setVisible(false);
+		_cursor->setVisible(false);
+		screen->setPalette(_splash->getPalette()); // this->setPalette() doesn't work.
+		_surfaces.push_back(_splash); // well what can you do. no way to add() a surface w/o touching main fonts
+		_splash->setVisible(true);
+	}
 	State::think();
 	_timer->think(this, 0);
 
 	switch (loading)
 	{
 	case LOADING_FAILED:
+		if (_splash_set) {
+			delete _surfaces[_surfaces.size() - 1];
+			_surfaces.resize(_surfaces.size() - 1);
+			setPalette(_font->getPalette(), 0, 2);
+			_game->getScreen()->setPalette(_font->getPalette(), 0, 2);
+			_text->setVisible(true);
+			_cursor->setVisible(true);
+		}
 		CrossPlatform::flashWindow();
 		addLine("");
 		addLine("ERROR: " + error);
@@ -212,7 +251,9 @@ void StartState::handle(Action *action)
  */
 void StartState::animate()
 {
-	_cursor->setVisible(!_cursor->getVisible());
+	if (!_splash_set) {
+		_cursor->setVisible(!_cursor->getVisible());
+	}
 	_anim++;
 
 	if (loading == LOADING_STARTED)
@@ -299,17 +340,28 @@ void StartState::addLine(const std::string &str)
  * @param game_ptr Pointer to the game.
  * @return Thread status, 0 = ok
  */
-int StartState::load(void *game_ptr)
+int StartState::load(void *this_ptr)
 {
-	Game *game = (Game*)game_ptr;
+	StartState *self = (StartState *)this_ptr;
 	try
 	{
 		Log(LOG_INFO) << "Loading data...";
 		Options::updateMods();
-		game->loadMods();
+		if (FileMap::fileExists("splash.png")) {
+			try {
+				auto splashsurf = new Surface(320, 200, 0, 0);
+				splashsurf->loadImage("splash.png");
+				self->setSplash(splashsurf);
+			} catch (Exception &e) {
+				Log(LOG_ERROR) << "Error loading splash.png: " << e.what();
+			}
+		} else {
+			Log(LOG_ERROR) << "No splash.png ";
+		}
+		_game->loadMods();
 		Log(LOG_INFO) << "Data loaded successfully.";
 		Log(LOG_INFO) << "Loading language...";
-		game->loadLanguages();
+		_game->loadLanguages();
 		Log(LOG_INFO) << "Language loaded successfully.";
 		loading = LOADING_SUCCESSFUL;
 	}
@@ -321,6 +373,17 @@ int StartState::load(void *game_ptr)
 	}
 
 	return 0;
+}
+
+/**
+ * Sets a splash surface.
+ * Gets called from the loading thread, thus locked.
+ */
+void StartState::setSplash(Surface *surface)
+{
+	SDL_LockMutex(_splash_mtx);
+	if (!_splash_set) {	_splash = surface; }
+	SDL_UnlockMutex(_splash_mtx);
 }
 
 }

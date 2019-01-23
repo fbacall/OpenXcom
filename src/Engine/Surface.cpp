@@ -355,6 +355,26 @@ void Surface::loadScr(const std::string& filename)
 	loadRaw(buffer);
 }
 /**
+ * Consumes an SDL_Surface, appropriating its contents.
+ * @param surface the victim
+ */
+void Surface::fromSDL(SDL_Surface *sdl_surface, const std::string& filename) {
+	if (sdl_surface->format->BitsPerPixel != 8 || sdl_surface->format->palette == NULL) {
+		std::string err = "Surface::fromSDL(ptr, " + filename +"): not paletted.";
+		Log(LOG_ERROR) << err;
+		throw Exception(err);
+	}
+	auto surface = NewSdlSurface(sdl_surface);
+	*this = Surface(surface->w, surface->h, 0, 0);
+	setPalette(surface->format->palette->colors, 0, surface->format->palette->ncolors);
+	RawCopySurf(_surface, surface);
+	FixTransparent(_surface, surface->format->colorkey);
+	if (surface->format->colorkey != 0)
+	{
+		Log(LOG_WARNING) << "Image " << filename << " (from SDL) have set incorrect transparent color index " << surface->format->colorkey << " instead of 0";
+	}
+}
+/**
  * Loads the contents of an image file of a
  * known format into the surface.
  * @param filename Filename of the image.
@@ -431,26 +451,13 @@ void Surface::loadImage(const std::string &filename)
 	else // Otherwise default to SDL_Image
 	{
 		SDL_RWseek(rw, RW_SEEK_SET, 0); // rewind in case .png was no PNG at all
-		auto surface = NewSdlSurface(IMG_Load_RW(rw, SDL_TRUE));
-		if (!surface)
+		auto sdl_surface = IMG_Load_RW(rw, SDL_TRUE);
+		if (!sdl_surface)
 		{
 			std::string err = filename + ":" + IMG_GetError();
 			throw Exception(err);
 		}
-		if (surface->format->BitsPerPixel != 8)
-		{
-			std::string err = filename + ": OpenXcom is supporting only 8bit graphic";
-			throw Exception(err);
-		}
-
-		*this = Surface(surface->w, surface->h, 0, 0);
-		setPalette(surface->format->palette->colors, 0, surface->format->palette->ncolors);
-		RawCopySurf(_surface, surface);
-		FixTransparent(_surface, surface->format->colorkey);
-		if (surface->format->colorkey != 0)
-		{
-			Log(LOG_WARNING) << "Image " << filename << " (from SDL) have set incorrect transparent color index " << surface->format->colorkey << " instead of 0";
-		}
+		fromSDL(sdl_surface, filename);
 	}
 }
 
