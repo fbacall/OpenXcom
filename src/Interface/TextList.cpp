@@ -1185,47 +1185,7 @@ void TextList::mouseOver(Action *action, State *state)
 	if (_selectable)
 	{
 		int rowHeight = _font->getHeight() + _font->getSpacing(); //theorethical line height
-		_selRow = std::max(0, (int)(_scroll + (int)floor(action->getRelativeYMouse() / (rowHeight * action->getYScale()))));
-		if (_selRow < _rows.size())
-		{
-			Text *selText = _texts[_rows[_selRow]].front();
-			int y = getY() + selText->getY();
-			int actualHeight = selText->getHeight() + _font->getSpacing(); //current line height
-			if (y < getY() || y + actualHeight > getY() + getHeight())
-			{
-				actualHeight /= 2;
-			}
-			if (y < getY())
-			{
-				y = getY();
-			}
-			if (_selector->getHeight() != actualHeight)
-			{
-				// resizing doesn't work, but recreating does, so let's do that!
-				delete _selector;
-				_selector = new Surface(getWidth(), actualHeight, getX(), y);
-				_selector->setPalette(getPalette());
-			}
-			_selector->setY(y);
-			_selector->copy(_bg);
-			if (_contrast)
-			{
-				_selector->offsetBlock(-5);
-			}
-			else if (_comboBox)
-			{
-				_selector->offset(+1, Palette::backPos);
-			}
-			else
-			{
-				_selector->offsetBlock(-10);
-			}
-			_selector->setVisible(true);
-		}
-		else
-		{
-			_selector->setVisible(false);
-		}
+		setSelectedRow(std::max(0, (int)(_scroll + (int)floor(action->getRelativeYMouse() / (rowHeight * action->getYScale())))));
 	}
 
 	InteractiveSurface::mouseOver(action, state);
@@ -1244,6 +1204,129 @@ void TextList::mouseOut(Action *action, State *state)
 	}
 
 	InteractiveSurface::mouseOut(action, state);
+}
+
+
+void TextList::keyboardPress(Action *action, State *state)
+{
+	SDLKey key = action->getDetails()->key.keysym.sym;
+	if (key == SDLK_UP)
+	{
+		moveSelectionUp(1);
+	}
+	else if (key == SDLK_DOWN)
+	{
+		moveSelectionDown(1);
+	}
+	else if (key == SDLK_PAGEUP)
+	{
+		moveSelectionUp(_visibleRows);
+	}
+	else if (key == SDLK_PAGEDOWN)
+	{
+		moveSelectionDown(_visibleRows);
+	}
+	else if (key == SDLK_HOME)
+	{
+		scrollUp(true, false);
+		setSelectedRow(0);
+	}
+	else if (key == SDLK_END)
+	{
+		scrollDown(true, false);
+		setSelectedRow(_rows.size() - 1);
+	}
+
+	InteractiveSurface::keyboardPress(action, state);
+}
+
+/**
+ * Move the selected row up by given distance.
+ * Initialize to first row if not set.
+ */
+void TextList::moveSelectionUp(size_t distance)
+{
+	size_t newRow = _selRow - distance;
+	if (newRow >= _rows.size())
+	{
+		newRow = 0;
+	}
+
+	if (newRow < _scroll)
+	{
+		scrollTo(newRow);
+	}
+
+	setSelectedRow(newRow);
+}
+
+/**
+ * Move the selected row down by given distance.
+ * Initialize to first row if not set.
+ */
+void TextList::moveSelectionDown(size_t distance)
+{
+	size_t newRow = _selRow + distance;
+	if (newRow >= _rows.size())
+	{
+		newRow = _rows.size() - 1;
+	}
+
+	if (newRow >= (_scroll + _visibleRows))
+	{
+		scrollTo(newRow - (_visibleRows - 1));
+	}
+
+	setSelectedRow(newRow);
+}
+
+/**
+ * Set the selected row of the list.
+ * @param row The index of the row.
+ */
+void TextList::setSelectedRow(size_t row)
+{
+    _selRow = row;
+	if (_selRow < _rows.size())
+	{
+		Text *selText = _texts[_rows[_selRow]].front();
+		int y = getY() + selText->getY();
+		int actualHeight = selText->getHeight() + _font->getSpacing(); //current line height
+		if (y < getY() || y + actualHeight > getY() + getHeight())
+		{
+			actualHeight /= 2;
+		}
+		if (y < getY())
+		{
+			y = getY();
+		}
+		if (_selector->getHeight() != actualHeight)
+		{
+			// resizing doesn't work, but recreating does, so let's do that!
+			delete _selector;
+			_selector = new Surface(getWidth(), actualHeight, getX(), y);
+			_selector->setPalette(getPalette());
+		}
+		_selector->setY(y);
+		_selector->copy(_bg);
+		if (_contrast)
+		{
+			_selector->offsetBlock(-5);
+		}
+		else if (_comboBox)
+		{
+			_selector->offset(+1, Palette::backPos);
+		}
+		else
+		{
+			_selector->offsetBlock(-10);
+		}
+		_selector->setVisible(true);
+	}
+	else
+	{
+		_selector->setVisible(false);
+	}
 }
 
 /*

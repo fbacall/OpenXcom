@@ -187,6 +187,14 @@ public:
 	void mouseOver(Action *action, State *state) override;
 	/// Special handling for mouse hovering out.
 	void mouseOut(Action *action, State *state) override;
+	/// Special handling for keyboard press to move list selector up/down.
+	void keyboardPress(Action *action, State *state) override;
+	// Move the selected row up by given amount.
+	void moveSelectionUp(size_t distance);
+	// Move the selected row down by given amount.
+	void moveSelectionDown(size_t distance);
+	// Set the selected row.
+	void setSelectedRow(size_t row);
 	/// get the scroll depth
 	size_t getScroll();
 	/// set the scroll depth
