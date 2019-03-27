@@ -126,12 +126,17 @@ void ResearchInfoState::buildUi()
 		}
 	}
 	setAssignedScientist();
-	_btnMore->onMousePress((ActionHandler)&ResearchInfoState::morePress);
-	_btnMore->onMouseRelease((ActionHandler)&ResearchInfoState::moreRelease);
-	_btnMore->onMouseClick((ActionHandler)&ResearchInfoState::moreClick, 0);
-	_btnLess->onMousePress((ActionHandler)&ResearchInfoState::lessPress);
-	_btnLess->onMouseRelease((ActionHandler)&ResearchInfoState::lessRelease);
-	_btnLess->onMouseClick((ActionHandler)&ResearchInfoState::lessClick, 0);
+	_btnMore->onMousePress((ActionHandler)&ResearchInfoState::morePress, SDL_BUTTON_LEFT);
+	_btnMore->onMouseRelease((ActionHandler)&ResearchInfoState::moreRelease, SDL_BUTTON_LEFT);
+	_btnMore->onMouseClick((ActionHandler)&ResearchInfoState::maxClick, SDL_BUTTON_RIGHT);
+	_btnMore->onKeyboardPress((ActionHandler)&ResearchInfoState::morePress, SDLK_UP);
+	_btnMore->onKeyboardRelease((ActionHandler)&ResearchInfoState::moreRelease, SDLK_UP);
+
+	_btnLess->onMousePress((ActionHandler)&ResearchInfoState::lessPress, SDL_BUTTON_LEFT);
+	_btnLess->onMouseRelease((ActionHandler)&ResearchInfoState::lessRelease, SDL_BUTTON_LEFT);
+	_btnLess->onMouseClick((ActionHandler)&ResearchInfoState::minClick, SDL_BUTTON_RIGHT);
+	_btnLess->onKeyboardPress((ActionHandler)&ResearchInfoState::lessPress, SDLK_DOWN);
+	_btnLess->onKeyboardRelease((ActionHandler)&ResearchInfoState::lessRelease, SDLK_DOWN);
 
 	_timerMore = new Timer(250);
 	_timerMore->onTimer((StateHandler)&ResearchInfoState::more);
@@ -219,7 +224,8 @@ void ResearchInfoState::handleWheel(Action *action)
  */
 void ResearchInfoState::morePress(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT) _timerMore->start();
+	moreClick(action);
+	_timerMore->start();
 }
 
 /**
@@ -228,25 +234,28 @@ void ResearchInfoState::morePress(Action *action)
  */
 void ResearchInfoState::moreRelease(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT)
-	{
-		_timerMore->setInterval(250);
-		_timerMore->stop();
-	}
+	_timerMore->setInterval(250);
+	_timerMore->stop();
 }
 
 /**
- * Allocates scientists to the current project;
- * one scientist on left-click, all scientists on right-click.
+ * Allocates one scientist to the current project on left-click.
  * @param action Pointer to an Action.
  */
 void ResearchInfoState::moreClick(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_RIGHT)
-		moreByValue(INT_MAX);
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT)
-		moreByValue(1);
+	moreByValue(1);
 }
+
+/**
+ * Allocates all scientists to the current project on right-click.
+ * @param action Pointer to an Action.
+ */
+void ResearchInfoState::maxClick(Action *action)
+{
+	moreByValue(INT_MAX);
+}
+
 
 /**
  * Starts the timeLess timer.
@@ -254,7 +263,8 @@ void ResearchInfoState::moreClick(Action *action)
  */
 void ResearchInfoState::lessPress(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT) _timerLess->start();
+	lessClick(action);
+	_timerLess->start();
 }
 
 /**
@@ -263,24 +273,26 @@ void ResearchInfoState::lessPress(Action *action)
  */
 void ResearchInfoState::lessRelease(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT)
-	{
-		_timerLess->setInterval(250);
-		_timerLess->stop();
-	}
+	_timerLess->setInterval(250);
+	_timerLess->stop();
 }
 
 /**
- * Removes scientists from the current project;
- * one scientist on left-click, all scientists on right-click.
+ * Removes one scientist from the current project on left-click.
  * @param action Pointer to an Action.
  */
 void ResearchInfoState::lessClick(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_RIGHT)
-		lessByValue(INT_MAX);
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT)
-		lessByValue(1);
+	lessByValue(1);
+}
+
+/**
+ * Removes all scientists from the current project on left-click.
+ * @param action Pointer to an Action.
+ */
+void ResearchInfoState::minClick(Action *action)
+{
+	lessByValue(INT_MAX);
 }
 
 /**

@@ -104,6 +104,7 @@ ResearchState::ResearchState(Base *base) : _base(base)
 	_lstResearch->setMargin(2);
 	_lstResearch->setWordWrap(true);
 	_lstResearch->onMouseClick((ActionHandler)&ResearchState::onSelectProject, SDL_BUTTON_LEFT);
+	_lstResearch->onKeyboardPress((ActionHandler)&ResearchState::onSelectProject, Options::keyOk);
 	_lstResearch->onMouseClick((ActionHandler)&ResearchState::onOpenTechTreeViewer, SDL_BUTTON_MIDDLE);
 }
 
