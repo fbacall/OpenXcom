@@ -54,7 +54,7 @@ TextList::TextList(int width, int height, int x, int y) : InteractiveSurface(wid
 	_scrollbar = new ScrollBar(_up->getWidth(), h, getX() + getWidth() + _scrollPos, _up->getY() + _up->getHeight());
 	_scrollbar->setVisible(false);
 	_scrollbar->setTextList(this);
-	_timerSelectionMove = new Timer(80);
+	_timerSelectionMove = new Timer(250);
 	_timerSelectionMove->onTimer((SurfaceHandler)&TextList::moveSelectionTick);
 }
 
@@ -1259,6 +1259,7 @@ void TextList::keyboardRelease(Action *action, State *state)
 	if (key == SDLK_UP || key == SDLK_DOWN || key == SDLK_PAGEUP || key == SDLK_PAGEDOWN)
 	{
 		_selectionChange = 0;
+        _timerSelectionMove->setInterval(250);
 		_timerSelectionMove->stop();
 	}
 
@@ -1271,6 +1272,7 @@ void TextList::keyboardRelease(Action *action, State *state)
  */
 void TextList::moveSelectionTick()
 {
+    _timerSelectionMove->setInterval(50);
 	if (_selectionChange < 0)
 	{
 		moveSelectionUp((size_t) -_selectionChange);
