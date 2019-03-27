@@ -24,6 +24,7 @@
 #include "../Engine/Font.h"
 #include "../Engine/Palette.h"
 #include "../Engine/Options.h"
+#include "../Engine/Timer.h"
 #include "ArrowButton.h"
 #include "ComboBox.h"
 #include "ScrollBar.h"
@@ -41,7 +42,7 @@ namespace OpenXcom
  */
 TextList::TextList(int width, int height, int x, int y) : InteractiveSurface(width, height, x, y), _big(0), _small(0), _font(0), _scroll(0), _visibleRows(0), _selRow(0), _color(0), _dot(false), _selectable(false), _condensed(false), _contrast(false), _wrap(false), _flooding(false), _ignoreSeparators(false),
 																								   _bg(0), _selector(0), _margin(0), _scrolling(true), _arrowPos(-1), _scrollPos(4), _arrowType(ARROW_VERTICAL),
-																								   _leftClick(0), _leftPress(0), _leftRelease(0), _rightClick(0), _rightPress(0), _rightRelease(0), _arrowsLeftEdge(0), _arrowsRightEdge(0), _comboBox(0)
+																								   _leftClick(0), _leftPress(0), _leftRelease(0), _rightClick(0), _rightPress(0), _rightRelease(0), _arrowsLeftEdge(0), _arrowsRightEdge(0), _comboBox(0), _selectionChange(0)
 {
 	_up = new ArrowButton(ARROW_BIG_UP, 13, 14, getX() + getWidth() + _scrollPos, getY());
 	_up->setVisible(false);
@@ -53,6 +54,8 @@ TextList::TextList(int width, int height, int x, int y) : InteractiveSurface(wid
 	_scrollbar = new ScrollBar(_up->getWidth(), h, getX() + getWidth() + _scrollPos, _up->getY() + _up->getHeight());
 	_scrollbar->setVisible(false);
 	_scrollbar->setTextList(this);
+	_timerSelectionMove = new Timer(80);
+	_timerSelectionMove->onTimer((SurfaceHandler)&TextList::moveSelectionTick);
 }
 
 /**
@@ -79,6 +82,7 @@ TextList::~TextList()
 	delete _up;
 	delete _down;
 	delete _scrollbar;
+	delete _timerSelectionMove;
 }
 
 /**
@@ -1090,6 +1094,7 @@ void TextList::think()
 	_up->think();
 	_down->think();
 	_scrollbar->think();
+	_timerSelectionMove->think(0, this);
 	for (std::vector<ArrowButton*>::iterator i = _arrowLeft.begin(); i < _arrowLeft.end(); ++i)
 	{
 		(*i)->think();
@@ -1213,18 +1218,26 @@ void TextList::keyboardPress(Action *action, State *state)
 	if (key == SDLK_UP)
 	{
 		moveSelectionUp(1);
+		_selectionChange = -1;
+		_timerSelectionMove->start();
 	}
 	else if (key == SDLK_DOWN)
 	{
 		moveSelectionDown(1);
+		_selectionChange = 1;
+		_timerSelectionMove->start();
 	}
 	else if (key == SDLK_PAGEUP)
 	{
 		moveSelectionUp(_visibleRows);
+		_selectionChange = -_visibleRows;
+		_timerSelectionMove->start();
 	}
 	else if (key == SDLK_PAGEDOWN)
 	{
 		moveSelectionDown(_visibleRows);
+		_selectionChange = _visibleRows;
+		_timerSelectionMove->start();
 	}
 	else if (key == SDLK_HOME)
 	{
@@ -1238,6 +1251,34 @@ void TextList::keyboardPress(Action *action, State *state)
 	}
 
 	InteractiveSurface::keyboardPress(action, state);
+}
+
+void TextList::keyboardRelease(Action *action, State *state)
+{
+	SDLKey key = action->getDetails()->key.keysym.sym;
+	if (key == SDLK_UP || key == SDLK_DOWN || key == SDLK_PAGEUP || key == SDLK_PAGEDOWN)
+	{
+		_selectionChange = 0;
+		_timerSelectionMove->stop();
+	}
+
+	InteractiveSurface::keyboardPress(action, state);
+}
+
+/**
+ * Move the selected row according to _selectionChange.
+ * Occurs when the timer ticks whilst holding up/down key.
+ */
+void TextList::moveSelectionTick()
+{
+	if (_selectionChange < 0)
+	{
+		moveSelectionUp((size_t) -_selectionChange);
+	}
+	else
+	{
+		moveSelectionDown((size_t) _selectionChange);
+	}
 }
 
 /**
@@ -1286,7 +1327,7 @@ void TextList::moveSelectionDown(size_t distance)
  */
 void TextList::setSelectedRow(size_t row)
 {
-    _selRow = row;
+	_selRow = row;
 	if (_selRow < _rows.size())
 	{
 		Text *selText = _texts[_rows[_selRow]].front();

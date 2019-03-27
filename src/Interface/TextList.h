@@ -30,6 +30,7 @@ enum ArrowOrientation { ARROW_VERTICAL, ARROW_HORIZONTAL };
 class ArrowButton;
 class ComboBox;
 class ScrollBar;
+class Timer;
 
 /**
  * List of Text's split into columns.
@@ -59,6 +60,8 @@ private:
 	ActionHandler _leftClick, _leftPress, _leftRelease, _rightClick, _rightPress, _rightRelease;
 	int _arrowsLeftEdge, _arrowsRightEdge;
 	ComboBox *_comboBox;
+	Timer *_timerSelectionMove;
+	int _selectionChange;
 
 	/// Updates the arrow buttons.
 	void updateArrows();
@@ -189,10 +192,14 @@ public:
 	void mouseOut(Action *action, State *state) override;
 	/// Special handling for keyboard press to move list selector up/down.
 	void keyboardPress(Action *action, State *state) override;
+	/// Special handling for keyboard release to stop list movement
+	void keyboardRelease(Action *action, State *state) override;
 	// Move the selected row up by given amount.
 	void moveSelectionUp(size_t distance);
 	// Move the selected row down by given amount.
 	void moveSelectionDown(size_t distance);
+	// Move the selected row on timer tick according to _selectionChange
+	void moveSelectionTick();
 	// Set the selected row.
 	void setSelectedRow(size_t row);
 	/// get the scroll depth
