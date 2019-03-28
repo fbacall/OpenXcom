@@ -1214,56 +1214,69 @@ void TextList::mouseOut(Action *action, State *state)
 
 void TextList::keyboardPress(Action *action, State *state)
 {
-	SDLKey key = action->getDetails()->key.keysym.sym;
-	if (key == SDLK_UP)
+	if (_selectable)
 	{
-		moveSelectionUp(1);
-		_selectionChange = -1;
-		_timerSelectionMove->start();
+		SDLKey key = action->getDetails()->key.keysym.sym;
+		if (key == SDLK_UP)
+		{
+			moveSelectionUp(1);
+			_selectionChange = -1;
+			_timerSelectionMove->start();
+		}
+		else if (key == SDLK_DOWN)
+		{
+			moveSelectionDown(1);
+			_selectionChange = 1;
+			_timerSelectionMove->start();
+		}
+		else if (key == SDLK_PAGEUP)
+		{
+			moveSelectionUp(_visibleRows);
+			_selectionChange = -_visibleRows;
+			_timerSelectionMove->start();
+		}
+		else if (key == SDLK_PAGEDOWN)
+		{
+			moveSelectionDown(_visibleRows);
+			_selectionChange = _visibleRows;
+			_timerSelectionMove->start();
+		}
+		else if (key == SDLK_HOME)
+		{
+			scrollUp(true, false);
+			setSelectedRow(0);
+		}
+		else if (key == SDLK_END)
+		{
+			scrollDown(true, false);
+			setSelectedRow(_rows.size() - 1);
+		}
+		if (_selRow < _rows.size())
+		{
+			InteractiveSurface::keyboardPress(action, state);
+		}
 	}
-	else if (key == SDLK_DOWN)
+	else
 	{
-		moveSelectionDown(1);
-		_selectionChange = 1;
-		_timerSelectionMove->start();
+		InteractiveSurface::keyboardPress(action, state);
 	}
-	else if (key == SDLK_PAGEUP)
-	{
-		moveSelectionUp(_visibleRows);
-		_selectionChange = -_visibleRows;
-		_timerSelectionMove->start();
-	}
-	else if (key == SDLK_PAGEDOWN)
-	{
-		moveSelectionDown(_visibleRows);
-		_selectionChange = _visibleRows;
-		_timerSelectionMove->start();
-	}
-	else if (key == SDLK_HOME)
-	{
-		scrollUp(true, false);
-		setSelectedRow(0);
-	}
-	else if (key == SDLK_END)
-	{
-		scrollDown(true, false);
-		setSelectedRow(_rows.size() - 1);
-	}
-
-	InteractiveSurface::keyboardPress(action, state);
 }
 
 void TextList::keyboardRelease(Action *action, State *state)
 {
-	SDLKey key = action->getDetails()->key.keysym.sym;
-	if (key == SDLK_UP || key == SDLK_DOWN || key == SDLK_PAGEUP || key == SDLK_PAGEDOWN)
+
+	if (_selectable)
 	{
-		_selectionChange = 0;
-        _timerSelectionMove->setInterval(250);
-		_timerSelectionMove->stop();
+		SDLKey key = action->getDetails()->key.keysym.sym;
+		if (key == SDLK_UP || key == SDLK_DOWN || key == SDLK_PAGEUP || key == SDLK_PAGEDOWN)
+		{
+			_selectionChange = 0;
+			_timerSelectionMove->setInterval(250);
+			_timerSelectionMove->stop();
+		}
 	}
 
-	InteractiveSurface::keyboardPress(action, state);
+	InteractiveSurface::keyboardRelease(action, state);
 }
 
 /**
