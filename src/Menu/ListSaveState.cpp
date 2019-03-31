@@ -88,53 +88,59 @@ void ListSaveState::updateList()
 }
 
 /**
- * Names the selected save.
+ * Deletes the selected save.
  * @param action Pointer to an action.
  */
-void ListSaveState::lstSavesPress(Action *action)
+void ListSaveState::deleteSelectedSave(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_RIGHT && _edtSave->isFocused())
+	if (_edtSave->isFocused())
 	{
 		_edtSave->setText("");
 		_edtSave->setVisible(false);
 		_edtSave->setFocus(false, false);
 		_lstSaves->setScrolling(true);
 	}
+	ListGamesState::deleteSelectedSave(action);
+}
+
+/**
+ * Names the selected save.
+ * @param action Pointer to an action.
+ */
+void ListSaveState::lstSavesPress(Action *action)
+{
 	ListGamesState::lstSavesPress(action);
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT)
+	_previousSelectedRow = _selectedRow;
+	_selectedRow = _lstSaves->getSelectedRow();
+
+	switch (_previousSelectedRow)
 	{
-		_previousSelectedRow = _selectedRow;
-		_selectedRow = _lstSaves->getSelectedRow();
-
-		switch (_previousSelectedRow)
-		{
-			case -1:	// first click on the savegame list
-				break;
-			case 0:
-				_lstSaves->setCellText(_previousSelectedRow	, 0, tr("STR_NEW_SAVED_GAME_SLOT"));
-				break;
-			default:
-				_lstSaves->setCellText(_previousSelectedRow	, 0, _selected);
-		}
-
-		_selected = _lstSaves->getCellText(_lstSaves->getSelectedRow(), 0);
-		_lstSaves->setCellText(_lstSaves->getSelectedRow(), 0, "");
-		if (_lstSaves->getSelectedRow() == 0)
-		{
-			_edtSave->setText("");
-			_selected = "";
-		}
-		else
-		{
-			_edtSave->setText(_selected);
-		}
-		_edtSave->setX(_lstSaves->getColumnX(0));
-		_edtSave->setY(_lstSaves->getRowY(_selectedRow));
-		_edtSave->setVisible(true);
-		_edtSave->setFocus(true, false);
-		_lstSaves->setScrolling(false);
-		ListGamesState::disableSort();
+		case -1:	// first click on the savegame list
+			break;
+		case 0:
+			_lstSaves->setCellText(_previousSelectedRow	, 0, tr("STR_NEW_SAVED_GAME_SLOT"));
+			break;
+		default:
+			_lstSaves->setCellText(_previousSelectedRow	, 0, _selected);
 	}
+
+	_selected = _lstSaves->getCellText(_lstSaves->getSelectedRow(), 0);
+	_lstSaves->setCellText(_lstSaves->getSelectedRow(), 0, "");
+	if (_lstSaves->getSelectedRow() == 0)
+	{
+		_edtSave->setText("");
+		_selected = "";
+	}
+	else
+	{
+		_edtSave->setText(_selected);
+	}
+	_edtSave->setX(_lstSaves->getColumnX(0));
+	_edtSave->setY(_lstSaves->getRowY(_selectedRow));
+	_edtSave->setVisible(true);
+	_edtSave->setFocus(true, false);
+	_lstSaves->setScrolling(false);
+	ListGamesState::disableSort();
 }
 
 /**

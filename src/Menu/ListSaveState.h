@@ -48,6 +48,8 @@ public:
 	void edtSaveKeyPress(Action *action);
 	/// Handler for clicking on the Save Game button.
 	void btnSaveGameClick(Action *action);
+    /// Delete a save.
+    void deleteSelectedSave(Action *action) override;
 	/// Handler for clicking the Saves list.
 	void lstSavesPress(Action *action) override;
 	/// Save game.

@@ -135,7 +135,10 @@ ListGamesState::ListGamesState(OptionsOrigin origin, int firstValidRow, bool aut
 	_lstSaves->setMargin(8);
 	_lstSaves->onMouseOver((ActionHandler)&ListGamesState::lstSavesMouseOver);
 	_lstSaves->onMouseOut((ActionHandler)&ListGamesState::lstSavesMouseOut);
-	_lstSaves->onMousePress((ActionHandler)&ListGamesState::lstSavesPress);
+	_lstSaves->onMousePress((ActionHandler)&ListGamesState::lstSavesPress, SDL_BUTTON_LEFT);
+	_lstSaves->onKeyboardPress((ActionHandler)&ListGamesState::lstSavesPress, Options::keyOk);
+	_lstSaves->onMousePress((ActionHandler)&ListGamesState::deleteSelectedSave, SDL_BUTTON_RIGHT);
+	_lstSaves->onKeyboardPress((ActionHandler)&ListGamesState::deleteSelectedSave, SDLK_DELETE);
 
 	_txtDetails->setWordWrap(true);
 	_txtDetails->setText(tr("STR_DETAILS").arg(""));
@@ -286,12 +289,16 @@ void ListGamesState::lstSavesMouseOut(Action *)
  * Deletes the selected save.
  * @param action Pointer to an action.
  */
-void ListGamesState::lstSavesPress(Action *action)
+void ListGamesState::deleteSelectedSave(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_RIGHT && _lstSaves->getSelectedRow() >= _firstValidRow)
+	if (_lstSaves->getSelectedRow() >= _firstValidRow)
 	{
 		_game->pushState(new DeleteGameState(_origin, _saves[_lstSaves->getSelectedRow() - _firstValidRow].fileName));
 	}
+}
+
+void ListGamesState::lstSavesPress(Action *action)
+{
 }
 
 /**

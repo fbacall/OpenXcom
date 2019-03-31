@@ -69,6 +69,8 @@ public:
 	void lstSavesMouseOut(Action *action);
 	/// Handler for clicking the Saves list.
 	virtual void lstSavesPress(Action *action);
+	/// Delete a save.
+	virtual void deleteSelectedSave(Action *action);
 	/// Handler for clicking the Name arrow.
 	void sortNameClick(Action *action);
 	/// Handler for clicking the Date arrow.
