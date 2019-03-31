@@ -150,21 +150,29 @@ void ManufactureInfoState::buildUi()
 
 	_txtEngineerDown->setText(tr("STR_DECREASE_UC"));
 
-	_btnEngineerUp->onMousePress((ActionHandler)&ManufactureInfoState::moreEngineerPress);
-	_btnEngineerUp->onMouseRelease((ActionHandler)&ManufactureInfoState::moreEngineerRelease);
-	_btnEngineerUp->onMouseClick((ActionHandler)&ManufactureInfoState::moreEngineerClick, 0);
+	_btnEngineerUp->onMousePress((ActionHandler)&ManufactureInfoState::moreEngineerPress, SDL_BUTTON_LEFT);
+	_btnEngineerUp->onMouseRelease((ActionHandler)&ManufactureInfoState::moreEngineerRelease, SDL_BUTTON_LEFT);
+	_btnEngineerUp->onMouseClick((ActionHandler)&ManufactureInfoState::maxEngineerClick, SDL_BUTTON_RIGHT);
+	_btnEngineerUp->onKeyboardPress((ActionHandler)&ManufactureInfoState::moreEngineerPress, SDLK_UP);
+	_btnEngineerUp->onKeyboardRelease((ActionHandler)&ManufactureInfoState::moreEngineerRelease, SDLK_UP);
 
-	_btnEngineerDown->onMousePress((ActionHandler)&ManufactureInfoState::lessEngineerPress);
-	_btnEngineerDown->onMouseRelease((ActionHandler)&ManufactureInfoState::lessEngineerRelease);
-	_btnEngineerDown->onMouseClick((ActionHandler)&ManufactureInfoState::lessEngineerClick, 0);
+	_btnEngineerDown->onMousePress((ActionHandler)&ManufactureInfoState::lessEngineerPress, SDL_BUTTON_LEFT);
+	_btnEngineerDown->onMouseRelease((ActionHandler)&ManufactureInfoState::lessEngineerRelease, SDL_BUTTON_LEFT);
+	_btnEngineerDown->onMouseClick((ActionHandler)&ManufactureInfoState::minEngineerClick, SDL_BUTTON_RIGHT);
+	_btnEngineerDown->onKeyboardPress((ActionHandler)&ManufactureInfoState::lessEngineerPress, SDLK_DOWN);
+	_btnEngineerDown->onKeyboardRelease((ActionHandler)&ManufactureInfoState::lessEngineerRelease, SDLK_DOWN);
 
-	_btnUnitUp->onMousePress((ActionHandler)&ManufactureInfoState::moreUnitPress);
-	_btnUnitUp->onMouseRelease((ActionHandler)&ManufactureInfoState::moreUnitRelease);
-	_btnUnitUp->onMouseClick((ActionHandler)&ManufactureInfoState::moreUnitClick, 0);
+	_btnUnitUp->onMousePress((ActionHandler)&ManufactureInfoState::moreUnitPress, SDL_BUTTON_LEFT);
+	_btnUnitUp->onMouseRelease((ActionHandler)&ManufactureInfoState::moreUnitRelease, SDL_BUTTON_LEFT);
+	_btnUnitUp->onMouseClick((ActionHandler)&ManufactureInfoState::maxUnitClick, SDL_BUTTON_RIGHT);
+	_btnUnitUp->onKeyboardPress((ActionHandler)&ManufactureInfoState::moreUnitPress, SDLK_RIGHT);
+	_btnUnitUp->onKeyboardRelease((ActionHandler)&ManufactureInfoState::moreUnitRelease, SDLK_RIGHT);
 
-	_btnUnitDown->onMousePress((ActionHandler)&ManufactureInfoState::lessUnitPress);
-	_btnUnitDown->onMouseRelease((ActionHandler)&ManufactureInfoState::lessUnitRelease);
-	_btnUnitDown->onMouseClick((ActionHandler)&ManufactureInfoState::lessUnitClick, 0);
+	_btnUnitDown->onMousePress((ActionHandler)&ManufactureInfoState::lessUnitPress, SDL_BUTTON_LEFT);
+	_btnUnitDown->onMouseRelease((ActionHandler)&ManufactureInfoState::lessUnitRelease, SDL_BUTTON_LEFT);
+	_btnUnitDown->onMouseClick((ActionHandler)&ManufactureInfoState::minUnitClick, SDL_BUTTON_RIGHT);
+	_btnUnitUp->onKeyboardPress((ActionHandler)&ManufactureInfoState::lessUnitPress, SDLK_LEFT);
+	_btnUnitUp->onKeyboardRelease((ActionHandler)&ManufactureInfoState::lessUnitRelease, SDLK_LEFT);
 
 	_txtUnitUp->setText(tr("STR_INCREASE_UC"));
 
@@ -172,6 +180,7 @@ void ManufactureInfoState::buildUi()
 
 	_btnSell->setText(tr("STR_SELL_PRODUCTION"));
 	_btnSell->onMouseClick((ActionHandler)&ManufactureInfoState::btnSellClick, 0);
+	_btnSell->onKeyboardPress((ActionHandler)&ManufactureInfoState::btnSellKeypress, SDLK_s);
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&ManufactureInfoState::btnOkClick);
@@ -194,6 +203,7 @@ void ManufactureInfoState::buildUi()
 		_btnStop->setText(tr("STR_CANCEL_UC"));
 	}
 	_btnStop->onMouseClick((ActionHandler)&ManufactureInfoState::btnStopClick);
+	_btnStop->onKeyboardPress((ActionHandler)&ManufactureInfoState::btnStopClick, SDLK_DELETE);
 	if (!_production)
 	{
 		_production = new Production (_item, 1);
@@ -281,6 +291,16 @@ void ManufactureInfoState::btnSellClick(Action *)
 }
 
 /**
+ * Refreshes profit values.
+ * @param action A pointer to an Action.
+ */
+void ManufactureInfoState::btnSellKeypress(Action *)
+{
+	_btnSell->setPressed(!_btnSell->getPressed());
+	setAssignedEngineer();
+}
+
+/**
  * Stops this Production. Returns to the previous screen.
  * @param action A pointer to an Action.
  */
@@ -362,7 +382,8 @@ void ManufactureInfoState::moreEngineer(int change)
  */
 void ManufactureInfoState::moreEngineerPress(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT) _timerMoreEngineer->start();
+	moreEngineerClick(action);
+	_timerMoreEngineer->start();
 }
 
 /**
@@ -371,23 +392,25 @@ void ManufactureInfoState::moreEngineerPress(Action *action)
  */
 void ManufactureInfoState::moreEngineerRelease(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT)
-	{
-		_timerMoreEngineer->setInterval(250);
-		_timerMoreEngineer->stop();
-	}
+	_timerMoreEngineer->setInterval(250);
+	_timerMoreEngineer->stop();
 }
-
 /**
- * Allocates all engineers.
+ * Allocates one engineer.
  * @param action A pointer to an Action.
  */
 void ManufactureInfoState::moreEngineerClick(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_RIGHT) moreEngineer(INT_MAX);
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT) moreEngineer(1);
+	moreEngineer(1);
 }
-
+/**
+ * Allocates all engineers.
+ * @param action A pointer to an Action.
+ */
+void ManufactureInfoState::maxEngineerClick(Action *action)
+{
+	moreEngineer(INT_MAX);
+}
 /**
  * Removes the given number of engineers from the project if possible.
  * @param change How much we want to subtract.
@@ -411,7 +434,8 @@ void ManufactureInfoState::lessEngineer(int change)
  */
 void ManufactureInfoState::lessEngineerPress(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT) _timerLessEngineer->start();
+	lessEngineerClick(action);
+	_timerLessEngineer->start();
 }
 
 /**
@@ -420,21 +444,25 @@ void ManufactureInfoState::lessEngineerPress(Action *action)
  */
 void ManufactureInfoState::lessEngineerRelease(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT)
-	{
-		_timerLessEngineer->setInterval(250);
-		_timerLessEngineer->stop();
-	}
+	_timerLessEngineer->setInterval(250);
+	_timerLessEngineer->stop();
 }
 
 /**
- * Removes engineers from the production.
+ * Removes 1 engineer from the production.
  * @param action A pointer to an Action.
  */
 void ManufactureInfoState::lessEngineerClick(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_RIGHT) lessEngineer(INT_MAX);
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT) lessEngineer(1);
+	lessEngineer(1);
+}
+/**
+ * Removes all engineers from the production.
+ * @param action A pointer to an Action.
+ */
+void ManufactureInfoState::minEngineerClick(Action *action)
+{
+	lessEngineer(INT_MAX);
 }
 
 /**
@@ -466,8 +494,11 @@ void ManufactureInfoState::moreUnit(int change)
  */
 void ManufactureInfoState::moreUnitPress(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT && _production->getAmountTotal() < INT_MAX)
+	if (_production->getAmountTotal() < INT_MAX)
+	{
+		moreUnitClick(action);
 		_timerMoreUnit->start();
+	}
 }
 
 /**
@@ -476,35 +507,35 @@ void ManufactureInfoState::moreUnitPress(Action *action)
  */
 void ManufactureInfoState::moreUnitRelease(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT)
-	{
-		_timerMoreUnit->setInterval(250);
-		_timerMoreUnit->stop();
-	}
+	_timerMoreUnit->setInterval(250);
+	_timerMoreUnit->stop();
 }
 
 /**
- * Increases the "units to produce", in the case of a right-click, to infinite, and 1 on left-click.
+ * Increases the "units to produce" by 1.
  * @param action A pointer to an Action.
  */
 void ManufactureInfoState::moreUnitClick(Action *action)
 {
 	if (_production->getInfiniteAmount()) return; // We can't increase over infinite :)
-	if (action->getDetails()->button.button == SDL_BUTTON_RIGHT)
+	moreUnit(1);
+}
+
+/**
+ * Increases the "units to produce" to infinite.
+ * @param action A pointer to an Action.
+ */
+void ManufactureInfoState::maxUnitClick(Action *action)
+{
+	if (_production->getInfiniteAmount()) return; // We can't increase over infinite :)
+	if (_production->getRules()->getProducedCraft())
 	{
-		if (_production->getRules()->getProducedCraft())
-		{
-			moreUnit(INT_MAX);
-		}
-		else
-		{
-			_production->setInfiniteAmount(true);
-			setAssignedEngineer();
-		}
+		moreUnit(INT_MAX);
 	}
-	else if (action->getDetails()->button.button == SDL_BUTTON_LEFT)
+	else
 	{
-		moreUnit(1);
+		_production->setInfiniteAmount(true);
+		setAssignedEngineer();
 	}
 }
 
@@ -527,7 +558,8 @@ void ManufactureInfoState::lessUnit(int change)
  */
 void ManufactureInfoState::lessUnitPress(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT) _timerLessUnit->start();
+	lessUnitClick(action);
+	_timerLessUnit->start();
 }
 
 /**
@@ -536,31 +568,33 @@ void ManufactureInfoState::lessUnitPress(Action *action)
  */
 void ManufactureInfoState::lessUnitRelease(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT)
-	{
-		_timerLessUnit->setInterval(250);
-		_timerLessUnit->stop();
-	}
+	_timerLessUnit->setInterval(250);
+	_timerLessUnit->stop();
 }
 
 /**
- * Decreases the units to produce.
+ * Decreases the units to produce by 1.
  * @param action A pointer to an Action.
  */
 void ManufactureInfoState::lessUnitClick(Action *action)
 {
-	if (action->getDetails()->button.button == SDL_BUTTON_RIGHT
-	||  action->getDetails()->button.button == SDL_BUTTON_LEFT)
-	{
-		_production->setInfiniteAmount(false);
-		if (action->getDetails()->button.button == SDL_BUTTON_RIGHT
-		|| _production->getAmountTotal() <= _production->getAmountProduced())
-		{ // So the produced item number is increased over the planned, OR it was simply a right-click
-			_production->setAmountTotal(_production->getAmountProduced()+1);
-			setAssignedEngineer();
-		}
-		if (action->getDetails()->button.button == SDL_BUTTON_LEFT) lessUnit(1);
+	_production->setInfiniteAmount(false);
+	if (_production->getAmountTotal() <= _production->getAmountProduced())
+	{ // So the produced item number is increased over the planned
+		_production->setAmountTotal(_production->getAmountProduced()+1);
+		setAssignedEngineer();
 	}
+	lessUnit(1);
+}
+/**
+ * Decreases the units to produce to 0.
+ * @param action A pointer to an Action.
+ */
+void ManufactureInfoState::minUnitClick(Action *action)
+{
+	_production->setInfiniteAmount(false);
+	_production->setAmountTotal(_production->getAmountProduced()+1);
+	setAssignedEngineer();
 }
 
 /**

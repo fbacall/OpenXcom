@@ -56,6 +56,8 @@ private:
 	int getMonthlyNetFunds () const;
 	/// Handler for the Sell button.
 	void btnSellClick (Action * action);
+	/// Handler for toggling the sell button with keyboard.
+	void btnSellKeypress (Action * action);
 	/// Handler for the Stop button.
 	void btnStopClick (Action * action);
 	/// Handler for the OK button.
@@ -66,32 +68,40 @@ private:
 	void moreEngineerPress(Action * action);
 	/// Handler for releasing the more engineer button.
 	void moreEngineerRelease(Action * action);
-	/// Handler for clicking the more engineer button.
+	/// Handler for left-clicking the more engineer button.
 	void moreEngineerClick(Action * action);
+	/// Handler for right-clicking the more engineer button.
+	void maxEngineerClick(Action * action);
 	/// Adds given number of units to produce to the project if possible.
 	void moreUnit(int change);
 	/// Handler for pressing the more unit button.
 	void moreUnitPress(Action * action);
 	/// Handler for releasing the more unit button.
 	void moreUnitRelease(Action * action);
-	/// Handler for clicking the more unit button.
+	/// Handler for left-clicking the more unit button.
 	void moreUnitClick(Action * action);
+	/// Handler for right-clicking the more unit button.
+	void maxUnitClick(Action * action);
 	/// Removes the given number of engineers from the project if possible.
 	void lessEngineer(int change);
 	/// Handler for pressing the less engineer button.
 	void lessEngineerPress(Action * action);
 	/// Handler for releasing the less engineer button.
 	void lessEngineerRelease(Action * action);
-	/// Handler for clicking the less engineer button.
+	/// Handler for left-clicking the less engineer button.
 	void lessEngineerClick(Action * action);
+	/// Handler for right-clicking the less engineer button.
+	void minEngineerClick(Action * action);
 	/// Removes the given number of units to produce from the project if possible.
 	void lessUnit(int change);
 	/// Handler for pressing the less unit button.
 	void lessUnitPress(Action * action);
 	/// Handler for releasing the less unit button.
 	void lessUnitRelease(Action * action);
-	/// Handler for clicking the less unit button.
+	/// Handler for left-clicking the less unit button.
 	void lessUnitClick(Action * action);
+	/// Handler for right-clicking the less unit button.
+	void minUnitClick(Action * action);
 	/// Adds one engineer to the production (if possible).
 	void onMoreEngineer();
 	/// Removes one engineer from the production (if possible).

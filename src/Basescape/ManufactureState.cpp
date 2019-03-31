@@ -120,6 +120,7 @@ ManufactureState::ManufactureState(Base *base) : _base(base)
 	_lstManufacture->setMargin(2);
 	_lstManufacture->setWordWrap(true);
 	_lstManufacture->onMouseClick((ActionHandler)&ManufactureState::lstManufactureClickLeft, SDL_BUTTON_LEFT);
+	_lstManufacture->onKeyboardPress((ActionHandler)&ManufactureState::lstManufactureClickLeft, Options::keyOk);
 	_lstManufacture->onMouseClick((ActionHandler)&ManufactureState::lstManufactureClickMiddle, SDL_BUTTON_MIDDLE);
 	fillProductionList();
 }
