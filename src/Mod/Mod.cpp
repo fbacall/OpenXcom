@@ -290,7 +290,7 @@ Mod::Mod() :
 	_aiFireChoiceIntelCoeff(5), _aiFireChoiceAggroCoeff(5), _aiExtendedFireModeChoice(false), _aiRespectMaxRange(false), _aiDestroyBaseFacilities(false),
 	_aiPickUpWeaponsMoreActively(false),
 	_maxLookVariant(0), _tooMuchSmokeThreshold(10), _customTrainingFactor(100), _minReactionAccuracy(0), _chanceToStopRetaliation(0),
-	_allowCountriesToCancelAlienPact(false), _kneelBonusGlobal(115), _oneHandedPenaltyGlobal(80),
+	_allowCountriesToCancelAlienPact(false), _buildInfiltrationBaseCloseToTheCountry(false), _kneelBonusGlobal(115), _oneHandedPenaltyGlobal(80),
 	_enableCloseQuartersCombat(0), _closeQuartersAccuracyGlobal(100), _closeQuartersTuCostGlobal(12), _closeQuartersEnergyCostGlobal(8),
 	_noLOSAccuracyPenaltyGlobal(-1),
 	_surrenderMode(0),
@@ -1534,6 +1534,7 @@ void Mod::loadFile(const FileMap::FileRecord &filerec, ModScript &parsers)
 	_minReactionAccuracy = doc["minReactionAccuracy"].as<int>(_minReactionAccuracy);
 	_chanceToStopRetaliation = doc["chanceToStopRetaliation"].as<int>(_chanceToStopRetaliation);
 	_allowCountriesToCancelAlienPact = doc["allowCountriesToCancelAlienPact"].as<bool>(_allowCountriesToCancelAlienPact);
+	_buildInfiltrationBaseCloseToTheCountry = doc["buildInfiltrationBaseCloseToTheCountry"].as<bool>(_buildInfiltrationBaseCloseToTheCountry);
 	_kneelBonusGlobal = doc["kneelBonusGlobal"].as<int>(_kneelBonusGlobal);
 	_oneHandedPenaltyGlobal = doc["oneHandedPenaltyGlobal"].as<int>(_oneHandedPenaltyGlobal);
 	_enableCloseQuartersCombat = doc["enableCloseQuartersCombat"].as<int>(_enableCloseQuartersCombat);
@@ -3452,6 +3453,12 @@ void Mod::loadVanillaResources()
 		_sets[s2]->loadDat(s1);
 	}
 
+	// construct sound sets
+	_sounds["GEO.CAT"] = new SoundSet();
+	_sounds["BATTLE.CAT"] = new SoundSet();
+	_sounds["SAMPLE3.CAT"] = new SoundSet();
+	_sounds["INTRO.CAT"] = new SoundSet();
+
 	if (!Options::mute) // TBD: ain't it wrong? can Options::mute be reset without a reload?
 	{
 		// Load sounds
@@ -3473,7 +3480,7 @@ void Mod::loadVanillaResources()
 			Options::currentSound = SOUND_AUTO;
 			for (size_t i = 0; i < ARRAYLEN(catsId); ++i)
 			{
-				SoundSet *sound = new SoundSet();
+				SoundSet *sound = _sounds[catsId[i]];
 				for (size_t j = 0; j < ARRAYLEN(cats); ++j)
 				{
 					bool wav = true;
@@ -3493,7 +3500,6 @@ void Mod::loadVanillaResources()
 						Log(LOG_VERBOSE) << catsId[i] << ": sound file not found: "<<fname;
 					}
 				}
-				_sounds[catsId[i]] = sound;
 				if (sound->getTotalSounds() == 0)
 				{
 					Log(LOG_ERROR) << "No sound files found for " << catsId[i];
@@ -3531,17 +3537,15 @@ void Mod::loadVanillaResources()
 		auto file = soundFiles.find("intro.cat");
 		if (file != soundFiles.end())
 		{
-			SoundSet *s = _sounds["INTRO.CAT"] = new SoundSet();
 			auto catfile = CatFile("SOUND/INTRO.CAT");
-			s->loadCat(catfile);
+			_sounds["INTRO.CAT"]->loadCat(catfile);
 		}
 
 		file = soundFiles.find("sample3.cat");
 		if (file != soundFiles.end())
 		{
-			SoundSet *s = _sounds["SAMPLE3.CAT"] = new SoundSet();
 			auto catfile = CatFile("SOUND/SAMPLE3.CAT");
-			s->loadCat(catfile);
+			_sounds["SAMPLE3.CAT"]->loadCat(catfile);
 		}
 	}
 

@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 #include <yaml-cpp/yaml.h>
+#include "../Engine/Exception.h"
 
 namespace OpenXcom
 {
@@ -46,11 +47,20 @@ namespace OpenXcom
 	};
 
 	/**
+	 * Defintion of one sub page of ufopedia article
+	 */
+	struct ArticlePage
+	{
+		std::string title;
+		std::string text;
+		int ammoSlot = 0;
+	};
+
+	/**
 	 * ArticleDefinition is the base class for all article types.
 	 * This class is used to store all information about articles
 	 * required to generate an ArticleState from.
 	 */
-
 	class ArticleDefinition
 	{
 	protected:
@@ -70,13 +80,66 @@ namespace OpenXcom
 		int getListOrder() const;
 
 		std::string id;
-		std::string title;
 		std::string section;
 		std::vector<std::string> requires;
 		bool customPalette;
 
+		/// Get main title of page in ufopedia.
+		const std::string& getMainTitle()
+		{
+			return _pages[0].title;
+		}
+
+		/// Return number of pages.
+		size_t getNumberOfPages()
+		{
+			return _pages.size();
+		}
+
+		const std::string& getTitleForPage(size_t page) const
+		{
+			if (page >= _pages.size())
+			{
+				throw Exception("Access to wrong page for article '" + id + "'");
+			}
+			return _pages[page].title;
+		}
+
+		const std::string& getTextForPage(size_t page) const
+		{
+			if (page >= _pages.size())
+			{
+				throw Exception("Access to wrong page for article '" + id + "'");
+			}
+			return _pages[page].text;
+		}
+
+		int getAmmoSlotForPage(size_t page) const
+		{
+			if (page >= _pages.size())
+			{
+				throw Exception("Access to wrong page for article '" + id + "'");
+			}
+			return _pages[page].ammoSlot;
+		}
+
+		int getAmmoSlotPrevUsageForPage(size_t page) const
+		{
+			auto ammoSlot = getAmmoSlotForPage(page);
+			int used = 0;
+			for (size_t i = 0; i < page; ++i)
+			{
+				if (_pages[i].ammoSlot == ammoSlot)
+				{
+					++used;
+				}
+			}
+			return used;
+		}
+
 	protected:
 		UfopaediaTypeId _type_id;
+		std::vector<ArticlePage> _pages;
 	private:
 		int _listOrder;
 	};
@@ -110,7 +173,6 @@ namespace OpenXcom
 		std::string image_id;
 		ArticleDefinitionRect rect_stats;
 		ArticleDefinitionRect rect_text;
-		std::string text;
 	};
 
 	/**
@@ -127,7 +189,6 @@ namespace OpenXcom
 		void load(const YAML::Node& node, int listOrder) override;
 
 		std::string image_id;
-		std::string text;
 	};
 
 	/**
@@ -142,7 +203,6 @@ namespace OpenXcom
 		/// Loads the article from YAML.
 		void load(const YAML::Node& node, int listOrder) override;
 
-		std::string text;
 	};
 
 	/**
@@ -159,7 +219,6 @@ namespace OpenXcom
 		void load(const YAML::Node& node, int listOrder) override;
 
 		std::string image_id;
-		std::string text;
 		int text_width;
 		ArticleDefinitionRect rect_text;
 	};
@@ -178,7 +237,6 @@ namespace OpenXcom
 		void load(const YAML::Node& node, int listOrder) override;
 
 		std::string image_id;
-		std::string text;
 		int text_width;
 		std::string weapon;
 	};
@@ -196,7 +254,6 @@ namespace OpenXcom
 		/// Loads the article from YAML.
 		void load(const YAML::Node& node, int listOrder) override;
 
-		std::string text;
 	};
 
 	/**
@@ -212,7 +269,6 @@ namespace OpenXcom
 		/// Loads the article from YAML.
 		void load(const YAML::Node& node, int listOrder) override;
 
-		std::string text;
 	};
 
 	/**
@@ -228,7 +284,6 @@ namespace OpenXcom
 		/// Loads the article from YAML.
 		void load(const YAML::Node& node, int listOrder) override;
 
-		std::string text;
 	};
 
 	/**
@@ -244,7 +299,6 @@ namespace OpenXcom
 		/// Loads the article from YAML.
 		void load(const YAML::Node& node, int listOrder) override;
 
-		std::string text;
 	};
 
 	/**
@@ -261,7 +315,6 @@ namespace OpenXcom
 		void load(const YAML::Node& node, int listOrder) override;
 
 		std::string image_id;
-		std::string text;
 		std::string weapon;
 	};
 

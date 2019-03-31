@@ -25,6 +25,7 @@
 #include "../Mod/Mod.h"
 #include "../Mod/RuleItem.h"
 #include "../Mod/RuleInventory.h"
+#include "../Engine/Collections.h"
 #include "../Engine/Surface.h"
 #include "../Engine/SurfaceSet.h"
 #include "../Engine/Script.h"
@@ -154,11 +155,17 @@ YAML::Node BattleItem::save(const ScriptGlobal *shared) const
 	{
 		node["ammoItem"] = _ammoItem[0]->getId();
 	}
-	for (int slot = 0; slot < RuleItem::AmmoSlotMax; ++slot)
-	{
-		node["ammoItemSlots"].push_back(_ammoItem[slot] ? _ammoItem[slot]->getId() : -1);
-	}
-
+	Collections::untilLastIf(
+		_ammoItem,
+		[](BattleItem *i)
+		{
+			return i != nullptr;
+		},
+		[&](BattleItem *i)
+		{
+			node["ammoItemSlots"].push_back(i ? i->getId() : -1);
+		}
+	);
 	if (_rules && _rules->getBattleType() == BT_MEDIKIT)
 	{
 		node["painKiller"] = _painKiller;
@@ -759,7 +766,7 @@ bool BattleItem::getArcingShot(BattleActionType action) const
 bool BattleItem::needsAmmoForAction(BattleActionType action) const
 {
 	auto conf = getActionConf(action);
-	if (!conf || conf->ammoSlot == -1)
+	if (!conf || conf->ammoSlot == RuleItem::AmmoSlotSelfUse)
 	{
 		return false;
 	}
@@ -779,7 +786,7 @@ const BattleItem *BattleItem::getAmmoForAction(BattleActionType action) const
 	{
 		return nullptr;
 	}
-	if (conf->ammoSlot == -1)
+	if (conf->ammoSlot == RuleItem::AmmoSlotSelfUse)
 	{
 		return this;
 	}
@@ -805,7 +812,7 @@ BattleItem *BattleItem::getAmmoForAction(BattleActionType action, std::string* m
 	{
 		return nullptr;
 	}
-	if (conf->ammoSlot == -1)
+	if (conf->ammoSlot == RuleItem::AmmoSlotSelfUse)
 	{
 		return this;
 	}
@@ -831,7 +838,7 @@ BattleItem *BattleItem::getAmmoForAction(BattleActionType action, std::string* m
  */
 void BattleItem::spendAmmoForAction(BattleActionType action, SavedBattleGame* save)
 {
-	if (save->getDebugMode() || getActionConf(action)->ammoSlot == -1)
+	if (save->getDebugMode() || getActionConf(action)->ammoSlot == RuleItem::AmmoSlotSelfUse)
 	{
 		return;
 	}

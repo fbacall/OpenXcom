@@ -57,6 +57,7 @@
 #include "../Basescape/BasescapeState.h"
 #include "../Basescape/SellState.h"
 #include "../Basescape/TechTreeViewerState.h"
+#include "../Basescape/GlobalManufactureState.h"
 #include "../Basescape/GlobalResearchState.h"
 #include "../Menu/CutsceneState.h"
 #include "../Menu/ErrorMessageState.h"
@@ -115,6 +116,7 @@
 #include "../Mod/AlienDeployment.h"
 #include "../Mod/RuleInterface.h"
 #include "../fmath.h"
+#include "../fallthrough.h"
 
 namespace OpenXcom
 {
@@ -245,6 +247,7 @@ GeoscapeState::GeoscapeState() : _pause(false), _zoomInEffectDone(false), _zoomO
 	_btnIntercept->onKeyboardPress((ActionHandler)&GeoscapeState::btnUfoTrackerClick, Options::keyGeoUfoTracker);
 	_btnIntercept->onKeyboardPress((ActionHandler)&GeoscapeState::btnTechTreeViewerClick, Options::keyGeoTechTreeViewer);
 	_btnIntercept->onKeyboardPress((ActionHandler)&GeoscapeState::btnSelectMusicTrackClick, Options::keySelectMusicTrack);
+	_btnIntercept->onKeyboardPress((ActionHandler)&GeoscapeState::btnGlobalProductionClick, Options::keyGeoGlobalProduction);
 	_btnIntercept->onKeyboardPress((ActionHandler)&GeoscapeState::btnGlobalResearchClick, Options::keyGeoGlobalResearch);
 	_btnIntercept->setGeoscapeButton(true);
 
@@ -764,19 +767,19 @@ void GeoscapeState::timeAdvance()
 		{
 		case TIME_1MONTH:
 			time1Month();
-			[[gnu::fallthrough]];
+			FALLTHROUGH;
 		case TIME_1DAY:
 			time1Day();
-			[[gnu::fallthrough]];
+			FALLTHROUGH;
 		case TIME_1HOUR:
 			time1Hour();
-			[[gnu::fallthrough]];
+			FALLTHROUGH;
 		case TIME_30MIN:
 			time30Minutes();
-			[[gnu::fallthrough]];
+			FALLTHROUGH;
 		case TIME_10MIN:
 			time10Minutes();
-			[[gnu::fallthrough]];
+			FALLTHROUGH;
 		case TIME_5SEC:
 			time5Seconds();
 		}
@@ -1840,7 +1843,7 @@ void GeoscapeState::time30Minutes()
 		{
 		case Ufo::LANDED:
 			points *= 2;
-			[[gnu::fallthrough]];
+			FALLTHROUGH;
 		case Ufo::FLYING:
 			// Get area
 			for (std::vector<Region*>::iterator k = _game->getSavedGame()->getRegions()->begin(); k != _game->getSavedGame()->getRegions()->end(); ++k)
@@ -1870,7 +1873,7 @@ void GeoscapeState::time30Minutes()
 					case 2:	// hyper-wave decoder
 						(*u)->setHyperDetected(true);
 						hyperdetected = true;
-						[[gnu::fallthrough]];
+						FALLTHROUGH;
 					case 1: // conventional radar
 						detected = true;
 					}
@@ -2012,7 +2015,7 @@ void GeoscapeState::time1Hour()
 		{
 			if (j->second > PROGRESS_NOT_COMPLETE)
 			{
-				popup(new ProductionCompleteState((*i),  tr(j->first->getRules()->getName()), this, j->second));
+				popup(new ProductionCompleteState((*i),  tr(j->first->getRules()->getName()), this, j->second, j->first));
 				(*i)->removeProduction(j->first);
 			}
 		}
@@ -2626,6 +2629,15 @@ void GeoscapeState::btnTechTreeViewerClick(Action *)
 void GeoscapeState::btnSelectMusicTrackClick(Action *)
 {
 	_game->pushState(new SelectMusicTrackState(SMT_GEOSCAPE));
+}
+
+/**
+ * Opens the Current Global Production.
+ * @param action Pointer to an action.
+ */
+void GeoscapeState::btnGlobalProductionClick(Action *)
+{
+	_game->pushState(new GlobalManufactureState(false));
 }
 
 /**

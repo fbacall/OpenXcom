@@ -70,6 +70,7 @@
 #include "../Mod/RuleInterface.h"
 #include "../Savegame/MissionStatistics.h"
 #include "../Savegame/BattleUnitStatistics.h"
+#include "../fallthrough.h"
 
 namespace OpenXcom
 {
@@ -1902,7 +1903,7 @@ void DebriefingState::prepareDebriefing()
 		const RuleItem *bountyItem = _game->getMod()->getItem(ruleDeploy->getMissionBountyItem());
 		if (bountyItem)
 		{
-			addItemsToBaseStores(bountyItem, base, 1, false);
+			addItemsToBaseStores(bountyItem, base, 1, true);
 			auto specialType = bountyItem->getSpecialType();
 			if (specialType > 1)
 			{
@@ -2229,7 +2230,7 @@ void DebriefingState::recoverItems(std::vector<BattleItem*> *from, Base *base)
 						// It's a weapon, count any rounds left in the clip.
 						recoveryAmmoInWeapon(*it);
 						// Fall-through, to recover the weapon itself.
-						[[gnu::fallthrough]];
+						FALLTHROUGH;
 					default:
 						if (recoverWeapon)
 						{

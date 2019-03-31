@@ -30,7 +30,6 @@
 #include <time.h>
 #include <signal.h>
 #include <sys/stat.h>
-#include "../dirent.h"
 #include "Logger.h"
 #include "Exception.h"
 #include "Options.h"
@@ -58,7 +57,7 @@
 #pragma comment(lib, "dbghelp.lib")
 #endif
 #endif
-#else
+#else		/* #ifdef _WIN32 */
 #include <iostream>
 #include <fstream>
 #include <locale>
@@ -71,8 +70,11 @@
 #include <sys/types.h>
 #include <pwd.h>
 #include <execinfo.h>
+#include <cxxabi.h>
+#include <dlfcn.h>
+#include <dirent.h>
 #include "Unicode.h"
-#endif
+#endif		/* #ifdef _WIN32 */
 #include <SDL.h>
 #include <SDL_syswm.h>
 #ifdef __HAIKU__
@@ -1151,7 +1153,7 @@ void setWindowIcon(int, const std::string &unixPath)
 void stackTrace(void *ctx)
 {
 #ifdef _WIN32
-#ifndef __NO_DBGHELP
+# ifndef __NO_DBGHELP
 	const int MAX_SYMBOL_LENGTH = 1024;
 	CONTEXT context;
 	if (ctx != 0)
@@ -1160,10 +1162,10 @@ void stackTrace(void *ctx)
 	}
 	else
 	{
-#ifdef _M_IX86
+#  ifdef _M_IX86
 		memset(&context, 0, sizeof(CONTEXT));
 		context.ContextFlags = CONTEXT_CONTROL;
-#ifdef __MINGW32__
+#   ifdef __MINGW32__
 		asm("Label:\n\t"
 			"movl %%ebp,%0;\n\t"
 			"movl %%esp,%1;\n\t"
@@ -1172,7 +1174,7 @@ void stackTrace(void *ctx)
 			: "=r" (context.Ebp), "=r" (context.Esp), "=r" (context.Eip)
 			: //no input
 			: "eax");
-#else
+#   else
 		_asm {
 		Label:
 			mov[context.Ebp], ebp;
@@ -1180,17 +1182,17 @@ void stackTrace(void *ctx)
 			mov eax, [Label];
 			mov[context.Eip], eax;
 		}
-#endif
-#else
+#   endif
+#  else /* no  _M_IX86 */
 		RtlCaptureContext(&context);
-#endif
+#  endif
 	}
 	HANDLE thread = GetCurrentThread();
 	HANDLE process = GetCurrentProcess();
 	STACKFRAME64 frame;
 	memset(&frame, 0, sizeof(STACKFRAME64));
 	DWORD image;
-#ifdef _M_IX86
+#  ifdef _M_IX86
 	image = IMAGE_FILE_MACHINE_I386;
 	frame.AddrPC.Offset = context.Eip;
 	frame.AddrPC.Mode = AddrModeFlat;
@@ -1198,7 +1200,7 @@ void stackTrace(void *ctx)
 	frame.AddrFrame.Mode = AddrModeFlat;
 	frame.AddrStack.Offset = context.Esp;
 	frame.AddrStack.Mode = AddrModeFlat;
-#elif _M_X64
+#  elif _M_X64
 	image = IMAGE_FILE_MACHINE_AMD64;
 	frame.AddrPC.Offset = context.Rip;
 	frame.AddrPC.Mode = AddrModeFlat;
@@ -1206,7 +1208,7 @@ void stackTrace(void *ctx)
 	frame.AddrFrame.Mode = AddrModeFlat;
 	frame.AddrStack.Offset = context.Rsp;
 	frame.AddrStack.Mode = AddrModeFlat;
-#elif _M_IA64
+#  elif _M_IA64
 	image = IMAGE_FILE_MACHINE_IA64;
 	frame.AddrPC.Offset = context.StIIP;
 	frame.AddrPC.Mode = AddrModeFlat;
@@ -1216,10 +1218,10 @@ void stackTrace(void *ctx)
 	frame.AddrBStore.Mode = AddrModeFlat;
 	frame.AddrStack.Offset = context.IntSp;
 	frame.AddrStack.Mode = AddrModeFlat;
-#else
+#  else
 	Log(LOG_FATAL) << "Unfortunately, no stack trace information is available";
 	return;
-#endif
+#  endif
 	SYMBOL_INFO *symbol = (SYMBOL_INFO *)malloc(sizeof(SYMBOL_INFO) + (MAX_SYMBOL_LENGTH - 1) * sizeof(TCHAR));
 	symbol->MaxNameLen = MAX_SYMBOL_LENGTH;
 	symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
@@ -1232,7 +1234,7 @@ void stackTrace(void *ctx)
 		if (SymFromAddr(process, frame.AddrPC.Offset, NULL, symbol))
 		{
 			std::string symname = symbol->Name;
-#ifdef __MINGW32__
+#  ifdef __MINGW32__
 			symname = "_" + symname;
 			int status = 0;
 			size_t outSz = 0;
@@ -1247,7 +1249,7 @@ void stackTrace(void *ctx)
 			{
 				symname = symbol->Name;
 			}
-#endif
+#  endif
 			if (SymGetLineFromAddr64(process, frame.AddrPC.Offset, &displacement, line))
 			{
 				std::string filename = line->FileName;
@@ -1274,21 +1276,43 @@ void stackTrace(void *ctx)
 		Log(LOG_FATAL) << "Unfortunately, no stack trace information is available";
 	}
 	SymCleanup(process);
-#else
+# else /* __NO_DBGHELP */
 	Log(LOG_FATAL) << "Unfortunately, no stack trace information is available";
-#endif
-#else
-	const int MAX_STACK_FRAMES = 16;
-	void *array[MAX_STACK_FRAMES];
-	size_t size = backtrace(array, MAX_STACK_FRAMES);
-	char **strings = backtrace_symbols(array, size);
+# endif
+#elif __CYGWIN__
+	Log(LOG_FATAL) << "Unfortunately, no stack trace information is available";
+#else    /* not _WIN32 or __CYGWIN__ */
+	void *frames[32];
+	char buf[1024];
+	int  frame_count = backtrace(frames, 32);
+	char *demangled = NULL;
+	const char *mangled = NULL;
+	int status;
+	size_t sym_offset;
 
-	for (size_t i = 0; i < size; ++i)
-	{
-		Log(LOG_FATAL) << strings[i];
+	for (int i = 0; i < frame_count; i++) {
+		Dl_info dl_info;
+		if (dladdr(frames[i], &dl_info )) {
+			demangled = NULL;
+			mangled = dl_info.dli_sname;
+			if ( mangled != NULL) {
+				sym_offset = (char *)frames[i] - (char *)dl_info.dli_saddr;
+				demangled = abi::__cxa_demangle( dl_info.dli_sname, NULL, 0, &status);
+				snprintf(buf, sizeof(buf), "%s(%s+0x%zx) [%p]",
+						dl_info.dli_fname,
+						status == 0 ? demangled : mangled,
+						sym_offset, frames[i] );
+			} else { // symbol not found
+				sym_offset = (char *)frames[i] - (char *)dl_info.dli_fbase;
+				snprintf(buf, sizeof(buf), "%s(+0x%zx) [%p]", dl_info.dli_fname, sym_offset, frames[i]);
+			}
+			free(demangled);
+			Log(LOG_FATAL) << buf;
+		} else { // object not found
+			snprintf(buf, sizeof(buf), "? ? [%p]", frames[i]);
+			Log(LOG_FATAL) << buf;
+		}
 	}
-
-	free(strings);
 #endif
 	ctx = (void*)ctx;
 }
@@ -1462,6 +1486,77 @@ void log(int level, const std::ostringstream& baremsgstream) {
 	if (failed || !logToFile(logFileName, msg)) {
 		logBuffer.push_back(std::make_pair(level, msg));
 	}
+}
+
+#if defined(EMBED_ASSETS)
+# if defined(_WIN32)
+# include "../resource.h"
+static void *CommonZipAssetPtr = 0;
+static size_t CommonZipAssetSize = 0;
+static void *StandardZipAssetPtr = 0;
+static size_t StandardZipAssetSize = 0;
+static void *getWindowsResource(int res_id, size_t *size) {
+    HMODULE handle = GetModuleHandle(NULL);
+    HRSRC rc = FindResource(handle, MAKEINTRESOURCE(res_id), MAKEINTRESOURCE(10));
+	if (!rc) { return NULL; }
+    HGLOBAL rcData = LoadResource(handle, rc);
+	if (!rcData) { return NULL; }
+    *size = SizeofResource(handle, rc);
+    return LockResource(rcData);
+}
+# elif defined(__MOBILE__)
+/* This space is intentionally left blank */
+# else
+extern "C" {
+	extern uint8_t common_zip[];
+	extern int common_zip_size;
+	extern uint8_t standard_zip[];
+	extern int standard_zip_size;
+}
+# endif
+#endif
+SDL_RWops *getEmbeddedAsset(const std::string& assetName) {
+	std::string log_ctx = "getEmbeddedAsset('" + assetName + "'): ";
+	if (assetName.size() == 0 || assetName[0] == '/') {
+		Log(LOG_WARNING) << log_ctx << "ignoring bogus asset name";
+		return NULL;
+	}
+#if defined(EMBED_ASSETS)
+	SDL_RWops *rv = NULL;
+# if defined(_WIN32)
+	if (assetName == "common.zip") {
+		if (!CommonZipAssetPtr) {
+			CommonZipAssetPtr = getWindowsResource(IDZ_COMMON_ZIP, &CommonZipAssetSize);
+		}
+		if (CommonZipAssetPtr) {
+			rv = SDL_RWFromConstMem(CommonZipAssetPtr, CommonZipAssetSize);
+		}
+	} else if (assetName == "standard.zip") {
+		if (!StandardZipAssetPtr) {
+			StandardZipAssetPtr = getWindowsResource(IDZ_STANDARD_ZIP, &StandardZipAssetSize);
+		}
+		if (StandardZipAssetPtr) {
+			rv = SDL_RWFromConstMem(StandardZipAssetPtr, StandardZipAssetSize);
+		}
+	}
+# elif defined(__MOBILE__)
+	rv = SDL_RWFromFile(assetName, "rb");
+# else
+	if (assetName == "common.zip") {
+		rv = SDL_RWFromConstMem(common_zip, common_zip_size);
+	} else if (assetName == "standard.zip") {
+		rv = SDL_RWFromConstMem(standard_zip, standard_zip_size);
+	}
+# endif
+	if (rv == NULL) {
+		Log(LOG_ERROR) << log_ctx << "embedded asset not found: "<< SDL_GetError();
+	}
+	return rv;
+#else
+	/* Asset embedding disabled. */
+	Log(LOG_DEBUG) << log_ctx << "assets were not embedded.";
+	return NULL;
+#endif
 }
 
 }

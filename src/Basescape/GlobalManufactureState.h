@@ -1,6 +1,6 @@
 #pragma once
 /*
- * Copyright 2010-2016 OpenXcom Developers.
+ * Copyright 2010-2019 OpenXcom Developers.
  *
  * This file is part of OpenXcom.
  *
@@ -17,9 +17,7 @@
  * You should have received a copy of the GNU General Public License
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <string>
 #include "../Engine/State.h"
-#include "../Savegame/Production.h"
 
 namespace OpenXcom
 {
@@ -29,34 +27,37 @@ class Window;
 class Text;
 class TextList;
 class Base;
-class GeoscapeState;
+class RuleManufacture;
 
 /**
- * Window used to notify the player when
- * a production is completed.
+ * Global Manufacture screen that provides overview
+ * of the ongoing manufacturing operations in all the bases.
  */
-class ProductionCompleteState : public State
+class GlobalManufactureState : public State
 {
 private:
-	Base *_base;
-	GeoscapeState *_state;
-
-	TextButton *_btnOk, *_btnGotoBase, *_btnSummary;
+	TextButton *_btnOk;
 	Window *_window;
-	Text *_txtMessage, *_txtItem, *_txtQuantity;
-	TextList *_lstSummary;
-	productionProgress_e _endType;
+	Text *_txtTitle, *_txtAvailable, *_txtAllocated, *_txtSpace, *_txtFunds, *_txtItem, *_txtEngineers, *_txtProduced, *_txtCost, *_txtTimeLeft;
+	TextList *_lstManufacture;
+
+	std::vector<Base*> _bases;
+	std::vector<RuleManufacture*> _topics;
+	bool _openedFromBasescape;
 public:
-	/// Creates the Production Complete state.
-	ProductionCompleteState(Base *base, const std::string &item, GeoscapeState *state, productionProgress_e endType = PROGRESS_COMPLETE, Production *production = nullptr);
-	/// Cleans up the Production Complete state.
-	~ProductionCompleteState();
+	/// Creates the GlobalManufacture state.
+	GlobalManufactureState(bool openedFromBasescape);
+	/// Cleans up the GlobalManufacture state.
+	~GlobalManufactureState();
 	/// Handler for clicking the OK button.
 	void btnOkClick(Action *action);
-	/// Handler for clicking the Go To Base button.
-	void btnGotoBaseClick(Action *action);
-	/// Handler for clicking the Summary button.
-	void btnSummaryClick(Action *action);
+	/// Handler for clicking the Production list.
+	void onSelectBase(Action *action);
+	void onOpenTechTreeViewer(Action *action);
+	/// Updates the production list.
+	void init() override;
+	/// Fills the list with Productions from all bases.
+	void fillProductionList();
 };
 
 }

@@ -126,7 +126,12 @@ class RuleItem
 public:
 	/// Maximum number of ammo slots on weapon.
 	static const int AmmoSlotMax = 4;
+	/// Special ammo slot that represent usage of weapon itself as ammo.
+	static const int AmmoSlotSelfUse = -1;
 	static const int MedikitSlots = 3;
+
+	/// Load ammo slot with checking correct range.
+	static void loadAmmoSlotChecked(int& result, const YAML::Node& node, const std::string& parentName);
 
 private:
 	std::string _type, _name, _nameAsAmmo; // two types of objects can have the same name
@@ -160,6 +165,7 @@ private:
 	std::vector<int> _psiMissSound;
 	int _psiMissAnimation;
 	int _power;
+	bool _hidePower;
 	float _powerRangeReduction;
 	float _powerRangeThreshold;
 	std::vector<std::string> _compatibleAmmo[AmmoSlotMax];
@@ -350,6 +356,8 @@ public:
 
 	/// Gets the item's power.
 	int getPower() const;
+	/// Should the item's power be displayed in Ufopedia or not?
+	bool getHidePower() const { return _hidePower; }
 	/// Get additional power from unit statistics
 	int getPowerBonus(const BattleUnit *unit) const;
 	const RuleStatBonus *getDamageBonusRaw() const { return &_damageBonus; }

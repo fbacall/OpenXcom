@@ -70,7 +70,7 @@ static const int _applyTemplateBtnY  = 113;
  * @param tu Does Inventory use up Time Units?
  * @param parent Pointer to parent Battlescape.
  */
-InventoryState::InventoryState(bool tu, BattlescapeState *parent, Base *base, bool noCraft) : _tu(tu), _noCraft(noCraft), _lightUpdated(false), _parent(parent), _base(base), _reloadUnit(false), _globalLayoutIndex(-1)
+InventoryState::InventoryState(bool tu, BattlescapeState *parent, Base *base, bool noCraft) : _tu(tu), _noCraft(noCraft), _parent(parent), _base(base), _reloadUnit(false), _globalLayoutIndex(-1)
 {
 	_battleGame = _game->getSavedGame()->getSavedBattle();
 
@@ -1521,7 +1521,10 @@ void InventoryState::handle(Action *action)
 		// "1..9" - load equipment
 		if (action->getDetails()->key.keysym.sym >= SDLK_1 && action->getDetails()->key.keysym.sym <= SDLK_9)
 		{
-			btnGlobalEquipmentLayoutClick(action);
+			if (!_btnQuickSearch->isFocused())
+			{
+				btnGlobalEquipmentLayoutClick(action);
+			}
 		}
 		if (action->getDetails()->key.keysym.sym == Options::keyInvClear)
 		{

@@ -49,6 +49,8 @@ public:
 	~ManufactureState();
 	/// Handler for clicking the OK button.
 	void btnOkClick(Action *action);
+	/// Handler for opening the Global Production UI.
+	void onCurrentGlobalProductionClick(Action *action);
 	/// Updates the production list.
 	void init() override;
 	/// Handler for the New Production button.

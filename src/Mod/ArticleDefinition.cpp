@@ -18,6 +18,8 @@
  */
 
 #include "ArticleDefinition.h"
+#include "../Engine/Exception.h"
+#include "../Mod/RuleItem.h"
 
 namespace YAML
 {
@@ -56,7 +58,9 @@ namespace OpenXcom
 	 * @param type_id Article type of this instance.
 	 */
 	ArticleDefinition::ArticleDefinition(UfopaediaTypeId type_id) : customPalette(false), _type_id(type_id), _listOrder(0)
-	{}
+	{
+		_pages.resize(1);
+	}
 
 	/**
 	 * Destructor.
@@ -80,15 +84,43 @@ namespace OpenXcom
 	 */
 	void ArticleDefinition::load(const YAML::Node &node, int listOrder)
 	{
-		id = title = node["id"].as<std::string>(id);
+		id = _pages[0].title = node["id"].as<std::string>(id);
 		section = node["section"].as<std::string>(section);
 		requires = node["requires"].as< std::vector<std::string> >(requires);
-		title = node["title"].as<std::string>(title);
 		//_type_id = (UfopaediaTypeId)node["type_id"].as<int>(_type_id);
 		_listOrder = node["listOrder"].as<int>(_listOrder);
 		if (!_listOrder)
 		{
 			_listOrder = listOrder;
+		}
+
+		auto loadPage = [&](size_t offset, const YAML::Node &n)
+		{
+			if (n)
+			{
+				_pages[offset].title = n["title"].as<std::string>(_pages[offset].title);
+				_pages[offset].text = n["text"].as<std::string>(_pages[offset].text);
+				RuleItem::loadAmmoSlotChecked(_pages[offset].ammoSlot, n["ammoSlot"], id);
+			}
+		};
+
+		loadPage(0, node);
+		if (const YAML::Node& pagesNode = node["pages"])
+		{
+			if (pagesNode.IsSequence())
+			{
+				auto size = pagesNode.size();
+				auto firstCopy = _pages[0];
+				_pages.resize(std::max(size_t{ 1 }, size), firstCopy); //all new pages are copy of old first page
+				for (size_t i = 0; i < size; ++i)
+				{
+					loadPage(i, pagesNode[i]);
+				}
+			}
+			else
+			{
+				throw Exception("Unsupported type of node 'pages' for Article '" + id + "'");
+			}
 		}
 	}
 
@@ -140,7 +172,6 @@ namespace OpenXcom
 			customPalette = true;
 		rect_stats = node["rect_stats"].as<ArticleDefinitionRect>(rect_stats);
 		rect_text = node["rect_text"].as<ArticleDefinitionRect>(rect_text);
-		text = node["text"].as<std::string>(text);
 	}
 
 	/**
@@ -160,7 +191,6 @@ namespace OpenXcom
 		image_id = node["image_id"].as<std::string>(image_id);
 		if (image_id.find("_CPAL") != std::string::npos)
 			customPalette = true;
-		text = node["text"].as<std::string>(text);
 	}
 
 	/**
@@ -177,7 +207,6 @@ namespace OpenXcom
 	void ArticleDefinitionText::load(const YAML::Node &node, int listOrder)
 	{
 		ArticleDefinition::load(node, listOrder);
-		text = node["text"].as<std::string>(text);
 	}
 
 	/**
@@ -197,7 +226,6 @@ namespace OpenXcom
 		image_id = node["image_id"].as<std::string>(image_id);
 		if (image_id.find("_CPAL") != std::string::npos)
 			customPalette = true;
-		text = node["text"].as<std::string>(text);
 		text_width = node["text_width"].as<int>(text_width);
 		rect_text = node["rect_text"].as<ArticleDefinitionRect>(rect_text);
 	}
@@ -218,7 +246,6 @@ namespace OpenXcom
 		ArticleDefinition::load(node, listOrder);
 		_type_id = (UfopaediaTypeId)(node["type_id"].as<int>(_type_id));
 		image_id = node["image_id"].as<std::string>(image_id);
-		text = node["text"].as<std::string>(text);
 		text_width = node["text_width"].as<int>(157); // 95% of these won't need to be defined, so let's give it a default
 		weapon = node["weapon"].as<std::string>(weapon);
 	}
@@ -237,7 +264,6 @@ namespace OpenXcom
 	void ArticleDefinitionBaseFacility::load(const YAML::Node &node, int listOrder)
 	{
 		ArticleDefinition::load(node, listOrder);
-		text = node["text"].as<std::string>(text);
 	}
 
 	/**
@@ -254,7 +280,6 @@ namespace OpenXcom
 	void ArticleDefinitionItem::load(const YAML::Node &node, int listOrder)
 	{
 		ArticleDefinition::load(node, listOrder);
-		text = node["text"].as<std::string>(text);
 	}
 
 	/**
@@ -271,7 +296,6 @@ namespace OpenXcom
 	void ArticleDefinitionUfo::load(const YAML::Node &node, int listOrder)
 	{
 		ArticleDefinition::load(node, listOrder);
-		text = node["text"].as<std::string>(text);
 	}
 
 	/**
@@ -288,7 +312,6 @@ namespace OpenXcom
 	void ArticleDefinitionArmor::load(const YAML::Node &node, int listOrder)
 	{
 		ArticleDefinition::load(node, listOrder);
-		text = node["text"].as<std::string>(text);
 	}
 
 	/**
@@ -309,6 +332,5 @@ namespace OpenXcom
 		if (image_id.find("_CPAL") != std::string::npos)
 			customPalette = true;
 		weapon = node["weapon"].as<std::string>(weapon);
-		text = node["text"].as<std::string>(text);
 	}
 }

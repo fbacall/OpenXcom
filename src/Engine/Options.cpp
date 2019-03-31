@@ -79,6 +79,7 @@ void create()
 	_info.push_back(OptionInfo("traceAI", &traceAI, false));
 	_info.push_back(OptionInfo("verboseLogging", &verboseLogging, false));
 	_info.push_back(OptionInfo("listVFSContents", &listVFSContents, false));
+	_info.push_back(OptionInfo("embeddedOnly", &embeddedOnly, true));
 	_info.push_back(OptionInfo("StereoSound", &StereoSound, true));
 	//_info.push_back(OptionInfo("baseXResolution", &baseXResolution, Screen::ORIGINAL_WIDTH));
 	//_info.push_back(OptionInfo("baseYResolution", &baseYResolution, Screen::ORIGINAL_HEIGHT));
@@ -295,6 +296,7 @@ void create()
 	// OXCE
 	_info.push_back(OptionInfo("keyGeoUfoTracker", &keyGeoUfoTracker, SDLK_t, "STR_UFO_TRACKER", "STR_OXCE"));
 	_info.push_back(OptionInfo("keyGeoTechTreeViewer", &keyGeoTechTreeViewer, SDLK_q, "STR_TECH_TREE_VIEWER", "STR_OXCE"));
+	_info.push_back(OptionInfo("keyGeoGlobalProduction", &keyGeoGlobalProduction, SDLK_p, "STR_PRODUCTION_OVERVIEW", "STR_OXCE"));
 	_info.push_back(OptionInfo("keyGeoGlobalResearch", &keyGeoGlobalResearch, SDLK_c, "STR_RESEARCH_OVERVIEW", "STR_OXCE"));
 	_info.push_back(OptionInfo("keyGraphsZoomIn", &keyGraphsZoomIn, SDLK_KP_PLUS, "STR_GRAPHS_ZOOM_IN", "STR_OXCE"));
 	_info.push_back(OptionInfo("keyGraphsZoomOut", &keyGraphsZoomOut, SDLK_KP_MINUS, "STR_GRAPHS_ZOOM_OUT", "STR_OXCE"));
@@ -584,16 +586,25 @@ bool init()
 	Log(LOG_INFO) << "Config folder is: " << _configFolder;
 	Log(LOG_INFO) << "Options loaded successfully.";
 
-	FileMap::clear();
+	FileMap::clear(false, Options::embeddedOnly);
 	return true;
 }
 
 // called from the dos screen state (StartState)
 void updateMods()
 {
-	FileMap::clear();
-	Log(LOG_INFO) << "Scanning standard mods in '" << getDataFolder() << "'...";
-	FileMap::scanModDir(getDataFolder(), "standard");
+	FileMap::clear(false, embeddedOnly);
+	SDL_RWops *rwops = CrossPlatform::getEmbeddedAsset("standard.zip");
+	if (rwops) {
+		Log(LOG_INFO) << "Scanning embedded standard mods...";
+		FileMap::scanModZipRW(rwops, "exe:standard.zip");
+	}
+	if (embeddedOnly && rwops) {
+		Log(LOG_INFO) << "Modding embedded resources is disabled, set 'embeddedOnly: false' in options.cfg to enable.";
+	} else {
+		Log(LOG_INFO) << "Scanning standard mods in '" << getDataFolder() << "'...";
+		FileMap::scanModDir(getDataFolder(), "standard");
+	}
 	Log(LOG_INFO) << "Scanning user mods in '" << getUserFolder() << "'...";
 	FileMap::scanModDir(getUserFolder(), "mods");
 
@@ -716,7 +727,7 @@ void updateMods()
 	}
 
 	updateReservedSpace();
-	FileMap::setup(getActiveMods());
+	FileMap::setup(getActiveMods(), embeddedOnly);
 	userSplitMasters();
 
 	// report active mods that don't meet the minimum OXCE requirements
@@ -868,6 +879,9 @@ void updateOptions()
 		if (CrossPlatform::fileExists(_configFolder + "options.cfg"))
 		{
 			load();
+#ifndef EMBED_ASSETS
+			Options::embeddedOnly = false;
+#endif
 		}
 		else
 		{
