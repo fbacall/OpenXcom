@@ -832,21 +832,24 @@ void Inventory::mouseClick(Action *action, State *state)
 						if (item->getAmmoForSlot(slotAmmo) != 0)
 						{
 							auto tuUnload = item->getRules()->getTUUnload(slotAmmo);
-							if ((SDL_GetModState() & KMOD_SHIFT) && (!_tu || tuUnload) && (item == weaponRightHand || item == weaponLeftHand))
+							if ((SDL_GetModState() & KMOD_SHIFT) && (!_tu || (tuUnload && (item == weaponRightHand || item == weaponLeftHand))))
 							{
-								auto checkBoth = [&](BattleItem *i)
+								if (_tu)
 								{
-									return nullptr == i || item == i || _selItem == i;
-								};
+									auto checkBoth = [&](BattleItem *i)
+									{
+										return nullptr == i || item == i || _selItem == i;
+									};
 
-								if (checkBoth(weaponRightHand) && checkBoth(weaponLeftHand))
-								{
-									tuCost += tuUnload;
-								}
-								else
-								{
-									canLoad = false;
-									_warning->showMessage(_game->getLanguage()->getString("STR_BOTH_HANDS_MUST_BE_EMPTY"));
+									if (checkBoth(weaponRightHand) && checkBoth(weaponLeftHand))
+									{
+										tuCost += tuUnload;
+									}
+									else
+									{
+										canLoad = false;
+										_warning->showMessage(_game->getLanguage()->getString("STR_BOTH_HANDS_MUST_BE_EMPTY"));
+									}
 								}
 							}
 							else
@@ -862,7 +865,16 @@ void Inventory::mouseClick(Action *action, State *state)
 								auto oldAmmo = item->setAmmoForSlot(slotAmmo, _selItem);
 								if (oldAmmo)
 								{
-									moveItem(oldAmmo, (item == weaponRightHand ? _inventorySlotLeftHand : _inventorySlotRightHand), 0, 0);
+									// If outside of battle and the reloaded weapon was on the ground, or the unit's hands were full, drop the ammo on the ground.
+									if (!_tu && ((item->getSlot()->getType() == INV_GROUND) || (_selUnit->getRightHandWeapon() && _selUnit->getLeftHandWeapon())))
+									{
+										moveItem(oldAmmo, _inventorySlotGround, 0, 0);
+										arrangeGround();
+									}
+									else
+									{
+										moveItem(oldAmmo, (item == weaponRightHand ? _inventorySlotLeftHand : _inventorySlotRightHand), 0, 0);
+									}
 								}
 								setSelectedItem(0);
 								_game->getMod()->getSoundByDepth(_depth, item->getRules()->getReloadSound())->play();
