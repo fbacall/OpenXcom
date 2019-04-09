@@ -865,15 +865,22 @@ void Inventory::mouseClick(Action *action, State *state)
 								auto oldAmmo = item->setAmmoForSlot(slotAmmo, _selItem);
 								if (oldAmmo)
 								{
-									// If outside of battle and the reloaded weapon was on the ground, or the unit's hands were full, drop the ammo on the ground.
-									if (!_tu && ((item->getSlot()->getType() == INV_GROUND) || (_selUnit->getRightHandWeapon() && _selUnit->getLeftHandWeapon())))
+									auto isEquipped = (item->getSlot()->getType() != INV_GROUND);
+									// If the reloaded weapon was in the soldier's inventory, and right hand is free, put old ammo in right hand
+									if (isEquipped && !_selUnit->getRightHandWeapon())
+									{
+										moveItem(oldAmmo, _inventorySlotRightHand, 0, 0);
+									}
+									// if not, try left hand
+									else if (isEquipped && !_selUnit->getLeftHandWeapon())
+									{
+										moveItem(oldAmmo, _inventorySlotLeftHand, 0, 0);
+									}
+									// otherwise drop on the ground. This can only happen outside of battle, since empty hand requirement is checked above.
+									else
 									{
 										moveItem(oldAmmo, _inventorySlotGround, 0, 0);
 										arrangeGround();
-									}
-									else
-									{
-										moveItem(oldAmmo, (item == weaponRightHand ? _inventorySlotLeftHand : _inventorySlotRightHand), 0, 0);
 									}
 								}
 								setSelectedItem(0);
