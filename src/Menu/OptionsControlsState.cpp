@@ -23,7 +23,6 @@
 #include "../Interface/Window.h"
 #include "../Interface/TextList.h"
 #include "../Engine/Action.h"
-#include <iostream>
 
 namespace OpenXcom
 {
@@ -116,15 +115,15 @@ void OptionsControlsState::init()
 
 	for (std::vector<std::vector<OptionInfo>*>::iterator i = _controlGroups.begin(); i != _controlGroups.end(); ++i)
 	{
-        if ((*i)->size())
-        {
-        	_lstControls->addRow(2, tr((**i)[0].category()).c_str(), "");
-        	_lstControls->setCellColor(controlGroupOffset, 0, _colorGroup);
-        	addControls(**i);
+		if ((*i)->size())
+		{
+			_lstControls->addRow(2, tr((**i)[0].category()).c_str(), "");
+			_lstControls->setCellColor(controlGroupOffset, 0, _colorGroup);
+			addControls(**i);
 			_lstControls->addRow(2, "", "");
-        	controlGroupOffset += ((*i)->size() + 2);
-        }
-    }
+			controlGroupOffset += ((*i)->size() + 2);
+		}
+	}
 }
 
 /**
