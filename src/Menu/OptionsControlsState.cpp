@@ -87,7 +87,7 @@ OptionsControlsState::OptionsControlsState(OptionsOrigin origin) : OptionsBaseSt
 			{
 				_controlsOxce.push_back(*i);
 			}
-			else if (i->category() == "STR_BASE")
+			else if (i->category() == "STR_BASESCAPE")
 			{
 				_controlsBase.push_back(*i);
 			}

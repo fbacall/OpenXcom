@@ -335,6 +335,8 @@ en-GB:
   STR_OXCE: "Extended"
 #OptionsBaseState.cpp
   STR_FOLDERS: "FOLDERS"
+#OptionsControlsState.cpp
+  STR_BASESCAPE: "Basescape"
 #OptionsFoldersState.cpp
   STR_DATA_FOLDER: "Data Folder (original resources)"
   STR_USER_FOLDER: "User Folder (mods, openxcom.log)"
