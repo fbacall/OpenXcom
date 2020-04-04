@@ -51,7 +51,7 @@ AdlibMusic::AdlibMusic(float volume) : Music(), _data(0), _size(0), _volume(volu
 	{
 		opl[1] = OPLCreate(OPL_TYPE_YM3812, 3579545, rate);
 	}
-	// magic value - length of 1 tick per samplerate
+	// magic value - length of 1 tick per sample rate
 	if (delayRates.empty())
 	{
 		delayRates[8000] = 114 * 4;
@@ -130,7 +130,8 @@ void AdlibMusic::play(int) const
 void AdlibMusic::player(void *udata, Uint8 *stream, int len)
 {
 #ifndef __NO_MUSIC
-	if (Options::musicVolume == 0)
+	// Check SDL volume for Background Mute functionality
+	if (Options::musicVolume == 0 || Mix_VolumeMusic(-1) == 0)
 		return;
 	if (Options::musicAlwaysLoop && !func_is_music_playing())
 	{

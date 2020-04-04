@@ -1048,9 +1048,6 @@
     <ClCompile Include="Basescape\GlobalResearchState.cpp">
       <Filter>Basescape</Filter>
     </ClCompile>
-    <ClCompile Include="Menu\HelloCommanderState.cpp">
-      <Filter>Menu</Filter>
-    </ClCompile>
     <ClCompile Include="Mod\RuleSoldierTransformation.cpp">
       <Filter>Mod</Filter>
     </ClCompile>
@@ -1066,6 +1063,49 @@
     <ClCompile Include="..\libs\miniz\miniz.c" />
     <ClCompile Include="Basescape\GlobalManufactureState.cpp">
       <Filter>Basescape</Filter>
+    </ClCompile>
+    <ClCompile Include="Mod\RuleArcScript.cpp">
+      <Filter>Mod</Filter>
+    </ClCompile>
+    <ClCompile Include="md5.cpp" />
+    <ClCompile Include="Mod\RuleEnviroEffects.cpp">
+      <Filter>Mod</Filter>
+    </ClCompile>
+    <ClCompile Include="Geoscape\GeoscapeEventState.cpp">
+      <Filter>Geoscape</Filter>
+    </ClCompile>
+    <ClCompile Include="Mod\RuleEvent.cpp">
+      <Filter>Mod</Filter>
+    </ClCompile>
+    <ClCompile Include="Mod\RuleEventScript.cpp">
+      <Filter>Mod</Filter>
+    </ClCompile>
+    <ClCompile Include="Savegame\GeoscapeEvent.cpp">
+      <Filter>Savegame</Filter>
+    </ClCompile>
+    <ClCompile Include="Mod\RuleSoldierBonus.cpp">
+      <Filter>Mod</Filter>
+    </ClCompile>
+    <ClCompile Include="Basescape\SoldierBonusState.cpp">
+      <Filter>Basescape</Filter>
+    </ClCompile>
+    <ClCompile Include="Menu\OptionsFoldersState.cpp">
+      <Filter>Menu</Filter>
+    </ClCompile>
+    <ClCompile Include="Savegame\HitLog.cpp">
+      <Filter>Savegame</Filter>
+    </ClCompile>
+    <ClCompile Include="Battlescape\TurnDiaryState.cpp">
+      <Filter>Battlescape</Filter>
+    </ClCompile>
+    <ClCompile Include="Battlescape\SkillMenuState.cpp">
+      <Filter>Battlescape</Filter>
+    </ClCompile>
+    <ClCompile Include="Mod\RuleSkill.cpp">
+      <Filter>Mod</Filter>
+    </ClCompile>
+    <ClCompile Include="Mod\RuleManufactureShortcut.cpp">
+      <Filter>Mod</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -2115,7 +2155,6 @@
     <ClInclude Include="Menu\SetWindowedRootState.h">
       <Filter>Menu</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\HelperMeta.h" />
     <ClInclude Include="Battlescape\AlienInventory.h">
       <Filter>Battlescape</Filter>
     </ClInclude>
@@ -2158,9 +2197,6 @@
     <ClInclude Include="Basescape\GlobalResearchState.h">
       <Filter>Basescape</Filter>
     </ClInclude>
-    <ClInclude Include="Menu\HelloCommanderState.h">
-      <Filter>Menu</Filter>
-    </ClInclude>
     <ClInclude Include="Mod\RuleSoldierTransformation.h">
       <Filter>Mod</Filter>
     </ClInclude>
@@ -2176,6 +2212,62 @@
     <ClInclude Include="..\libs\miniz\miniz.h" />
     <ClInclude Include="Basescape\GlobalManufactureState.h">
       <Filter>Basescape</Filter>
+    </ClInclude>
+    <ClInclude Include="Mod\RuleArcScript.h">
+      <Filter>Mod</Filter>
+    </ClInclude>
+    <ClInclude Include="md5.h" />
+    <ClInclude Include="Mod\RuleEnviroEffects.h">
+      <Filter>Mod</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Collections.h">
+      <Filter>Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\HelperMeta.h">
+      <Filter>Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\SDL2Helpers.h">
+      <Filter>Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="Mod\ModScript.h">
+      <Filter>Mod</Filter>
+    </ClInclude>
+    <ClInclude Include="fallthrough.h" />
+    <ClInclude Include="Geoscape\GeoscapeEventState.h">
+      <Filter>Geoscape</Filter>
+    </ClInclude>
+    <ClInclude Include="Mod\RuleEvent.h">
+      <Filter>Mod</Filter>
+    </ClInclude>
+    <ClInclude Include="Mod\RuleEventScript.h">
+      <Filter>Mod</Filter>
+    </ClInclude>
+    <ClInclude Include="Savegame\GeoscapeEvent.h">
+      <Filter>Savegame</Filter>
+    </ClInclude>
+    <ClInclude Include="Mod\RuleSoldierBonus.h">
+      <Filter>Mod</Filter>
+    </ClInclude>
+    <ClInclude Include="Basescape\SoldierBonusState.h">
+      <Filter>Basescape</Filter>
+    </ClInclude>
+    <ClInclude Include="Menu\OptionsFoldersState.h">
+      <Filter>Menu</Filter>
+    </ClInclude>
+    <ClInclude Include="Savegame\HitLog.h">
+      <Filter>Savegame</Filter>
+    </ClInclude>
+    <ClInclude Include="Battlescape\TurnDiaryState.h">
+      <Filter>Battlescape</Filter>
+    </ClInclude>
+    <ClInclude Include="Battlescape\SkillMenuState.h">
+      <Filter>Battlescape</Filter>
+    </ClInclude>
+    <ClInclude Include="Mod\RuleSkill.h">
+      <Filter>Mod</Filter>
+    </ClInclude>
+    <ClInclude Include="Mod\RuleManufactureShortcut.h">
+      <Filter>Mod</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -2218,5 +2310,8 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\res\windows\openxcom.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="yaml-cpp.natvis" />
   </ItemGroup>
 </Project>

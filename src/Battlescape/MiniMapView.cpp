@@ -51,7 +51,7 @@ const int MAX_FRAME = 2;
  * @param camera The Battlescape camera.
  * @param battleGame Pointer to the SavedBattleGame.
  */
-MiniMapView::MiniMapView(int w, int h, int x, int y, Game * game, Camera * camera, SavedBattleGame * battleGame) : InteractiveSurface(w, h, x, y), _game(game), _camera(camera), _battleGame(battleGame), _frame(0), _isMouseScrolling(false), _isMouseScrolled(false), _xBeforeMouseScrolling(0), _yBeforeMouseScrolling(0), _mouseScrollX(0), _mouseScrollY(0), _totalMouseMoveX(0), _totalMouseMoveY(0), _mouseMovedOverThreshold(false)
+MiniMapView::MiniMapView(int w, int h, int x, int y, Game * game, Camera * camera, SavedBattleGame * battleGame) : InteractiveSurface(w, h, x, y), _game(game), _camera(camera), _battleGame(battleGame), _frame(0), _isMouseScrolling(false), _isMouseScrolled(false), _xBeforeMouseScrolling(0), _yBeforeMouseScrolling(0), _mouseScrollX(0), _mouseScrollY(0), _mouseScrollingStartTime(0), _totalMouseMoveX(0), _totalMouseMoveY(0), _mouseMovedOverThreshold(false)
 {
 	_set = _game->getMod()->getSurfaceSet("SCANG.DAT");
 	_emptySpaceIndex = _game->getMod()->getInterface("minimap")->getElement("emptySpace")->color;
@@ -74,6 +74,10 @@ void MiniMapView::draw()
 	this->lock();
 	Surface * emptySpace = _set->getFrame(_emptySpaceIndex);
 	bool isAltPressed = (SDL_GetModState() & KMOD_ALT) != 0;
+	if (Options::isPasswordCorrect())
+	{
+		isAltPressed = !isAltPressed;
+	}
 	for (int lvl = 0; lvl <= _camera->getCenterPosition().z; lvl++)
 	{
 		int py = _startY;
@@ -82,10 +86,8 @@ void MiniMapView::draw()
 			int px = _startX;
 			for (int x = 0; x < getWidth(); x += CELL_WIDTH)
 			{
-				MapData * data = 0;
-				Tile * t = 0;
-				Position p (px, py, lvl);
-				t = _battleGame->getTile(p);
+				Position p(px, py, lvl);
+				Tile *t = _battleGame->getTile(p);
 				if (!t)
 				{
 					if (isAltPressed)
@@ -97,15 +99,15 @@ void MiniMapView::draw()
 				}
 				for (int i = O_FLOOR; i < O_MAX; i++)
 				{
-					data = t->getMapData((TilePart)i);
+					MapData *data = t->getMapData((TilePart)i);
 
 					if (data && data->getMiniMapIndex())
 					{
-						Surface * s = _set->getFrame(data->getMiniMapIndex() + 35);
+						Surface *s = _set->getFrame(data->getMiniMapIndex() + 35);
 						if (s)
 						{
 							int shade = 16;
-							if (t->isDiscovered(2))
+							if (t->isDiscovered(O_FLOOR))
 							{
 								shade = t->getShade();
 								if (shade > 7) shade = 7; //vanilla
@@ -133,7 +135,7 @@ void MiniMapView::draw()
 					}
 				}
 				// perhaps (at least one) item on this tile?
-				if (t->isDiscovered(2) && !t->getInventory()->empty())
+				if (t->isDiscovered(O_FLOOR) && !t->getInventory()->empty())
 				{
 					int frame = 9 + _frame;
 					Surface * s = _set->getFrame(frame);

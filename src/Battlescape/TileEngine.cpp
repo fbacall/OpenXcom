@@ -39,6 +39,7 @@
 #include "../Mod/Mod.h"
 #include "../Mod/Armor.h"
 #include "../Mod/Mod.h"
+#include "../Mod/RuleSkill.h"
 #include "Pathfinding.h"
 #include "../Engine/Game.h"
 #include "../Engine/Options.h"
@@ -168,14 +169,14 @@ bool calculateLineHitHelper(const Position& origin, const Position& target, Func
  * @param func Call back.
  */
 template<typename TileFunc>
-void iterateTiles(SavedBattleGame* save, GraphSubset gs, TileFunc func)
+void iterateTiles(SavedBattleGame* save, MapSubset gs, TileFunc func)
 {
 	const auto totalSizeX = save->getMapSizeX();
 	const auto totalSizeY = save->getMapSizeY();
 	const auto totalSizeZ = save->getMapSizeZ();
 
-	gs = GraphSubset::intersection(gs, GraphSubset{ totalSizeX, totalSizeY });
-	if (gs.size_x() && gs.size_y())
+	gs = MapSubset::intersection(gs, MapSubset{ totalSizeX, totalSizeY });
+	if (gs)
 	{
 		for (int z = 0; z < totalSizeZ; ++z)
 		{
@@ -198,12 +199,12 @@ void iterateTiles(SavedBattleGame* save, GraphSubset gs, TileFunc func)
  * @param radius Radius of area.
  * @return Subset of map.
  */
-GraphSubset mapArea(Position position, int radius)
+MapSubset mapArea(Position position, int radius)
 {
 	return { std::make_pair(position.x - radius, position.x + radius + 1), std::make_pair(position.y - radius, position.y + radius + 1) };
 }
 
-GraphSubset mapAreaExpand(GraphSubset gs, int radius)
+MapSubset mapAreaExpand(MapSubset gs, int radius)
 {
 	return { std::make_pair(gs.beg_x - radius, gs.end_x + radius), std::make_pair(gs.beg_y - radius, gs.end_y + radius) };
 }
@@ -246,7 +247,7 @@ TileEngine::~TileEngine()
 /**
   * Calculates sun shading for the whole terrain.
   */
-void TileEngine::calculateSunShading(GraphSubset gs)
+void TileEngine::calculateSunShading(MapSubset gs)
 {
 	int power = 15 - _save->getGlobalShade();
 
@@ -281,7 +282,7 @@ void TileEngine::calculateSunShading(GraphSubset gs)
 /**
   * Recalculates lighting for the terrain: fire.
   */
-void TileEngine::calculateTerrainBackground(GraphSubset gs)
+void TileEngine::calculateTerrainBackground(MapSubset gs)
 {
 	const int fireLightPower = 15; // amount of light a fire generates
 
@@ -328,7 +329,7 @@ void TileEngine::calculateTerrainBackground(GraphSubset gs)
 /**
   * Recalculates lighting for the terrain: objects,items.
   */
-void TileEngine::calculateTerrainItems(GraphSubset gs)
+void TileEngine::calculateTerrainItems(MapSubset gs)
 {
 	// add lighting of terrain
 	iterateTiles(
@@ -358,7 +359,7 @@ void TileEngine::calculateTerrainItems(GraphSubset gs)
 /**
   * Recalculates lighting for the units.
   */
-void TileEngine::calculateUnitLighting(GraphSubset gs)
+void TileEngine::calculateUnitLighting(MapSubset gs)
 {
 	const int fireLightPower = 15; // amount of light a fire generates
 
@@ -407,7 +408,7 @@ void TileEngine::calculateUnitLighting(GraphSubset gs)
 
 void TileEngine::calculateLighting(LightLayers layer, Position position, int eventRadius, bool terrianChanged)
 {
-	auto gsDynamic = GraphSubset{ _save->getMapSizeX(), _save->getMapSizeY() };
+	auto gsDynamic = MapSubset{ _save->getMapSizeX(), _save->getMapSizeY() };
 	auto gsStatic = gsDynamic;
 
 	if (position != invalid)
@@ -509,8 +510,8 @@ void TileEngine::calculateLighting(LightLayers layer, Position position, int eve
  * @param power Power.
  * @param layer Light is separated in 4 layers: Ambient, Tiles, Items, Units.
  */
-void TileEngine::addLight(GraphSubset gs, Position center, int power, LightLayers layer)
-{
+void TileEngine::addLight(MapSubset gs, Position center, int power, LightLayers layer)
+	{
 	if (power <= 0)
 	{
 		return;
@@ -532,7 +533,7 @@ void TileEngine::addLight(GraphSubset gs, Position center, int power, LightLayer
 
 	iterateTiles(
 		_save,
-		GraphSubset::intersection(gs, mapArea(center, power - 1)),
+		MapSubset::intersection(gs, mapArea(center, power - 1)),
 		[&](Tile* tile)
 		{
 			const auto target = tile->getPosition();
@@ -627,7 +628,7 @@ void TileEngine::addLight(GraphSubset gs, Position center, int power, LightLayer
 				}
 				if (steps > 1)
 				{
-					if (cache.fire && fire && light <= maxFirePower) //some tile on path have fire, skip further calculation because destionation tile should be lighted by this fire.
+					if (cache.fire && fire && light <= maxFirePower) //some tile on path have fire, skip further calculation because destination tile should be lighted by this fire.
 					{
 						result = true;
 					}
@@ -694,7 +695,7 @@ bool TileEngine::setupEventVisibilitySector(const Position &observerPos, const P
 	else
 	{
 		//Use search space reduction by updating within a narrow circle sector covering the event and any
-		//units beyond it (they can now be hidden or revealed based on what occured at the event position)
+		//units beyond it (they can now be hidden or revealed based on what occurred at the event position)
 		//So, with a circle at eventPos of radius eventRadius, define its tangent points as viewed from this unit.
 		Position posDiff = eventPos - observerPos;
 		float a = asinf(eventRadius / sqrtf(posDiff.x * posDiff.x + posDiff.y * posDiff.y));
@@ -713,7 +714,7 @@ bool TileEngine::setupEventVisibilitySector(const Position &observerPos, const P
 
 /**
  * Checks whether toCheck is within a previously setup eventVisibilitySector. See setupEventVisibilitySector(...).
- * May be used to rapidly reduce the searchspace when updating unit and tile visibility.
+ * May be used to rapidly reduce the search space when updating unit and tile visibility.
  * @param toCheck The position to check.
  * @return true if within the circle sector.
  */
@@ -736,7 +737,7 @@ inline bool TileEngine::inEventVisibilitySector(const Position &toCheck) const
 * Updates line of sight of a single soldier in a narrow arc around a given event position.
 * @param unit Unit to check line of sight of.
 * @param eventPos The centre of the event which necessitated the FOV update. Used to optimize which tiles to update.
-* @param eventRadius The radius of a circle able to fully encompass the event, in tiles. Hence: 1 for a singletile event.
+* @param eventRadius The radius of a circle able to fully encompass the event, in tiles. Hence: 1 for a single tile event.
 * @return True when new aliens are spotted.
 */
 bool TileEngine::calculateUnitsInFOV(BattleUnit* unit, const Position eventPos, const int eventRadius)
@@ -827,7 +828,7 @@ bool TileEngine::calculateUnitsInFOV(BattleUnit* unit, const Position eventPos, 
 * calculate tiles within a narrow arc.
 * @param unit Unit to check line of sight of.
 * @param eventPos The centre of the event which necessitated the FOV update. Used to optimize which tiles to update.
-* @param eventRadius The radius of a circle able to fully encompass the event, in tiles. Hence: 1 for a singletile event.
+* @param eventRadius The radius of a circle able to fully encompass the event, in tiles. Hence: 1 for a single tile event.
 */
 void TileEngine::calculateTilesInFOV(BattleUnit *unit, const Position eventPos, const int eventRadius)
 {
@@ -933,13 +934,13 @@ void TileEngine::calculateTilesInFOV(BattleUnit *unit, const Position eventPos, 
 										{
 											unit->addToVisibleTiles(_save->getTile(posVisited));
 											_save->getTile(posVisited)->setVisible(+1);
-											_save->getTile(posVisited)->setDiscovered(true, 2);
+											_save->getTile(posVisited)->setDiscovered(true, O_FLOOR);
 
 											// walls to the east or south of a visible tile, we see that too
 											Tile* t = _save->getTile(Position(posVisited.x + 1, posVisited.y, posVisited.z));
-											if (t) t->setDiscovered(true, 0);
+											if (t) t->setDiscovered(true, O_WESTWALL);
 											t = _save->getTile(Position(posVisited.x, posVisited.y + 1, posVisited.z));
-											if (t) t->setDiscovered(true, 1);
+											if (t) t->setDiscovered(true, O_NORTHWALL);
 										}
 									}
 								}
@@ -1735,7 +1736,7 @@ bool TileEngine::checkReactionFire(BattleUnit *unit, const BattleAction &origina
 		// start iterating through the possible reactors until the current unit is the one with the highest score.
 		while (reactor != 0)
 		{
-			if (!tryReaction(reactor->unit, unit, reactor->attackType, originalAction))
+			if (!tryReaction(reactor, unit, originalAction))
 			{
 				for (std::vector<ReactionScore>::iterator i = spotters.begin(); i != spotters.end(); ++i)
 				{
@@ -1830,8 +1831,8 @@ std::vector<TileEngine::ReactionScore> TileEngine::getSpottingUnits(BattleUnit* 
 					{
 						if (rs.attackType == BA_SNAPSHOT && Options::battleUFOExtenderAccuracy)
 						{
-							BattleItem *weapon = (*i)->getMainHandWeapon((*i)->getFaction() != FACTION_PLAYER);
-							int accuracy = (*i)->getFiringAccuracy(rs.attackType, weapon, _save->getBattleGame()->getMod());
+							BattleItem *weapon = rs.weapon;
+							int accuracy = BattleUnit::getFiringAccuracy(BattleActionAttack::GetBeforeShoot(rs.attackType, rs.unit, weapon), _save->getBattleGame()->getMod());
 							int distance = Position::distance2d((*i)->getPosition(), unit->getPosition());
 							int upperLimit = weapon->getRules()->getSnapRange();
 							int lowerLimit = weapon->getRules()->getMinRange();
@@ -1904,39 +1905,55 @@ TileEngine::ReactionScore TileEngine::determineReactionType(BattleUnit *unit, Ba
 	ReactionScore reaction =
 	{
 		unit,
+		nullptr,
 		BA_NONE,
 		unit->getReactionScore(),
 		0,
 	};
+
+	auto setReaction = [](ReactionScore& re, BattleActionType type, BattleItem* weapon)
+	{
+		re.attackType = type;
+		re.weapon = weapon;
+		re.reactionReduction = 1.0 * BattleActionCost(type, re.unit, weapon).Time * re.unit->getBaseStats()->reactions / re.unit->getBaseStats()->tu;
+	};
+
 	// prioritize melee
 	BattleItem *meleeWeapon = unit->getUtilityWeapon(BT_MELEE);
-	if (_save->canUseWeapon(meleeWeapon, unit, false) &&
-		// has a melee weapon and is in melee range
+	// has a melee weapon and is in melee range
+	if (_save->canUseWeapon(meleeWeapon, unit, false, BA_HIT) &&
 		validMeleeRange(unit, target, unit->getDirection()) &&
+		meleeWeapon->getAmmoForAction(BA_HIT) &&
 		BattleActionCost(BA_HIT, unit, meleeWeapon).haveTU())
 	{
-		reaction.attackType = BA_HIT;
-		reaction.reactionReduction = 1.0 * BattleActionCost(BA_HIT, unit, meleeWeapon).Time * unit->getBaseStats()->reactions / unit->getBaseStats()->tu;
+		setReaction(reaction, BA_HIT, meleeWeapon);
 		return reaction;
 	}
 
 	// has a weapon
 	BattleItem *weapon = unit->getMainHandWeapon(unit->getFaction() != FACTION_PLAYER);
-	if (_save->canUseWeapon(weapon, unit, false) &&
-		Position::distance2d(unit->getPosition(), target->getPosition()) < weapon->getRules()->getMaxRange() &&
-		(	// has a melee weapon and is in melee range
-			(weapon->getRules()->getBattleType() == BT_MELEE &&
-				weapon->getAmmoForAction(BA_HIT) &&
-				validMeleeRange(unit, target, unit->getDirection()) &&
-				BattleActionCost(BA_HIT, unit, weapon).haveTU()) ||
-			// has a gun capable of snap shot with ammo
-			(weapon->getRules()->getBattleType() == BT_FIREARM &&
-				weapon->getAmmoForAction(BA_SNAPSHOT) &&
-				BattleActionCost(BA_SNAPSHOT, unit, weapon).haveTU())))
+	if (_save->canUseWeapon(weapon, unit, false, BA_HIT))
 	{
-		reaction.attackType = BA_SNAPSHOT;
-		reaction.reactionReduction = 1.0 * BattleActionCost(BA_SNAPSHOT, unit, weapon).Time * unit->getBaseStats()->reactions / unit->getBaseStats()->tu;
-		return reaction;
+		// has a weapon capable of melee and is in melee range
+		if (validMeleeRange(unit, target, unit->getDirection()) &&
+			weapon->getAmmoForAction(BA_HIT) &&
+			BattleActionCost(BA_HIT, unit, weapon).haveTU())
+		{
+			setReaction(reaction, BA_HIT, weapon);
+			return reaction;
+		}
+	}
+	if (_save->canUseWeapon(weapon, unit, false, BA_SNAPSHOT))
+	{
+		// has a gun capable of snap shot with ammo
+		if (weapon->getRules()->getBattleType() == BT_FIREARM &&
+			Position::distance2d(unit->getPosition(), target->getPosition()) < weapon->getRules()->getMaxRange() &&
+			weapon->getAmmoForAction(BA_SNAPSHOT) &&
+			BattleActionCost(BA_SNAPSHOT, unit, weapon).haveTU())
+		{
+			setReaction(reaction, BA_SNAPSHOT, weapon);
+			return reaction;
+		}
 	}
 
 	return reaction;
@@ -1948,30 +1965,24 @@ TileEngine::ReactionScore TileEngine::determineReactionType(BattleUnit *unit, Ba
  * @param target The unit to check sight TO.
  * @return True if the action should (theoretically) succeed.
  */
-bool TileEngine::tryReaction(BattleUnit *unit, BattleUnit *target, BattleActionType attackType, const BattleAction &originalAction)
+bool TileEngine::tryReaction(ReactionScore *reaction, BattleUnit *target, const BattleAction &originalAction)
 {
 	BattleAction action;
 	action.cameraPosition = _save->getBattleState()->getMap()->getCamera()->getMapOffset();
-	action.actor = unit;
-	if (attackType == BA_HIT)
-	{
-		action.weapon = unit->getUtilityWeapon(BT_MELEE);
-	}
-	else
-	{
-		action.weapon = unit->getMainHandWeapon(unit->getFaction() != FACTION_PLAYER);
-	}
+	action.actor = reaction->unit;
+	action.weapon = reaction->weapon;
+	action.type = reaction->attackType;
 
-	if (!_save->canUseWeapon(action.weapon, action.actor, false))
+	if (!_save->canUseWeapon(action.weapon, action.actor, false, action.type))
 	{
 		return false;
 	}
 
-	action.type = attackType;
 	action.target = target->getPosition();
 	action.updateTU();
 
-	auto ammo = action.weapon->getAmmoForAction(attackType);
+	auto unit = action.actor;
+	auto ammo = action.weapon->getAmmoForAction(action.type);
 	if (ammo && action.haveTU())
 	{
 		action.targeting = true;
@@ -1987,8 +1998,8 @@ bool TileEngine::tryReaction(BattleUnit *unit, BattleUnit *target, BattleActionT
 				unit->setAIModule(ai);
 			}
 
-			int radius = ammo->getRules()->getExplosionRadius(unit);
-			if (radius > 0 &&
+			int radius = ammo->getRules()->getExplosionRadius({ action.type, action.actor, action.weapon, ammo });
+			if (action.type != BA_HIT && radius > 0 &&
 				ai->explosiveEfficacy(action.target, unit, radius, -1) == 0)
 			{
 				action.targeting = false;
@@ -2015,11 +2026,7 @@ bool TileEngine::tryReaction(BattleUnit *unit, BattleUnit *target, BattleActionT
 
 			if (RNG::percent(arg.getFirst()))
 			{
-				// start new hit log
-				_save->hitLog.str("");
-				_save->hitLog.clear();
-				// log weapon?
-				_save->hitLog << _save->getBattleState()->tr("STR_HIT_LOG_REACTION_FIRE") << "\n\n";
+				_save->appendToHitLog(HITLOG_REACTION_FIRE, unit->getFaction());
 
 				if (action.type == BA_HIT)
 				{
@@ -2029,8 +2036,8 @@ bool TileEngine::tryReaction(BattleUnit *unit, BattleUnit *target, BattleActionT
 				{
 					_save->getBattleGame()->statePushBack(new ProjectileFlyBState(_save->getBattleGame(), action));
 				}
+				return true;
 			}
-			return arg.getFirst() > 0;
 		}
 	}
 	return false;
@@ -2099,6 +2106,19 @@ bool TileEngine::awardExperience(BattleActionAttack attack, BattleUnit *target, 
 		return false;
 	}
 
+	// Mana experience - this is a temporary/experimental approach, can be improved later after modder feedback
+	if (weapon->getRules()->getManaExperience() > 0)
+	{
+		for (int i = weapon->getRules()->getManaExperience() / 100; i > 0; --i)
+		{
+			unit->addManaExp();
+		}
+		if (RNG::percent(weapon->getRules()->getManaExperience() % 100))
+		{
+			unit->addManaExp();
+		}
+	}
+
 	using upExpType = void (BattleUnit::*)();
 
 	ExperienceTrainingMode expType = weapon->getRules()->getExperienceTrainingMode();
@@ -2160,7 +2180,7 @@ bool TileEngine::awardExperience(BattleActionAttack attack, BattleUnit *target, 
 		if (weapon->getRules()->getBattleType() == BT_GRENADE || weapon->getRules()->getBattleType() == BT_PROXIMITYGRENADE)
 		{
 			expType = ETM_THROWING_100;
-			expFuncA = &BattleUnit::addThrowingExp; // e.g. willie pete, acid grenade, stun grenade, HE grenade, smoke grenade, proxy grenade, ...
+			expFuncA = &BattleUnit::addThrowingExp; // e.g. acid grenade, stun grenade, HE grenade, smoke grenade, proxy grenade, ...
 		}
 		// MELEE
 		else if (weapon->getRules()->getBattleType() == BT_MELEE)
@@ -2185,7 +2205,7 @@ bool TileEngine::awardExperience(BattleActionAttack attack, BattleUnit *target, 
 			else if (weapon->getArcingShot(attack.type))
 			{
 				expType = ETM_THROWING_100;
-				expFuncA = &BattleUnit::addThrowingExp; // e.g. flamethrower, javelins, combat bow, grenade launcher, molotov, black powder bomb, stick grenade, acid flask, apple, ...
+				expFuncA = &BattleUnit::addThrowingExp; // e.g. flamethrower, javelins, combat bow, grenade launcher, black powder bomb, stick grenade, acid flask, apple, ...
 			}
 			else
 			{
@@ -2193,12 +2213,12 @@ bool TileEngine::awardExperience(BattleActionAttack attack, BattleUnit *target, 
 				if (maxRange > 10)
 				{
 					expType = ETM_FIRING_100;
-					expFuncA = &BattleUnit::addFiringExp; // e.g. panzerfaust, harpoon gun, shotgun, assault rifle, rocket launcher, small launcher, heavy cannon, blaster launcher, ...
+					expFuncA = &BattleUnit::addFiringExp; // e.g. harpoon gun, shotgun, assault rifle, rocket launcher, small launcher, heavy cannon, blaster launcher, ...
 				}
 				else if (maxRange > 1)
 				{
 					expType = ETM_THROWING_100;
-					expFuncA = &BattleUnit::addThrowingExp; // e.g. fuso knives, zapper, ...
+					expFuncA = &BattleUnit::addThrowingExp; // e.g. throwing knives, zapper, ...
 				}
 				else if (maxRange == 1)
 				{
@@ -2222,12 +2242,11 @@ bool TileEngine::awardExperience(BattleActionAttack attack, BattleUnit *target, 
 		if (target->getFaction() != FACTION_HOSTILE) expMultiply = 0;
 	}
 
-	ModScript::AwardExperience::Output arg{ expMultiply, expType, };
-	ModScript::AwardExperience::Worker work{ unit, target, weapon, attack.type };
-
-	work.execute(target->getArmor()->getScript<ModScript::AwardExperience>(), arg);
-
-	expMultiply = arg.getFirst();
+	expMultiply = ModScript::scriptFunc2<ModScript::AwardExperience>(
+		target->getArmor(),
+		expMultiply, expType,
+		unit, target, weapon, attack.type
+	);
 
 	for (int i = expMultiply / 100; i > 0; --i)
 	{
@@ -2267,20 +2286,20 @@ bool TileEngine::hitUnit(BattleActionAttack attack, BattleUnit *target, const Po
 	const int totalDamage = adjustedDamage + (target->getStunlevel() - stunLevelOrig);
 
 	// hit log
-	if (_save->getBattleState())
+	if (attack.attacker)
 	{
 		const int damagePercent = (totalDamage * 100) / target->getBaseStats()->health;
 		if (damagePercent <= 0)
 		{
-			_save->hitLog << _save->getBattleState()->tr("STR_HIT_LOG_NO_DAMAGE");
+			_save->appendToHitLog(HITLOG_NO_DAMAGE, attack.attacker->getFaction());
 		}
 		else if (damagePercent <= 20)
 		{
-			_save->hitLog << _save->getBattleState()->tr("STR_HIT_LOG_SMALL_DAMAGE");
+			_save->appendToHitLog(HITLOG_SMALL_DAMAGE, attack.attacker->getFaction());
 		}
 		else
 		{
-			_save->hitLog << _save->getBattleState()->tr("STR_HIT_LOG_BIG_DAMAGE");
+			_save->appendToHitLog(HITLOG_BIG_DAMAGE, attack.attacker->getFaction());
 		}
 	}
 
@@ -2482,7 +2501,7 @@ void TileEngine::hit(BattleActionAttack attack, Position center, int power, cons
  * @param center Center of the explosion in voxelspace.
  * @param power Power of the explosion.
  * @param type The damage type of the explosion.
- * @param maxRadius The maximum radius othe explosion.
+ * @param maxRadius The maximum radius of the explosion.
  * @param unit The unit that caused the explosion.
  * @param clipOrWeapon The clip or weapon that caused the explosion.
  */
@@ -2518,7 +2537,7 @@ void TileEngine::explode(BattleActionAttack attack, Position center, int power, 
 
 	Tile *origin = _save->getTile(Position(centetTile));
 	Tile *dest = nullptr;
-	if (origin->isBigWall()) //precalculations for bigwall deflection
+	if (origin->isBigWall()) //pre-calculations for bigwall deflection
 	{
 		diagonalWall = origin->getMapData(O_OBJECT)->getBigWall();
 		if (diagonalWall == Pathfinding::BIGWALLNWSE) //  3 |
@@ -2676,7 +2695,7 @@ void TileEngine::explode(BattleActionAttack attack, Position center, int power, 
 	calculateFOV(centetTile, maxRadius + 1, true, true);
 	if (attack.attacker && Position::distance2d(centetTile, attack.attacker->getPosition()) > maxRadius + 1)
 	{
-		// unit is away form blast but its visibility can be affected by scripts.
+		// unit is away from blast but its visibility can be affected by scripts.
 		calculateFOV(centetTile, 1, false);
 	}
 }
@@ -2757,7 +2776,7 @@ bool TileEngine::detonate(Tile* tile, int explosive)
 			//this trick is to follow transformed object parts (object can become a ground)
 			diemcd = tiles[i]->getMapData(currentpart)->getDieMCD();
 			if (diemcd!=0)
-				currentpart2 = tiles[i]->getMapData(currentpart)->getDataset()->getObjects()->at(diemcd)->getObjectType();
+				currentpart2 = tiles[i]->getMapData(currentpart)->getDataset()->getObject(diemcd)->getObjectType();
 			else
 				currentpart2 = currentpart;
 			if (tiles[i]->destroy(currentpart, _save->getObjectiveType()))
@@ -3308,7 +3327,7 @@ int TileEngine::unitOpensDoor(BattleUnit *unit, bool rClick, int dir)
 				tile = _save->getTile(unit->getPosition() + Position(x,y,z) + i->first);
 				if (tile)
 				{
-					door = tile->openDoor(i->second, unit, _save->getBattleGame()->getReservedAction());
+					door = tile->openDoor(i->second, unit, _save->getBattleGame()->getReservedAction(), rClick);
 					if (door != -1)
 					{
 						part = i->second;
@@ -3365,7 +3384,7 @@ int TileEngine::unitOpensDoor(BattleUnit *unit, bool rClick, int dir)
 
 /**
  * Opens any doors connected to this part at this position,
- * Keeps processing til it hits a non-ufo-door.
+ * Keeps processing till it hits a non-ufo-door.
  * @param pos The starting position
  * @param part The part to open, defines which direction to check.
  * @return <The number of adjacent doors opened, Position of door centre>
@@ -3380,7 +3399,7 @@ std::pair<int, Position> TileEngine::checkAdjacentDoors(Position pos, TilePart p
 	{
 		offset = westSide ? Position(0,i,0):Position(i,0,0);
 		Tile *tile = _save->getTile(pos + offset);
-		if (tile && tile->getMapData(part) && tile->getMapData(part)->isUFODoor())
+		if (tile && tile->isUfoDoor(part))
 		{
 			int doorAdj = tile->openDoor(part);
 			if (doorAdj == 1) //only expecting ufo doors
@@ -3395,7 +3414,7 @@ std::pair<int, Position> TileEngine::checkAdjacentDoors(Position pos, TilePart p
 	{
 		offset = westSide ? Position(0,i,0):Position(i,0,0);
 		Tile *tile = _save->getTile(pos + offset);
-		if (tile && tile->getMapData(part) && tile->getMapData(part)->isUFODoor())
+		if (tile && tile->isUfoDoor(part))
 		{
 			int doorAdj = tile->openDoor(part);
 			if (doorAdj == 1)
@@ -3444,41 +3463,65 @@ int TileEngine::closeUfoDoors()
  * @param origin Origin tile.
  * @param target Target tile.
  * @param trajectory A vector of positions in which the trajectory is stored.
- * @return 0 or some value greter than .
+ * @return 0 or some value greater than .
  */
 int TileEngine::calculateLineTile(Position origin, Position target, std::vector<Position> &trajectory)
 {
-	Tile* lastTile = _save->getTile(origin);
-	int result;
+	Position lastPoint = origin;
+	bool bigWall = false;
 	int steps = 0;
 
 	bool hit = calculateLineHitHelper(origin, target,
 		[&](Position point)
 		{
 			trajectory.push_back(point);
-			Tile* currTile = _save->getTile(point);
-			int temp_res = verticalBlockage(lastTile, currTile, DT_NONE);
-			result = horizontalBlockage(lastTile, currTile, DT_NONE, steps<2);
-			steps++;
-			if (result == -1)
+
+			auto dir = -1;
+			auto difference = point - lastPoint;
+			auto result = false;
+			auto& cache = _blockVisibility[_save->getTileIndex(lastPoint)];
+			Pathfinding::vectorToDirection(difference, dir);
+			if (difference.z > 0)
 			{
-				if (temp_res > 127)
+				if (dir != -1)
 				{
-					result = 0;
+					result = cache.blockDirUp & (1 << dir);
 				}
 				else
 				{
-					return true; // We hit a big wall
+					result = cache.blockUp;
 				}
 			}
-			result += temp_res;
-			if (result > 127)
+			else if (difference.z == 0)
 			{
-				return true;
-			}
+				result = cache.blockDir & (1 << dir);
 
-			lastTile = currTile;
-			return false;
+				if (result && cache.bigWall & (1 << dir))
+				{
+					if (steps<2)
+					{
+						result = false;
+					}
+					else
+					{
+						bigWall = true;
+					}
+				}
+			}
+			else if (difference.z < 0)
+			{
+				if (dir != -1)
+				{
+					result = cache.blockDirDown & (1 << dir);
+				}
+				else
+				{
+					result = cache.blockDown;
+				}
+			}
+			steps++;
+			lastPoint = point;
+			return result;
 		},
 		[&](Position point)
 		{
@@ -3487,7 +3530,7 @@ int TileEngine::calculateLineTile(Position origin, Position target, std::vector<
 	);
 	if (hit)
 	{
-		return result;
+		return bigWall ? 0 : 256;
 	}
 	return 0;
 }
@@ -3807,19 +3850,36 @@ void TileEngine::togglePersonalLighting()
  * @param weapon Attack item.
  * @return Value greater than zero mean successful attack.
  */
-int TileEngine::psiAttackCalculate(BattleActionType type, BattleUnit *attacker, BattleUnit *victim, BattleItem *weapon)
+int TileEngine::psiAttackCalculate(BattleActionAttack::ReadOnly attack, const BattleUnit *victim)
 {
 	if (!victim)
 		return 0;
 
-	float attackStrength = attacker->getPsiAccuracy(type, weapon);
-	float defenseStrength = 30.0f + victim->getArmor()->getPsiDefence(victim);
+	auto type = attack.type;
+	auto attacker = attack.attacker;
+	auto weapon = attack.weapon_item;
+
+	int attackStrength = BattleUnit::getPsiAccuracy(attack);
+	int defenseStrength = 30 + victim->getArmor()->getPsiDefence(victim);
 
 	auto dis = Position::distance(attacker->getPosition().toVoxel(), victim->getPosition().toVoxel());
-	attackStrength -= weapon->getRules()->getPsiAccuracyRangeReduction(dis);
-	attackStrength += RNG::generate(0,55);
 
-	return attackStrength - defenseStrength;
+	auto rng = RNG::globalRandomState().subSequence();
+	int psiAttackResult = 0;
+
+	psiAttackResult = ModScript::scriptFunc1<ModScript::TryPsiAttackItem>(
+		weapon->getRules(),
+		psiAttackResult,
+		weapon, attacker, victim, attackStrength, defenseStrength, type, &rng, (int)dis, (int)weapon->getRules()->getPsiAccuracyRangeReduction(dis)
+	);
+
+	psiAttackResult =  ModScript::scriptFunc1<ModScript::TryPsiAttackUnit>(
+		victim->getArmor(),
+		psiAttackResult,
+		weapon, attacker, victim, attackStrength, defenseStrength, type
+	);
+
+	return psiAttackResult;
 }
 
 /**
@@ -3834,7 +3894,7 @@ bool TileEngine::psiAttack(BattleActionAttack attack, BattleUnit *victim)
 
 	attack.attacker->addPsiSkillExp();
 	if (Options::allowPsiStrengthImprovement) victim->addPsiStrengthExp();
-	if (psiAttackCalculate(attack.type, attack.attacker, victim, attack.weapon_item) > 0)
+	if (psiAttackCalculate(attack, victim) > 0)
 	{
 		attack.attacker->addPsiSkillExp();
 		attack.attacker->addPsiSkillExp();
@@ -3844,7 +3904,7 @@ bool TileEngine::psiAttack(BattleActionAttack attack, BattleUnit *victim)
 		killStat.setTurn(_save->getTurn(), _save->getSide());
 		killStat.weapon = attack.weapon_item->getRules()->getName();
 		killStat.weaponAmmo = attack.weapon_item->getRules()->getName(); //Psi weapons got no ammo, just filling up the field
-		killStat.faction = victim->getFaction();
+		killStat.faction = victim->getOriginalFaction();
 		killStat.mission = _save->getGeoscapeSave()->getMissionStatistics()->size();
 		killStat.id = victim->getId();
 
@@ -3902,14 +3962,11 @@ bool TileEngine::psiAttack(BattleActionAttack attack, BattleUnit *victim)
  */
 bool TileEngine::meleeAttack(BattleActionAttack attack, BattleUnit *victim)
 {
-	int hitChance;
-	if (attack.type == BA_CQB)
+	int hitChance = BattleUnit::getFiringAccuracy(attack, _save->getBattleGame()->getMod());
+	if (attack.type != BA_CQB)
 	{
-		hitChance = attack.attacker->getFiringAccuracy(BA_CQB, attack.weapon_item, _save->getBattleGame()->getMod());
-	}
-	else
-	{
-		hitChance = attack.attacker->getFiringAccuracy(BA_HIT, attack.weapon_item, _save->getBattleGame()->getMod());
+		// hit log - new melee attack
+		_save->appendToHitLog(HITLOG_NEW_SHOT, attack.attacker->getFaction());
 	}
 
 	if (victim)
@@ -3921,8 +3978,6 @@ bool TileEngine::meleeAttack(BattleActionAttack attack, BattleUnit *victim)
 			hitChance -= victim->getArmor()->getMeleeDodge(victim) * penalty;
 		}
 	}
-	// hit log - new melee attack
-	_save->hitLog << _save->getBattleState()->tr("STR_HIT_LOG_NEW_BULLET");
 	if (!RNG::percent(hitChance))
 	{
 		return false;
@@ -3946,62 +4001,175 @@ void TileEngine::medikitRemoveIfEmpty(BattleAction *action)
 	}
 }
 
-/**
- * Try using medikit heal ability.
- * @param action
- * @param target
- * @param bodyPart
- */
-void TileEngine::medikitHeal(BattleAction *action, BattleUnit *target, int bodyPart)
+bool TileEngine::medikitUse(BattleAction *action, BattleUnit *target, BattleMediKitAction originalMedikitAction, int bodyPart)
 {
+	BattleActionAttack attack;
+	attack.type = action->type;
+	attack.attacker = action->actor;
+	attack.weapon_item = action->weapon;
+	attack.damage_item = action->weapon;
+
+	bool canContinueHealing = true;
+
 	const RuleItem *rule = action->weapon->getRules();
 
-	if (target->getFatalWound(bodyPart))
-	{
-		// award experience only if healed body part has a fatal wound (to prevent abuse)
-		BattleActionAttack attack;
-		attack.type = action->type;
-		attack.attacker = action->actor;
-		attack.weapon_item = action->weapon;
-		attack.damage_item = action->weapon;
+	BattleMediKitType type = rule->getMediKitType();
 
-		awardExperience(attack, target, false);
+	constexpr int medikitActionKey = 0;
+	constexpr int bodyPartKey = 1;
+	constexpr int woundRecoveryKey = 2;
+	constexpr int healthRecoveryKey = 3;
+	constexpr int energyRecoveryKey = 4;
+	constexpr int stunRecoveryKey = 5;
+	constexpr int manaRecoveryKey = 6;
+	constexpr int moraleRecoveryKey = 7;
+	constexpr int painkillerRecoveryKey = 8;
+
+	action->weapon->spendHealingItemUse(originalMedikitAction);
+
+	ModScript::HealUnit::Output args { };
+
+	std::get<medikitActionKey>(args.data) += originalMedikitAction;
+	std::get<bodyPartKey>(args.data) += bodyPart;
+	std::get<woundRecoveryKey>(args.data) += rule->getWoundRecovery();
+	std::get<healthRecoveryKey>(args.data) += rule->getHealthRecovery();
+	std::get<energyRecoveryKey>(args.data) += rule->getEnergyRecovery();
+	std::get<stunRecoveryKey>(args.data) += rule->getStunRecovery();
+	std::get<manaRecoveryKey>(args.data) += rule->getManaRecovery();
+	std::get<moraleRecoveryKey>(args.data) += rule->getMoraleRecovery();
+	std::get<painkillerRecoveryKey>(args.data) += (int)(rule->getPainKillerRecovery() * 100.0f);
+
+	ModScript::HealUnit::Worker work { action->actor, action->weapon, _save, target, action->type };
+
+	work.execute(target->getArmor()->getScript<ModScript::HealUnit>(), args);
+
+	int medikitAction = std::get<medikitActionKey>(args.data);
+	bodyPart = (UnitBodyPart)std::get<bodyPartKey>(args.data);
+	int healthRecovery = std::get<healthRecoveryKey>(args.data);
+	int woundRecovery = std::get<woundRecoveryKey>(args.data);
+	int energyRecovery = std::get<energyRecoveryKey>(args.data);
+	int stunRecovery = std::get<stunRecoveryKey>(args.data);
+	int manaRecovery = std::get<manaRecoveryKey>(args.data);
+	int moraleRecovery = std::get<moraleRecoveryKey>(args.data);
+	float painkillerRecovery = std::get<painkillerRecoveryKey>(args.data) / 100.0f;
+
+	// 0 = normal, 1 = heal, 2 = stim, 4 = pain
+	if (medikitAction & BMA_PAINKILLER)
+	{
+		target->painKillers(moraleRecovery, painkillerRecovery);
 	}
 
-	target->heal(bodyPart, rule->getWoundRecovery(), rule->getHealthRecovery());
-	action->weapon->setHealQuantity(action->weapon->getHealQuantity() - 1);
+	if (medikitAction & BMA_STIMULANT)
+	{
+		target->stimulant(energyRecovery, stunRecovery, manaRecovery);
+	}
+
+	if (medikitAction & BMA_HEAL)
+	{
+		if (target->getFatalWound(bodyPart))
+		{
+			// award experience only if healed body part has a fatal wound (to prevent abuse)
+			awardExperience(attack, target, false);
+		}
+
+		target->heal(bodyPart, woundRecovery, healthRecovery);
+	}
 
 	_save->getBattleGame()->playSound(action->weapon->getRules()->getHitSound());
+
+	if (type == BMT_NORMAL) // normal medikit usage, track statistics
+	{
+		if (medikitAction & BMA_PAINKILLER)
+		{
+			action->actor->getStatistics()->appliedPainKill++;
+		}
+		if (medikitAction & BMA_STIMULANT)
+		{
+			action->actor->getStatistics()->appliedStimulant++;
+		}
+		if (medikitAction & BMA_HEAL)
+		{
+			action->actor->getStatistics()->woundsHealed++;
+		}
+
+		if (target->getStatus() == STATUS_UNCONSCIOUS && !target->isOutThresholdExceed())
+		{
+			if(target->getOriginalFaction() == FACTION_PLAYER)
+			{
+				action->actor->getStatistics()->revivedSoldier++;
+			}
+			else if(target->getOriginalFaction() == FACTION_HOSTILE)
+			{
+				action->actor->getStatistics()->revivedHostile++;
+			}
+			else
+			{
+				action->actor->getStatistics()->revivedNeutral++;
+			}
+			// if the unit has revived and has no more wounds, we cannot continue healing
+			if (target->getFatalWounds() == 0)
+			{
+				canContinueHealing = false;
+			}
+		}
+	}
+
+	// check for casualties, revive unconscious unit (+ change status), re-calc fov & lighting
+	updateGameStateAfterScript(attack, action->actor->getPosition());
+
+	return canContinueHealing;
 }
 
 /**
- * Try using medikit stimulant ability.
- * @param action
- * @param target
+ * Executes the skillUseUnit script hook and determines further steps.
+ * @return True if the current action should be continued, false if the action should be cancelled (usually because the script took care of any effects itself).
  */
-void TileEngine::medikitStimulant(BattleAction *action, BattleUnit *target)
+bool TileEngine::skillUse(BattleAction *action, const RuleSkill *skill)
 {
-	const RuleItem *rule = action->weapon->getRules();
+	bool continueAction = true;
+	bool spendTu = false;
+	std::string message;
+	BattleUnit *actor = action->actor;
+	bool hasTu = action->haveTU(&message);
 
-	target->stimulant(rule->getEnergyRecovery(), rule->getStunRecovery());
-	action->weapon->setStimulantQuantity(action->weapon->getStimulantQuantity() - 1);
+	ModScript::SkillUseUnit::Output args { continueAction, spendTu };
+	ModScript::SkillUseUnit::Worker work { actor, action->weapon, _save, skill, action->type, hasTu };
 
-	_save->getBattleGame()->playSound(action->weapon->getRules()->getHitSound());
+	work.execute(skill->getScript<ModScript::SkillUseUnit>(), args);
+
+	continueAction = args.getFirst();
+	spendTu = args.getSecond();
+
+	if (spendTu)
+	{
+		action->actor->spendCost(static_cast<const RuleItemUseCost&>(*action));
+	}
+
+	if (!hasTu && !message.empty())
+	{
+		action->result = message;
+	}
+
+	return continueAction;
 }
 
 /**
- * Try using medikit pain killer ability.
- * @param action
- * @param target
+ * Tries to conceal a unit. Only works if no unit of another faction is watching.
  */
-void TileEngine::medikitPainKiller(BattleAction *action, BattleUnit *target)
+bool TileEngine::tryConcealUnit(BattleUnit* unit)
 {
-	const RuleItem *rule = action->weapon->getRules();
+	for (std::vector<BattleUnit*>::const_iterator i = _save->getUnits()->begin(); i != _save->getUnits()->end(); ++i)
+	{
+		if ((*i)->getFaction() != unit->getFaction() && (*i)->hasVisibleUnit(unit))
+		{
+			return false;
+		}
+	}
 
-	target->painKillers(rule->getMoraleRecovery(), rule->getPainKillerRecovery());
-	action->weapon->setPainKillerQuantity(action->weapon->getPainKillerQuantity() - 1);
+	unit->setTurnsSinceSpotted(255);
+	unit->setTurnsLeftSpottedForSnipers(0);
 
-	_save->getBattleGame()->playSound(action->weapon->getRules()->getHitSound());
+	return true;
 }
 
 /**
@@ -4702,6 +4870,17 @@ bool TileEngine::isPositionValidForUnit(Position &position, BattleUnit *unit, bo
 	}
 
 	return false;
+}
+
+void TileEngine::updateGameStateAfterScript(BattleActionAttack battleActionAttack, Position pos)
+{
+	_save->getBattleGame()->checkForCasualties(nullptr, battleActionAttack, false, false);
+
+	_save->reviveUnconsciousUnits(true);
+
+	// limit area of the following calls to the Position pos
+	calculateFOV(pos, 1, false);
+	calculateLighting(LL_ITEMS, pos, 2, true);
 }
 
 }

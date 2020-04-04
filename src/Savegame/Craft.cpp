@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Craft.h"
+#include <algorithm>
 #include "../fmath.h"
 #include "../Engine/Language.h"
 #include "../Engine/RNG.h"
@@ -29,6 +30,7 @@
 #include "Soldier.h"
 #include "Transfer.h"
 #include "../Mod/RuleSoldier.h"
+#include "../Mod/RuleSoldierBonus.h"
 #include "Base.h"
 #include "Ufo.h"
 #include "Waypoint.h"
@@ -37,6 +39,7 @@
 #include "Vehicle.h"
 #include "../Mod/Armor.h"
 #include "../Mod/RuleItem.h"
+#include "../Mod/RuleStartingCondition.h"
 #include "../Mod/AlienDeployment.h"
 #include "SerializationHelper.h"
 #include "../Engine/Logger.h"
@@ -919,6 +922,7 @@ bool Craft::think()
 	else
 	{
 		_takeoff--;
+		resetMeetPoint();
 	}
 	if (reachedDestination() && _dest == (Target*)_base)
 	{
@@ -946,7 +950,7 @@ void Craft::checkup()
 		if ((*i) == 0)
 			continue;
 		available++;
-		if ((*i)->getAmmo() >= (*i)->getRules()->getAmmoMax())
+		if ((*i)->getAmmo() >= (*i)->getRules()->getAmmoMax() || (*i)->isDisabled())
 		{
 			full++;
 		}
@@ -980,30 +984,41 @@ void Craft::checkup()
  * @param target Pointer to target to compare.
  * @return True if it's detected, False otherwise.
  */
-bool Craft::detect(Target *target) const
+UfoDetection Craft::detect(const Ufo *target, bool alreadyTracked) const
 {
-	if (_stats.radarRange == 0 || !insideRadarRange(target))
-		return false;
+	auto distance = XcomDistance(getDistance(target));
 
-	// backward compatibility with vanilla
-	if (_stats.radarChance == 100)
-		return true;
+	auto detectionChance = 0;
+	auto detectionType = DETECTION_NONE;
 
-	Ufo *u = dynamic_cast<Ufo*>(target);
-	int chance = _stats.radarChance * (100 + u->getVisibility()) / 100;
-	return RNG::percent(chance);
-}
+	if (distance < _stats.radarRange)
+	{
+		// backward compatibility with vanilla
+		if (_stats.radarChance == 100)
+		{
+			detectionType = DETECTION_RADAR;
+			detectionChance = 100;
+		}
+		else
+		{
+			detectionType = DETECTION_RADAR;
+			if (alreadyTracked)
+			{
+				detectionChance = 100;
+			}
+			else
+			{
+				detectionChance = _stats.radarChance * (100 + target->getVisibility()) / 100;
+			}
+		}
+	}
 
-/**
- * Returns if a certain target is inside the craft's
- * radar range, taking in account the positions of both.
- * @param target Pointer to target to compare.
- * @return True if inside radar range.
- */
-bool Craft::insideRadarRange(Target *target) const
-{
-	double range = Nautical(_stats.radarRange);
-	return (getDistance(target) <= range);
+	ModScript::DetectUfoFromCraft::Output args { detectionType, detectionChance, };
+	ModScript::DetectUfoFromCraft::Worker work { target, distance, alreadyTracked, _stats.radarChance, _stats.radarRange, };
+
+	work.execute(target->getRules()->getScript<ModScript::DetectUfoFromCraft>(), args);
+
+	return RNG::percent(args.getSecond()) ? (UfoDetection)args.getFirst() : DETECTION_NONE;
 }
 
 /**
@@ -1057,7 +1072,7 @@ unsigned int Craft::calcRearmTime()
 	for (int idx = 0; idx < _rules->getWeapons(); idx++)
 	{
 		CraftWeapon *w1 = _weapons.at(idx);
-		if (w1 != 0)
+		if (w1 != 0 && !w1->isDisabled())
 		{
 			int needed = w1->getRules()->getAmmoMax() - w1->getAmmo();
 			if (needed > 0)
@@ -1216,12 +1231,28 @@ int Craft::getSpaceUsed() const
 }
 
 /**
+ * Checks if there are only permitted soldier types onboard.
+ * @return True if all soldiers onboard are permitted.
+ */
+bool Craft::areOnlyPermittedSoldierTypesOnboard(const RuleStartingCondition* sc)
+{
+	for (Soldier* s : *_base->getSoldiers())
+	{
+		if (s->getCraft() == this && !sc->isSoldierTypePermitted(s->getRules()->getType()))
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+/**
  * Checks if there are enough required items onboard.
  * @return True if the craft has enough required items.
  */
-bool Craft::areRequiredItemsOnboard(const std::map<std::string, int> *requiredItems)
+bool Craft::areRequiredItemsOnboard(const std::map<std::string, int>& requiredItems)
 {
-	for (auto mapItem : *requiredItems)
+	for (auto& mapItem : requiredItems)
 	{
 		if (_items->getItem(mapItem.first) < mapItem.second)
 		{
@@ -1234,9 +1265,9 @@ bool Craft::areRequiredItemsOnboard(const std::map<std::string, int> *requiredIt
 /**
  * Destroys given required items.
  */
-void Craft::destroyRequiredItems(const std::map<std::string, int> *requiredItems)
+void Craft::destroyRequiredItems(const std::map<std::string, int>& requiredItems)
 {
-	for (auto mapItem : *requiredItems)
+	for (auto& mapItem : requiredItems)
 	{
 		_items->removeItem(mapItem.first, mapItem.second);
 	}
@@ -1378,7 +1409,7 @@ int Craft::getPilotAccuracyBonus(const std::vector<Soldier*> &pilots, const Mod 
 	int firingAccuracy = 0;
 	for (std::vector<Soldier*>::const_iterator i = pilots.begin(); i != pilots.end(); ++i)
 	{
-			firingAccuracy += (*i)->getCurrentStats()->firing;
+			firingAccuracy += (*i)->getStatsWithSoldierBonusesOnly()->firing;
 	}
 	firingAccuracy = firingAccuracy / pilots.size(); // average firing accuracy of all pilots
 
@@ -1397,7 +1428,7 @@ int Craft::getPilotDodgeBonus(const std::vector<Soldier*> &pilots, const Mod *mo
 	int reactions = 0;
 	for (std::vector<Soldier*>::const_iterator i = pilots.begin(); i != pilots.end(); ++i)
 	{
-		reactions += (*i)->getCurrentStats()->reactions;
+		reactions += (*i)->getStatsWithSoldierBonusesOnly()->reactions;
 	}
 	reactions = reactions / pilots.size(); // average reactions of all pilots
 
@@ -1416,7 +1447,7 @@ int Craft::getPilotApproachSpeedModifier(const std::vector<Soldier*> &pilots, co
 	int bravery = 0;
 	for (std::vector<Soldier*>::const_iterator i = pilots.begin(); i != pilots.end(); ++i)
 	{
-		bravery += (*i)->getCurrentStats()->bravery;
+		bravery += (*i)->getStatsWithSoldierBonusesOnly()->bravery;
 	}
 	bravery = bravery / pilots.size(); // average bravery of all pilots
 
@@ -1557,12 +1588,11 @@ void Craft::unload(const Mod *mod)
 void Craft::reuseItem(const std::string& item)
 {
 	// Note: Craft in-base status hierarchy is repair, rearm, refuel, ready.
-	// We only want to interrupt processes that are lower in the hierarachy.
+	// We only want to interrupt processes that are lower in the hierarchy.
 	// (And we don't want to interrupt any out-of-base status.)
 
 	// The only states we are willing to interrupt are "ready" and "refuelling"
-	if (_status != "STR_READY" &&
-        _status != "STR_REFUELLING")
+	if (_status != "STR_READY" && _status != "STR_REFUELLING")
 	{
 		return;
 	}
@@ -1570,7 +1600,7 @@ void Craft::reuseItem(const std::string& item)
 	// Check if it's ammo to reload the craft
 	for (std::vector<CraftWeapon*>::iterator w = _weapons.begin(); w != _weapons.end(); ++w)
 	{
-		if ((*w) != 0 && item == (*w)->getRules()->getClipItem() && (*w)->getAmmo() < (*w)->getRules()->getAmmoMax())
+		if ((*w) != 0 && item == (*w)->getRules()->getClipItem() && (*w)->getAmmo() < (*w)->getRules()->getAmmoMax() && !(*w)->isDisabled())
 		{
 			(*w)->setRearming(true);
 			_status = "STR_REARMING";

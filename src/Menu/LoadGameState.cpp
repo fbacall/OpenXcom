@@ -163,7 +163,7 @@ void LoadGameState::think()
 		SavedGame *s = new SavedGame();
 		try
 		{
-			s->load(_filename, _game->getMod());
+			s->load(_filename, _game->getMod(), _game->getLanguage());
 			_game->setSavedGame(s);
 			if (_game->getSavedGame()->getEnding() != END_NONE)
 			{
@@ -193,6 +193,13 @@ void LoadGameState::think()
 					_game->pushState(bs);
 					_game->getSavedGame()->getSavedBattle()->setBattleState(bs);
 				}
+			}
+
+			// Clear the SDL event queue (i.e. ignore input from impatient users)
+			SDL_Event e;
+			while (SDL_PollEvent(&e))
+			{
+				// do nothing
 			}
 		}
 		catch (Exception &e)

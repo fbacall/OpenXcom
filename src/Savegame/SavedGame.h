@@ -25,9 +25,12 @@
 #include <stdint.h>
 #include "GameTime.h"
 #include "../Mod/RuleAlienMission.h"
+#include "../Mod/RuleEvent.h"
 #include "../Savegame/Craft.h"
 #include "../Mod/RuleManufacture.h"
 #include "../Mod/RuleBaseFacility.h"
+#include "../Mod/Mod.h"
+#include "../Engine/Script.h"
 
 namespace OpenXcom
 {
@@ -52,6 +55,7 @@ class MissionSite;
 class AlienBase;
 class AlienStrategy;
 class AlienMission;
+class GeoscapeEvent;
 class Target;
 class Soldier;
 class Craft;
@@ -64,7 +68,7 @@ struct BattleUnitKills;
 /**
  * Enumerator containing all the possible game difficulties.
  */
-enum GameDifficulty { DIFF_BEGINNER = 0, DIFF_EXPERIENCED, DIFF_VETERAN, DIFF_GENIUS, DIFF_SUPERHUMAN };
+enum GameDifficulty : int { DIFF_BEGINNER = 0, DIFF_EXPERIENCED, DIFF_VETERAN, DIFF_GENIUS, DIFF_SUPERHUMAN };
 
 /**
  * Enumerator for the various save types.
@@ -100,6 +104,7 @@ struct PromotionInfo
 	PromotionInfo(): totalSoldiers(0), totalCommanders(0), totalColonels(0), totalCaptains(0), totalSergeants(0){}
 };
 
+
 /**
  * The game data that gets written to disk when the game is saved.
  * A saved game holds all the variable info in a game like funds,
@@ -108,8 +113,15 @@ struct PromotionInfo
 class SavedGame
 {
 public:
+	/// Name of class used in script.
+	static constexpr const char *ScriptName = "GeoscapeGame";
+	/// Register all useful function used by script.
+	static void ScriptRegister(ScriptParserBase* parser);
+
+
 	static const int MAX_EQUIPMENT_LAYOUT_TEMPLATES = 20;
 	static const int MAX_CRAFT_LOADOUT_TEMPLATES = 10;
+
 private:
 	std::string _name;
 	GameDifficulty _difficulty;
@@ -131,11 +143,13 @@ private:
 	AlienStrategy *_alienStrategy;
 	SavedBattleGame *_battleGame;
 	std::vector<const RuleResearch*> _discovered;
+	std::map<std::string, int> _generatedEvents;
 	std::map<std::string, int> _ufopediaRuleStatus;
 	std::map<std::string, int> _manufactureRuleStatus;
 	std::map<std::string, int> _researchRuleStatus;
 	std::map<std::string, bool> _hiddenPurchaseItemsMap;
 	std::vector<AlienMission*> _activeMissions;
+	std::vector<GeoscapeEvent*> _geoscapeEvents;
 	bool _debug, _warned;
 	int _monthsPassed;
 	std::string _graphRegionToggles;
@@ -144,8 +158,9 @@ private:
 	std::vector<const RuleResearch*> _poppedResearch;
 	std::vector<Soldier*> _deadSoldiers;
 	size_t _selectedBase;
-	std::string _lastselectedArmor; //contains the last selected armour
+	std::string _lastselectedArmor; //contains the last selected armor
 	std::string _globalEquipmentLayoutName[MAX_EQUIPMENT_LAYOUT_TEMPLATES];
+	std::string _globalEquipmentLayoutArmor[MAX_EQUIPMENT_LAYOUT_TEMPLATES];
 	std::vector<EquipmentLayoutItem*> _globalEquipmentLayout[MAX_EQUIPMENT_LAYOUT_TEMPLATES];
 	std::string _globalCraftLoadoutName[MAX_CRAFT_LOADOUT_TEMPLATES];
 	ItemContainer *_globalCraftLoadout[MAX_CRAFT_LOADOUT_TEMPLATES];
@@ -153,6 +168,8 @@ private:
 	std::set<int> _ignoredUfos;
 	std::set<const RuleItem *> _autosales;
 	bool _disableSoldierEquipment;
+	bool _alienContainmentChecked;
+	ScriptValues<SavedGame> _scriptValues;
 
 	static SaveInfo getSaveInfo(const std::string &file, Language *lang);
 public:
@@ -161,12 +178,12 @@ public:
 	SavedGame();
 	/// Cleans up the saved game.
 	~SavedGame();
-	/// Sanitizies a mod name in a save.
+	/// Sanitizes a mod name in a save.
 	static std::string sanitizeModName(const std::string &name);
 	/// Gets list of saves in the user directory.
 	static std::vector<SaveInfo> getList(Language *lang, bool autoquick);
 	/// Loads a saved game from YAML.
-	void load(const std::string &filename, Mod *mod);
+	void load(const std::string &filename, Mod *mod, Language *lang);
 	/// Saves a saved game to YAML.
 	void save(const std::string &filename, Mod *mod) const;
 	/// Gets the game name.
@@ -247,8 +264,8 @@ public:
 	void setManufactureRuleStatus(const std::string &manufactureRule, int newStatus);
 	/// Sets the status of a research rule
 	void setResearchRuleStatus(const std::string &researchRule, int newStatus);
-    /// Sets the item as hidden or unhidden
-    void setHiddenPurchaseItemsStatus(const std::string &itemName, bool hidden);
+	/// Sets the item as hidden or unhidden
+	void setHiddenPurchaseItemsStatus(const std::string &itemName, bool hidden);
 	/// Remove a research from the "already discovered" list
 	void removeDiscoveredResearch(const RuleResearch *research);
 	/// Add a finished ResearchProject
@@ -275,10 +292,12 @@ public:
 	void getDependableFacilities(std::vector<RuleBaseFacility*> & dependables, const RuleResearch *research, const Mod *mod) const;
 	/// Gets the status of a ufopedia rule.
 	int getUfopediaRuleStatus(const std::string &ufopediaRule);
-    /// Gets the list of hidden items
-    const std::map<std::string, bool> &getHiddenPurchaseItems();
+	/// Gets the list of hidden items
+	const std::map<std::string, bool> &getHiddenPurchaseItems();
 	/// Gets the status of a manufacture rule.
 	int getManufactureRuleStatus(const std::string &manufactureRule);
+	/// Gets all the research rule status info.
+	const std::map<std::string, int> &getResearchRuleStatusRaw() const { return _researchRuleStatus; }
 	/// Is the research new?
 	bool isResearchRuleStatusNew(const std::string &researchRule) const;
 	/// Is the research permanently disabled?
@@ -295,6 +314,10 @@ public:
 	bool isResearched(const std::vector<std::string> &research, bool considerDebugMode = true) const;
 	/// Gets if a certain list of research topics has been completed.
 	bool isResearched(const std::vector<const RuleResearch *> &research, bool considerDebugMode = true, bool skipDisabled = false) const;
+	/// Gets if a certain item has been obtained.
+	bool isItemObtained(const std::string &itemType) const;
+	/// Gets if a certain facility has been built.
+	bool isFacilityBuilt(const std::string &facilityType) const;
 	/// Gets the soldier matching this ID.
 	Soldier *getSoldier(int id) const;
 	/// Handles the higher promotions.
@@ -333,6 +356,10 @@ public:
 	const std::vector<AlienMission*> &getAlienMissions() const { return _activeMissions; }
 	/// Finds a mission by region and objective.
 	AlienMission *findAlienMission(const std::string &region, MissionObjective objective) const;
+	/// Full access to the current geoscape events.
+	std::vector<GeoscapeEvent*> &getGeoscapeEvents() { return _geoscapeEvents; }
+	/// Read-only access to the current geoscape events.
+	const std::vector<GeoscapeEvent*> &getGeoscapeEvents() const { return _geoscapeEvents; }
 	/// Locate a region containing a position.
 	Region *locateRegion(double lon, double lat) const;
 	/// Locate a region containing a Target.
@@ -359,6 +386,10 @@ public:
 	bool wasResearchPopped(const RuleResearch* research);
 	/// remove a research from the "popped up" array
 	void removePoppedResearch(const RuleResearch* research);
+	/// remembers that this event has been generated
+	void addGeneratedEvent(const RuleEvent* event);
+	/// checks if an event has been generated previously
+	bool wasEventGenerated(const std::string& eventName);
 	/// Gets the list of dead soldiers.
 	std::vector<Soldier*> *getDeadSoldiers();
 	/// Gets the last selected player base.
@@ -367,9 +398,9 @@ public:
 	void setSelectedBase(size_t base);
 	/// Evaluate the score of a soldier based on all of his stats, missions and kills.
 	int getSoldierScore(Soldier *soldier);
-	/// Sets the last selected armour
+	/// Sets the last selected armor
 	void setLastSelectedArmor(const std::string &value);
-	/// Gets the last selected armour
+	/// Gets the last selected armor
 	std::string getLastSelectedArmor() const;
 	/// Returns the craft corresponding to the specified unique id.
 	Craft *findCraftByUniqueId(const CraftId& craftId) const;
@@ -377,6 +408,10 @@ public:
 	const std::string &getGlobalEquipmentLayoutName(int index) const;
 	/// Sets the name of a global equipment layout at specified index.
 	void setGlobalEquipmentLayoutName(int index, const std::string &name);
+	/// Gets the armor type of a global equipment layout at specified index.
+	const std::string& getGlobalEquipmentLayoutArmor(int index) const;
+	/// Sets the armor type of a global equipment layout at specified index.
+	void setGlobalEquipmentLayoutArmor(int index, const std::string& armorType);
 	/// Gets the global equipment layout at specified index.
 	std::vector<EquipmentLayoutItem*> *getGlobalEquipmentLayout(int index);
 	/// Gets the name of a global craft loadout at specified index.
@@ -407,6 +442,16 @@ public:
 	bool getDisableSoldierEquipment() const;
 	/// Sets the corresponding flag.
 	void setDisableSoldierEquipment(bool disableSoldierEquipment);
+	/// Is alien containment check finished?
+	bool getAlienContainmentChecked() const { return _alienContainmentChecked; }
+	/// Sets the corresponding flag.
+	void setAlienContainmentChecked(bool alienContainmentChecked) { _alienContainmentChecked = alienContainmentChecked; }
+	/// Is the mana feature already unlocked?
+	bool isManaUnlocked(Mod *mod) const;
+	/// Gets the current score based on research score and xcom/alien activity in regions.
+	int getCurrentScore(int monthsPassed) const;
+	/// Clear links for the given alien base. Use this before deleting the alien base.
+	void clearLinksForAlienBase(AlienBase* alienBase, const Mod* mod);
 };
 
 }

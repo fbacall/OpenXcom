@@ -32,15 +32,16 @@
 #include "../Savegame/ItemContainer.h"
 #include "../Mod/Mod.h"
 #include "../Mod/Armor.h"
+#include "../Mod/RuleSoldier.h"
 
 namespace OpenXcom
 {
 
 static std::string IntToString (int a)
 {
-    std::ostringstream temp;
-    temp << a;
-    return temp.str();
+	std::ostringstream temp;
+	temp << a;
+	return temp.str();
 }
 
 /**
@@ -76,7 +77,7 @@ SoldierAvatarState::SoldierAvatarState(Base *base, size_t soldier) : _base(base)
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK14.SCR"));
+	setWindowBackground(_window, "soldierAvatar");
 
 	_btnCancel->setText(tr("STR_CANCEL_UC"));
 	_btnCancel->onMouseClick((ActionHandler)&SoldierAvatarState::btnCancelClick);
@@ -153,12 +154,12 @@ void SoldierAvatarState::initPreview(Soldier *s)
 		std::stringstream ss;
 		Surface *surf = 0;
 
-		for (int i = 0; i <= 4; ++i)
+		for (int i = 0; i <= RuleSoldier::LookVariantBits; ++i)
 		{
 			ss.str("");
 			ss << look;
 			ss << gender;
-			ss << (int)s->getLook() + (s->getLookVariant() & (15 >> i)) * 4;
+			ss << (int)s->getLook() + (s->getLookVariant() & (RuleSoldier::LookVariantMask >> i)) * 4;
 			ss << ".SPK";
 			std::string debug = ss.str();
 			surf = _game->getMod()->getSurface(ss.str(), false);

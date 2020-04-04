@@ -4,11 +4,17 @@ en-GB:
   STR_BAD_NODES: "Bad nodes in RMP files"
   STR_BAD_NODES_DESC: "Checks RMP files for nodes outside of map boundaries.{NEWLINE}These will NOT cause any crashes, but they will be ignored by the game, thus not work as intended."
 #
-  STR_ZERO_COST_MOVEMENT: "Zero cost floor movement in MCD files"
-  STR_ZERO_COST_MOVEMENT_DESC: "Checks MCD files for floor objects with zero movement cost.{NEWLINE}These will not cause any crashes, but may cause endless loops (when AI moves in a zero-cost-circle)."
+  STR_MCD_CHECK: "MCD checks"
+  STR_MCD_CHECK_DESC: "Checks MCD files for floor objects with zero movement cost; also checks for invalid DieMCD/AltMCD references."
 #
   STR_PALETTE_CHECK: "Palette matching"
   STR_PALETTE_CHECK_DESC: "Tries to match palettes of modded images to official palettes and reports any images that don't have a 100% match."
+#
+  STR_SCRIPT_TAGS: "Script tag export"
+  STR_SCRIPT_TAGS_DESC: "Exports script tags in CSV format."
+#
+  STR_MAP_RESOURCES: "Map resources check"
+  STR_MAP_RESOURCES_DESC: "Checks for missing and unused map-related files and ruleset."
 #
   STR_CHECKING_TERRAIN: "Checking terrain..."
   STR_CHECKING_UFOS: "Checking UFOs..."
@@ -94,8 +100,10 @@ en-GB:
 #
   battleType: "Item type"
   experienceTrainingMode: "Experience mode"
+  manaExperience: "Mana experience"
   arcingShot: "Arcing?"
   isFireExtinguisher: "Fire exinguisher?"
+  isExplodingInHands: "Explodes in inventory?"
   waypoints: "Max waypoints"
   sprayWaypoints: "Spray shot waypoints"
 #
@@ -107,6 +115,8 @@ en-GB:
   underwaterOnly: "Underwater only?"
   landOnly: "Land only?"
   psiRequired: "Psi skill required?"
+  psiTargetMatrix: "Psi-amp targets"
+  manaRequired: "Mana required?"
   LOSRequired: "Sight required?"
 #
   noLOSAccuracyPenalty: "No-sight penalty mult."
@@ -195,6 +205,8 @@ en-GB:
   RandomMorale: "Morale dmg RNG?"
   ToItem: "Item damage multiplier"
   RandomItem: "Item damage RNG?"
+  ToMana: "Mana dmg multiplier"
+  RandomMana: "Mana dmg RNG?"
   ToTile: "Terrain dmg multiplier"
   RandomTile: "Terrain dmg RNG?"
   TileDamageMethod: "Tile Damage Method"
@@ -221,7 +233,9 @@ en-GB:
   armor: "Armor"
 #
   medikitType: "Medikit type"
-  allowSelfHeal: "Apply to self?"
+  medikitTargetSelf: "Medikit on self?"
+  medikitTargetImmune: "Medikit on bleed immune?"
+  medikitTargetMatrix: "Medikit targets"
   isConsumable: "Consumable?"
   painKiller: "Painkiller uses"
   heal: "Heal uses"
@@ -230,6 +244,7 @@ en-GB:
   healthRecovery: "Health recovery"
   stunRecovery: "Stun recovery"
   energyRecovery: "Energy recovery"
+  manaRecovery: "Mana recovery"
   moraleRecovery: "Morale recovery"
   painKillerRecovery: "Painkiller strength"
 #
@@ -311,6 +326,7 @@ en-GB:
   morale: "Morale"
   health: "Health"
   stun: "Stun"
+  mana: "Mana"
   units: "Compatible units"
 #
   buildCost: "Build cost"
@@ -324,6 +340,7 @@ en-GB:
   lift: "Access lift?"
   hyper: "Hyper-wave decoder?"
   mind: "Mind shield?"
+  mindPower: "Mind shield power"
   grav: "Grav shield?"
   storage: "Storage space"
   personnel: "Living space"
@@ -338,6 +355,7 @@ en-GB:
   defense: "Defense value"
   hitRatio: "Hit chance"
   maxAllowedPerBase: "Max allowed per base"
+  manaRecoveryPerDay: "Mana per day"
   sickBayAbsoluteBonus: "Sickbay abs. bonus"
   sickBayRelativeBonus: "Sickbay rel. bonus"
   prisonType: "Prison type"
@@ -414,3 +432,17 @@ en-GB:
   HB_FLEE: "flee when losing"
   HB_KAMIKAZE: "fight until destroyed"
   HB_RANDOM: "random"
+#
+  tractorBeamPower: "Tractor beam power"
+  damage: "Damage"
+  shieldDamageModifier: "Shield damage modifier"
+  accuracy: "Accuracy"
+  reloadCautious: "Reload (Cautious)"
+  reloadStandard: "Reload (Standard)"
+  reloadAggressive: "Reload (Aggressive)"
+  launcher: "Launcher item"
+  weaponType: "Weapon type"
+  clip: "Clip item"
+  ammoMax: "Rounds"
+  rearmRate: "Rearm rate"
+  _averageTotalDamage: "Average total damage"

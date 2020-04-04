@@ -22,6 +22,8 @@
 #include "Exception.h"
 #include "Logger.h"
 #include "SDL2Helpers.h"
+#include <climits>
+#include <cassert>
 
 namespace OpenXcom
 {
@@ -29,17 +31,9 @@ namespace OpenXcom
 /**
  * Sets up a new empty sound set.
  */
-SoundSet::SoundSet()
+SoundSet::SoundSet() : _sharedSounds(INT_MAX)
 {
 
-}
-
-/**
- * Deletes the sounds from memory.
- */
-SoundSet::~SoundSet()
-{
-	for (auto i : _sounds)	{ delete i.second; }
 }
 
 /**
@@ -110,11 +104,11 @@ void SoundSet::loadCat(CatFile &catFile)
  * @param i Sound number in the set.
  * @return Pointer to the respective sound.
  */
-Sound *SoundSet::getSound(unsigned int i)
+Sound *SoundSet::getSound(int i)
 {
 	if (_sounds.find(i) != _sounds.end())
 	{
-		return _sounds[i];
+		return &_sounds[i];
 	}
 	return 0;
 }
@@ -124,10 +118,34 @@ Sound *SoundSet::getSound(unsigned int i)
  * @param i Sound number in the set.
  * @return Pointer to the respective sound.
  */
-Sound *SoundSet::addSound(unsigned int i)
+Sound *SoundSet::addSound(int i)
 {
-	_sounds[i] = new Sound();
-	return _sounds[i];
+	assert(i >= 0 && "Negative indexes are not supported in SoundSet");
+	_sounds[i] = Sound();
+	return &_sounds[i];
+}
+
+/**
+ * Set number of shared sound indexes that are accessible for all mods.
+ */
+void SoundSet::setMaxSharedSounds(int i)
+{
+	if (i >= 0)
+	{
+		_sharedSounds = i;
+	}
+	else
+	{
+		_sharedSounds = 0;
+	}
+}
+
+/**
+ * Gets number of shared sound indexes that are accessible for all mods.
+ */
+int SoundSet::getMaxSharedSounds() const
+{
+	return _sharedSounds;
 }
 
 /**
@@ -154,7 +172,7 @@ size_t SoundSet::getTotalSounds() const
 void SoundSet::loadCatByIndex(CatFile &catFile, int index, bool tftd)
 {
 	int set_index = tftd ? getTotalSounds() : index;
-	_sounds[set_index] = new Sound(); // in case everything else fails, an empty Sound.
+	_sounds[set_index] = Sound(); // in case everything else fails, an empty Sound.
 	auto rwops = catFile.getRWops(index);
 	if (!rwops) {
 		Log(LOG_VERBOSE) << "SoundSet::loadCatByIndex(" << catFile.fileName() << ", " << index << "): got NULL.";
@@ -196,7 +214,7 @@ void SoundSet::loadCatByIndex(CatFile &catFile, int index, bool tftd)
 			*(Sint32 *)(sound +0x28) += delta; // data chunk size
 		}
 		int samplerate = *(Sint32 *)(sound + 0x18);
-		do_resample  = (samplerate != 11025);
+		do_resample  = (samplerate < 11025);
 		samples = sound + 44;
 		samplecount = size - 44;
 	} else { // skip DOS header
@@ -224,7 +242,7 @@ void SoundSet::loadCatByIndex(CatFile &catFile, int index, bool tftd)
 		SDL_RWwrite(dest_rwops, sound, size, 1);
 	}
 	SDL_RWseek(dest_rwops, 0, RW_SEEK_SET);
-	_sounds[set_index]->load(dest_rwops);  // this frees the dest_rwops
+	_sounds[set_index].load(dest_rwops);  // this frees the dest_rwops
 	SDL_free(dest_mem);
 	SDL_free(sound);
 }

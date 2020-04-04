@@ -40,7 +40,8 @@ struct DeploymentData
 	int alienRank;
 	int lowQty, highQty, dQty, extraQty;
 	int percentageOutsideUfo;
-	std::vector<ItemSet> itemSets;
+	std::vector<ItemSet> itemSets, extraRandomItems;
+	DeploymentData() : alienRank(0), lowQty(0), highQty(0), dQty(0), extraQty(0), percentageOutsideUfo(0) { }
 };
 struct BriefingData
 {
@@ -65,16 +66,19 @@ class AlienDeployment
 {
 private:
 	std::string _type;
-	std::string _startingCondition;
+	std::string _customUfo;
+	std::string _enviroEffects, _startingCondition;
 	std::string _unlockedResearch, _missionBountyItem;
 	int _bughuntMinTurn;
 	std::vector<DeploymentData> _data;
 	int _width, _length, _height, _civilians;
+	int _civilianSpawnNodeRank;
 	std::map<std::string, int> _civiliansByType;
 	std::vector<std::string> _terrains, _music;
 	int _shade, _minShade, _maxShade;
 	std::string _nextStage, _race, _script;
-	bool _finalDestination, _isAlienBase;
+	std::vector<std::string> _randomRaces;
+	bool _finalDestination, _isAlienBase, _isHidden;
 	std::string _winCutscene, _loseCutscene, _abortCutscene;
 	std::string _alert, _alertBackground, _alertDescription;
 	int _alertSound;
@@ -82,10 +86,11 @@ private:
 	std::string _markerName, _objectivePopup, _objectiveCompleteText, _objectiveFailedText;
 	WeightedOptions _genMission;
 	int _markerIcon, _durationMin, _durationMax, _minDepth, _maxDepth, _genMissionFrequency, _genMissionLimit;
-	int _objectiveType, _objectivesRequired, _objectiveCompleteScore, _objectiveFailedScore, _despawnPenalty, _points, _turnLimit, _cheatTurn;
+	int _objectiveType, _objectivesRequired, _objectiveCompleteScore, _objectiveFailedScore, _despawnPenalty, _abortPenalty, _points, _turnLimit, _cheatTurn;
 	ChronoTrigger _chronoTrigger;
-	bool _keepCraftAfterFailedMission;
+	bool _keepCraftAfterFailedMission, _allowObjectiveRecovery;
 	EscapeType _escapeType;
+	std::string _baseSelfDestructCode;
 	int _baseDetectionRange, _baseDetectionChance, _huntMissionMaxFrequency;
 	std::vector<std::pair<size_t, WeightedOptions*> > _huntMissionDistribution;
 	std::vector<std::pair<size_t, WeightedOptions*> > _alienBaseUpgrades;
@@ -98,8 +103,12 @@ public:
 	void load(const YAML::Node& node, Mod *mod);
 	/// Gets the Alien Deployment's type.
 	std::string getType() const;
+	/// Gets the custom UFO name to use for the dummy/blank 'addUFO' mapscript command.
+	const std::string& getCustomUfoName() const { return _customUfo; }
+	/// Gets the Alien Deployment's enviro effects.
+	const std::string& getEnviroEffects() const;
 	/// Gets the Alien Deployment's starting condition.
-	std::string getStartingCondition() const;
+	const std::string& getStartingCondition() const;
 	/// Gets the research topic to be unlocked after a successful mission.
 	std::string getUnlockedResearch() const;
 	/// Gets the item to be recovered/given after a successful mission.
@@ -112,6 +121,8 @@ public:
 	void getDimensions(int *width, int *length, int *height) const;
 	/// Gets civilians.
 	int getCivilians() const;
+	/// Gets the civilian spawn node rank.
+	int getCivilianSpawnNodeRank() const { return _civilianSpawnNodeRank; }
 	/// Gets civilians by type.
 	const std::map<std::string, int> &getCiviliansByType() const;
 	/// Gets the terrain for battlescape generation.
@@ -160,10 +171,6 @@ public:
 	int getMinDepth() const;
 	/// Gets the maximum depth.
 	int getMaxDepth() const;
-	/// Gets the minimum site depth.
-	int getMinSiteDepth() const;
-	/// Gets the maximum site depth.
-	int getMaxSiteDepth() const;
 	/// Gets the target type for this mission.
 	int getObjectiveType() const;
 	/// Gets a fixed number of objectives requires (if any).
@@ -176,6 +183,8 @@ public:
 	bool getObjectiveFailedInfo(std::string &text, int &score) const;
 	/// Gets the score penalty XCom receives for ignoring this site.
 	int getDespawnPenalty() const;
+	/// Gets the score penalty XCom receives for aborting this mission.
+	int getAbortPenalty() const { return _abortPenalty; }
 	/// Gets the (half hourly) score penalty XCom receives for this site existing.
 	int getPoints() const;
 	/// Gets the turn limit for this deployment.
@@ -186,18 +195,23 @@ public:
 	int getCheatTurn() const;
 	/// Gets whether or not this is an alien base (purely for new battle mode)
 	bool isAlienBase() const;
+	/// Gets whether or not this mission should be hidden (purely for new battle mode)
+	bool isHidden() const { return _isHidden; }
 
-	std::string getGenMissionType() const;
+	std::string chooseGenMissionType() const;
 
 	int getGenMissionFrequency() const;
 
 	int getGenMissionLimit() const;
 
 	bool keepCraftAfterFailedMission() const;
+	bool allowObjectiveRecovery() const;
 	EscapeType getEscapeType() const;
 
 	/// Generates a hunt mission based on the given month.
 	std::string generateHuntMission(const size_t monthsPassed) const;
+	/// Gets the Alien Base self destruct code.
+	const std::string& getBaseSelfDestructCode() const;
 	/// Gets the detection range of an alien base.
 	double getBaseDetectionRange() const;
 	/// Gets the chance of an alien base to detect a player's craft (once every 10 minutes).

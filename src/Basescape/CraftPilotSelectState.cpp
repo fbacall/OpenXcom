@@ -32,6 +32,7 @@
 #include "../Mod/RuleCraft.h"
 #include "../Savegame/Soldier.h"
 #include "../Mod/RuleSoldier.h"
+#include "../Mod/RuleSoldierBonus.h"
 
 namespace OpenXcom
 {
@@ -70,7 +71,7 @@ CraftPilotSelectState::CraftPilotSelectState(Base *base, size_t craft) : _base(b
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK02.SCR"));
+	setWindowBackground(_window, "craftPilotsSelect");
 
 	_btnCancel->setText(tr("STR_CANCEL_UC"));
 	_btnCancel->onMouseClick((ActionHandler)&CraftPilotSelectState::btnCancelClick);
@@ -103,12 +104,13 @@ CraftPilotSelectState::CraftPilotSelectState(Base *base, size_t craft) : _base(b
 			if (!c->isPilot((*i)->getId()))
 			{
 				_pilot.push_back((*i)->getId());
+
 				std::ostringstream ss1;
-				ss1 << (*i)->getCurrentStats()->firing;
+				ss1 << (*i)->getStatsWithSoldierBonusesOnly()->firing;
 				std::ostringstream ss2;
-				ss2 << (*i)->getCurrentStats()->reactions;
+				ss2 << (*i)->getStatsWithSoldierBonusesOnly()->reactions;
 				std::ostringstream ss3;
-				ss3 << (*i)->getCurrentStats()->bravery;
+				ss3 << (*i)->getStatsWithSoldierBonusesOnly()->bravery;
 				_lstPilot->addRow(4, (*i)->getName(false).c_str(), ss1.str().c_str(), ss2.str().c_str(), ss3.str().c_str());
 			}
 		}

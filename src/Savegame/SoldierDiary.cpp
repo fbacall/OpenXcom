@@ -36,7 +36,7 @@ SoldierDiary::SoldierDiary() : _daysWoundedTotal(0), _totalShotByFriendlyCounter
 	_timesWoundedTotal(0), _KIA(0), _allAliensKilledTotal(0), _allAliensStunnedTotal(0), _woundsHealedTotal(0), _allUFOs(0), _allMissionTypes(0),
 	_statGainTotal(0), _revivedUnitTotal(0), _wholeMedikitTotal(0), _braveryGainTotal(0), _bestOfRank(0),
 	_MIA(0), _martyrKillsTotal(0), _postMortemKills(0), _slaveKillsTotal(0), _bestSoldier(false),
-    _revivedSoldierTotal(0), _revivedHostileTotal(0), _revivedNeutralTotal(0), _globeTrotter(false)
+	_revivedSoldierTotal(0), _revivedHostileTotal(0), _revivedNeutralTotal(0), _globeTrotter(false)
 {
 }
 
@@ -65,9 +65,8 @@ void SoldierDiary::load(const YAML::Node& node, const Mod *mod)
 	{
 		for (YAML::const_iterator i = commendations.begin(); i != commendations.end(); ++i)
 		{
-			SoldierCommendations *sc = new SoldierCommendations(*i);
-			RuleCommendations *commendation = mod->getCommendation(sc->getType());
-			if (commendation)
+			SoldierCommendations *sc = new SoldierCommendations(*i, mod);
+			if (sc->getRule())
 			{
 				_commendations.push_back(sc);
 			}
@@ -236,6 +235,7 @@ void SoldierDiary::updateDiary(BattleUnitStatistics *unitStatistics, std::vector
 	_statGainTotal += unitStatistics->delta.firing;
 	_statGainTotal += unitStatistics->delta.throwing;
 	_statGainTotal += unitStatistics->delta.strength;
+	_statGainTotal += unitStatistics->delta.mana;
 	_statGainTotal += unitStatistics->delta.psiStrength;
 	_statGainTotal += unitStatistics->delta.melee;
 	_statGainTotal += unitStatistics->delta.psiSkill;
@@ -314,8 +314,8 @@ bool SoldierDiary::manageCommendations(Mod *mod, std::vector<MissionStatistics*>
 					((*j).first == "totalDaysWounded" && _daysWoundedTotal < (*j).second.at(nextCommendationLevel["noNoun"])) ||
 					((*j).first == "totalBaseDefenseMissions" && getBaseDefenseMissionTotal(missionStatistics) < (*j).second.at(nextCommendationLevel["noNoun"])) ||
 					((*j).first == "totalTerrorMissions" && getTerrorMissionTotal(missionStatistics) < (*j).second.at(nextCommendationLevel["noNoun"])) ||
-					((*j).first == "totalNightMissions" && getNightMissionTotal(missionStatistics) < (*j).second.at(nextCommendationLevel["noNoun"])) ||
-					((*j).first == "totalNightTerrorMissions" && getNightTerrorMissionTotal(missionStatistics) < (*j).second.at(nextCommendationLevel["noNoun"])) ||
+					((*j).first == "totalNightMissions" && getNightMissionTotal(missionStatistics, mod) < (*j).second.at(nextCommendationLevel["noNoun"])) ||
+					((*j).first == "totalNightTerrorMissions" && getNightTerrorMissionTotal(missionStatistics, mod) < (*j).second.at(nextCommendationLevel["noNoun"])) ||
 					((*j).first == "totalMonthlyService" && _monthsService < (*j).second.at(nextCommendationLevel["noNoun"])) ||
 					((*j).first == "totalFellUnconcious" && _unconciousTotal < (*j).second.at(nextCommendationLevel["noNoun"])) ||
 					((*j).first == "totalShotAt10Times" && _shotAtCounter10in1Mission < (*j).second.at(nextCommendationLevel["noNoun"])) ||
@@ -448,7 +448,7 @@ bool SoldierDiary::manageCommendations(Mod *mod, std::vector<MissionStatistics*>
 								}
 							}
 							// Skip kill-groups that we already got an award for.
-							// Skip kills that are inbetween turns.
+							// Skip kills that are in-between turns.
 							if ( thisTime == lastTime && goToNextTime && (*j).first != "killsWithCriteriaCareer")
 							{
 								continue;
@@ -518,9 +518,9 @@ bool SoldierDiary::manageCommendations(Mod *mod, std::vector<MissionStatistics*>
 						}
 					} /// End of AND loop.
 					if (andCriteriaMet)
-						break; // Stop looking, becuase we _are_ getting one, regardless of what's in the next OR block.
-				} /// End of OR loop. 
-				
+						break; // Stop looking, because we _are_ getting one, regardless of what's in the next OR block.
+				} /// End of OR loop.
+
 				if (!andCriteriaMet)
 					awardCommendationBool = false;
 
@@ -548,7 +548,7 @@ bool SoldierDiary::manageCommendations(Mod *mod, std::vector<MissionStatistics*>
 				}
 				if (newCommendation)
 				{
-					_commendations.push_back(new SoldierCommendations((*i).first, (*j)));
+					_commendations.push_back(new SoldierCommendations((*i).first, (*j), mod));
 				}
 			}
 			awardedCommendation = true;
@@ -574,29 +574,6 @@ void SoldierDiary::manageModularCommendations(std::map<std::string, int> &nextCo
 	if ((modularCommendations.count(statTotal.first) == 0 && statTotal.second >= criteria) || (modularCommendations.count(statTotal.first) != 0 && nextCommendationLevel.at(statTotal.first) >= criteria))
 	{
 		modularCommendations[statTotal.first]++;
-	}
-}
-
-/**
- * Award commendations to the soldier.
- * @param type string
- * @param noun string
- */
-void SoldierDiary::awardCommendation(const std::string& type, const std::string& noun)
-{
-	bool newCommendation = true;
-	for (std::vector<SoldierCommendations*>::iterator i = _commendations.begin() ; i != _commendations.end() ; ++i)
-	{
-		if ( (*i)->getType() == type && (*i)->getNoun() == noun)
-		{
-			(*i)->addDecoration();
-			newCommendation = false;
-			break;
-		}
-	}
-	if (newCommendation)
-	{
-		_commendations.push_back(new SoldierCommendations(type, noun));
 	}
 }
 
@@ -893,14 +870,14 @@ int SoldierDiary::getMonthsService() const
 /**
  * Award special commendation to the original 8 soldiers.
  */
-void SoldierDiary::awardOriginalEightCommendation()
+void SoldierDiary::awardOriginalEightCommendation(const Mod* mod)
 {
 	// TODO: Unhardcode this
-	_commendations.push_back(new SoldierCommendations("STR_MEDAL_ORIGINAL8_NAME", "NoNoun"));
+	_commendations.push_back(new SoldierCommendations("STR_MEDAL_ORIGINAL8_NAME", "NoNoun", mod));
 }
 
 /**
- * Award post-humous best-of commendation.
+ * Award posthumous best-of commendation.
  */
 void SoldierDiary::awardBestOfRank(int score)
 {
@@ -908,7 +885,7 @@ void SoldierDiary::awardBestOfRank(int score)
 }
 
 /**
- * Award post-humous best-of commendation.
+ * Award posthumous best-of commendation.
  */
 void SoldierDiary::awardBestOverall(int score)
 {
@@ -916,7 +893,7 @@ void SoldierDiary::awardBestOverall(int score)
 }
 
 /**
- * Award post-humous kills commendation.
+ * Award posthumous kills commendation.
  */
 void SoldierDiary::awardPostMortemKill(int kills)
 {
@@ -1017,7 +994,7 @@ int SoldierDiary::getTerrorMissionTotal(std::vector<MissionStatistics*> *mission
  *  Get the total of night missions.
  *  @param Mission Statistics
  */
-int SoldierDiary::getNightMissionTotal(std::vector<MissionStatistics*> *missionStatistics) const
+int SoldierDiary::getNightMissionTotal(std::vector<MissionStatistics*> *missionStatistics, const Mod* mod) const
 {
 	int nightMissionTotal = 0;
 
@@ -1027,7 +1004,7 @@ int SoldierDiary::getNightMissionTotal(std::vector<MissionStatistics*> *missionS
 		{
 			if ((*j) == (*i)->id)
 			{
-				if ((*i)->success && (*i)->daylight > 5 && !(*i)->isBaseDefense() && !(*i)->isAlienBase())
+				if ((*i)->success && (*i)->isDarkness(mod) && !(*i)->isBaseDefense() && !(*i)->isAlienBase())
 				{
 					nightMissionTotal++;
 				}
@@ -1042,7 +1019,7 @@ int SoldierDiary::getNightMissionTotal(std::vector<MissionStatistics*> *missionS
  *  Get the total of night terror missions.
  *  @param Mission Statistics
  */
-int SoldierDiary::getNightTerrorMissionTotal(std::vector<MissionStatistics*> *missionStatistics) const
+int SoldierDiary::getNightTerrorMissionTotal(std::vector<MissionStatistics*> *missionStatistics, const Mod* mod) const
 {
 	int nightTerrorMissionTotal = 0;
 
@@ -1052,7 +1029,7 @@ int SoldierDiary::getNightTerrorMissionTotal(std::vector<MissionStatistics*> *mi
 		{
 			if ((*j) == (*i)->id)
 			{
-				if ((*i)->success && (*i)->daylight > 5 && !(*i)->isBaseDefense() && !(*i)->isUfoMission() && !(*i)->isAlienBase())
+				if ((*i)->success && (*i)->isDarkness(mod) && !(*i)->isBaseDefense() && !(*i)->isUfoMission() && !(*i)->isAlienBase())
 				{
 					nightTerrorMissionTotal++;
 				}
@@ -1161,7 +1138,7 @@ int SoldierDiary::getScoreTotal(std::vector<MissionStatistics*> *missionStatisti
 }
 
 /**
- *  Get the Valient Crux total.
+ *  Get the Valiant Crux total.
  *  @param Mission Statistics
  */
 int SoldierDiary::getValiantCruxTotal(std::vector<MissionStatistics*> *missionStatistics) const
@@ -1208,16 +1185,18 @@ int SoldierDiary::getLootValueTotal(std::vector<MissionStatistics*> *missionStat
  * Initializes a new commendation entry from YAML.
  * @param node YAML node.
  */
-SoldierCommendations::SoldierCommendations(const YAML::Node &node)
+SoldierCommendations::SoldierCommendations(const YAML::Node &node, const Mod* mod)
 {
 	load(node);
+	_rule = mod->getCommendation(_type, false); //TODO: during load we can load obsolete value, some else need cleanup
 }
 
 /**
  * Initializes a soldier commendation.
  */
-SoldierCommendations::SoldierCommendations(std::string commendationName, std::string noun) : _type(commendationName), _noun(noun), _decorationLevel(0), _isNew(true)
+SoldierCommendations::SoldierCommendations(std::string commendationName, std::string noun, const Mod* mod) : _type(commendationName), _noun(noun), _decorationLevel(0), _isNew(true)
 {
+	_rule = mod->getCommendation(_type, true); //if there is no commendation rule then someone messed up
 }
 
 /**

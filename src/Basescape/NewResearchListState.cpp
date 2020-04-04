@@ -45,6 +45,11 @@ namespace OpenXcom
  */
 NewResearchListState::NewResearchListState(Base *base, bool sortByCost) : _base(base), _sortByCost(sortByCost), _lstScroll(0)
 {
+	if (Options::isPasswordCorrect())
+	{
+		_sortByCost = !_sortByCost;
+	}
+
 	_screen = false;
 
 	_window = new Window(this, 230, 140, 45, 30, POPUP_BOTH);
@@ -64,10 +69,13 @@ NewResearchListState::NewResearchListState(Base *base, bool sortByCost) : _base(
 	add(_txtTitle, "text", "selectNewResearch");
 	add(_lstResearch, "list", "selectNewResearch");
 
+	_colorNormal = _lstResearch->getColor();
+	_colorNew = Options::oxceHighlightNewTopicsHidden ? _lstResearch->getSecondaryColor() : _colorNormal;
+
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK05.SCR"));
+	setWindowBackground(_window, "selectNewResearch");
 
 	_btnOK->setText(tr("STR_OK"));
 	_btnOK->onMouseClick((ActionHandler)&NewResearchListState::btnOKClick);
@@ -122,19 +130,22 @@ void NewResearchListState::onSelectProject(Action *)
 */
 void NewResearchListState::onToggleProjectStatus(Action *)
 {
+	if (!Options::oxceHighlightNewTopicsHidden)
+		return;
+
 	// change status
 	const std::string rule = _projects[_lstResearch->getSelectedRow()]->getName();
 	if (_game->getSavedGame()->isResearchRuleStatusNew(rule))
 	{
 		// new -> normal
 		_game->getSavedGame()->setResearchRuleStatus(rule, RuleResearch::RESEARCH_STATUS_NORMAL);
-		_lstResearch->setRowColor(_lstResearch->getSelectedRow(), _lstResearch->getColor());
+		_lstResearch->setRowColor(_lstResearch->getSelectedRow(), _colorNormal);
 	}
 	else
 	{
 		// normal/disabled -> new
 		_game->getSavedGame()->setResearchRuleStatus(rule, RuleResearch::RESEARCH_STATUS_NEW);
-		_lstResearch->setRowColor(_lstResearch->getSelectedRow(), _lstResearch->getSecondaryColor());
+		_lstResearch->setRowColor(_lstResearch->getSelectedRow(), _colorNew);
 	}
 }
 
@@ -276,7 +287,7 @@ void NewResearchListState::fillProjectList(bool markAllAsSeen)
 			}
 			else if (_game->getSavedGame()->isResearchRuleStatusNew((*it)->getName()))
 			{
-				_lstResearch->setRowColor(row, _lstResearch->getSecondaryColor());
+				_lstResearch->setRowColor(row, _colorNew);
 				hasUnseen = true;
 			}
 			row++;

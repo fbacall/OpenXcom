@@ -1,4 +1,9 @@
-# OpenXcom [![Build Status](https://travis-ci.org/OpenXcom/OpenXcom.svg)](https://travis-ci.org/OpenXcom/OpenXcom)
+# OpenXcom [![Build Status][travis-badge]][travis-url] [![Workflow Status][workflow-badge]][actions-url]
+
+[travis-badge]: https://travis-ci.org/OpenXcom/OpenXcom.svg
+[travis-url]: https://travis-ci.org/OpenXcom/OpenXcom
+[workflow-badge]: https://github.com/OpenXcom/OpenXcom/workflows/ci/badge.svg
+[actions-url]: https://github.com/OpenXcom/OpenXcom/actions
 
 OpenXcom is an open-source clone of the popular "UFO: Enemy Unknown" ("X-COM:
 UFO Defense" in the USA release) and "X-COM: Terror From the Deep" videogames
@@ -156,7 +161,7 @@ OpenXcom requires the following developer libraries:
 - [SDL\_mixer](http://www.libsdl.org/projects/SDL_mixer/) (libsdl-mixer1.2)
 - [SDL\_gfx](http://www.ferzkopp.net/joomla/content/view/19/14/) (libsdl-gfx1.2), version 2.0.22 or later
 - [SDL\_image](http://www.libsdl.org/projects/SDL_image/) (libsdl-image1.2)
-- [yaml-cpp](https://github.com/jbeder/yaml-cpp), version 0.5 or later
+- [yaml-cpp](https://github.com/jbeder/yaml-cpp), version 0.5.3 or later
 
 The source code includes files for the following build tools:
 

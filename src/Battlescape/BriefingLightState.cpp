@@ -86,7 +86,7 @@ BriefingLightState::BriefingLightState(AlienDeployment *deployment)
 	std::string message = checkStartingCondition(deployment);
 	if (!message.empty())
 	{
-		_txtArmors->setText(tr("STR_STARTING_CONDITION_ARMORS").arg(message));
+		_txtArmors->setText(message);
 	}
 	else
 	{
@@ -102,10 +102,21 @@ std::string BriefingLightState::checkStartingCondition(AlienDeployment *deployme
 	const RuleStartingCondition *startingCondition = _game->getMod()->getStartingCondition(deployment->getStartingCondition());
 	if (startingCondition != 0)
 	{
-		const std::vector<std::string> *list = startingCondition->getAllowedArmors();
+		auto list = startingCondition->getForbiddenArmors();
+		std::string messageCode = "STR_STARTING_CONDITION_ARMORS_FORBIDDEN";
+		if (list.empty())
+		{
+			list = startingCondition->getAllowedArmors();
+			messageCode = "STR_STARTING_CONDITION_ARMORS_ALLOWED";
+		}
+		if (list.empty())
+		{
+			// everything is allowed
+			return "";
+		}
 		std::ostringstream ss;
 		int i = 0;
-		for (std::vector<std::string>::const_iterator it = list->begin(); it != list->end(); ++it)
+		for (std::vector<std::string>::const_iterator it = list.begin(); it != list.end(); ++it)
 		{
 			ArticleDefinition *article = _game->getMod()->getUfopaediaArticle((*it), false);
 			if (article && _game->getSavedGame()->isResearched(article->requires))
@@ -116,13 +127,13 @@ std::string BriefingLightState::checkStartingCondition(AlienDeployment *deployme
 				i++;
 			}
 		}
-		std::string message = ss.str();
-		if (message.empty())
+		std::string argument = ss.str();
+		if (argument.empty())
 		{
 			// no suitable armor yet
-			return tr("STR_UNKNOWN");
+			argument = tr("STR_UNKNOWN");
 		}
-		return ss.str();
+		return tr(messageCode).arg(argument);
 	}
 	else
 	{

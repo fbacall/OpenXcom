@@ -14,6 +14,9 @@ en-US:
   STR_ID: "ID"
   STR_FIRST_LETTER: "FIRST LETTER"
   STR_SOLDIER_TYPE: "SOLDIER TYPE"
+  STR_MANA: "MANA"
+  STR_MANA_POOL: "MANA POOL"
+  STR_MANA_MISSING: "MANA MISSING"
 #CraftEquipmentLoadState.cpp
   STR_LOAD_CRAFT_LOADOUT_TEMPLATE: "Load Craft Loadout"
   STR_EMPTY_SLOT_N: "Empty slot {0}"
@@ -49,6 +52,8 @@ en-US:
 #GlobalResearchState.cpp
   STR_RESEARCH_OVERVIEW: "RESEARCH OVERVIEW"
 #ManageAlienContainmentState.cpp
+  STR_KILL_SELECTED: "Kill"
+  STR_SELL_SELECTED: "Sell"
   STR_GO_TO_TRANSFERS: "Transfer..."
 #ManufactureDependenciesTreeState.cpp
   STR_TOPIC: "Topic>{ALT} {0}"
@@ -82,6 +87,14 @@ en-US:
   STR_NOT_ENOUGH_CRAFT_SPACE: "Not enough space onboard!"
 #SoldierAvatarState.cpp
   STR_SELECT_AVATAR_FOR: "SELECT AVATAR FOR{NEWLINE}{0}"
+#SoldierBonusState.cpp
+  STR_SOLDIER_BONUSES_FOR: "SOLDIER BONUSES FOR{NEWLINE}{0}"
+#SoldierInfoState.cpp
+  STR_MANA_RECOVERY: "MANA RECOVERY> {ALT}{0}"
+  STR_HEALTH_RECOVERY: "HEALTH RECOVERY> {ALT}{0}"
+  STR_BONUSES_BUTTON: " "
+#SoldierDiaryOverviewState.cpp
+  STR_KILLER_AND_WEAPON: "{0}, {1}"
 #SoldiersState.h
   STR_TRAINING: "Training"
   STR_SOLDIER_INFO: "Soldier Info"
@@ -90,6 +103,9 @@ en-US:
   STR_RECOVERY_TIME: "Recovery Time>{ALT}{0}"
   STR_CURRENT_STATS: "Current stats"
   STR_CHANGES: "Changes"
+  STR_CHANGES_MIN: "Changes (min)"
+  STR_CHANGES_MAX: "Changes (max)"
+  STR_BONUS_STATS: "Bonus stats"
 #StoresState.cpp
   STR_GRAND_TOTAL: "Grand Total"
 #TechTreeSelectState.cpp
@@ -113,6 +129,9 @@ en-US:
   STR_UNLOCKED_BY: "Unlocked by:"
   STR_DISABLED_BY: "Disabled by:"
   STR_GET_FOR_FREE_FROM: "Get for free from:"
+  STR_IS_LOOKUP_OF: "Is lookup of:"
+  STR_LOOKUP: "Lookup:"
+  STR_SPAWNED_ITEM: "Spawned item:"
   STR_REQUIRED_BY: "Required by:"
   STR_LEADS_TO: "Leads to:"
   STR_UNLOCKS: "Unlocks:"
@@ -126,18 +145,23 @@ en-US:
   STR_MATERIALS_REQUIRED: "Materials required:"
   STR_ITEMS_PRODUCED: "Items produced:"
   STR_PERSON_RECRUITED: "Person recruited:"
+  STR_UNLOCKS_MISSIONS: "Unlocks missions:"
+  STR_DISABLES_MISSIONS: "Disables missions:"
+  STR_AFFECTS_GAME_PROGRESSION: "Affects game progression!"
+#TransferItemsState.cpp
+  STR_ITEMS_AT_DESTINATION: "Items at destination"
 #=================== Battlescape ===================
 #ActionMenuState.cpp
   STR_MUST_USE_BOTH_HANDS: "Both hands are required for this!"
-  STR_HIT_LOG_WEAPON: "Weapon"
 #BattlescapeGame.cpp
   STR_NOT_ENOUGH_MORALE: "Not Enough Morale!"
   STR_NOT_ENOUGH_HEALTH: "Not Enough Health!"
+  STR_NOT_ENOUGH_MANA: "Not Enough Mana!"
   STR_NOT_ENOUGH_STUN: "Stun level is too high!"
   STR_LINE_OF_SIGHT_REQUIRED: "Line of sight (LoS) required."
 #BattlescapeState.cpp
   STR_CENTER_ON_WOUNDED_FRIEND: "Center on Wounded Friend"
-  STR_CENTER_ON_SHOCKED_FRIEND: "Center on Shocked Friend"
+  STR_CENTER_ON_DIZZY_FRIEND: "Center on Dizzy Friend"
   STR_BUG_HUNT_ACTIVATED: "Bug Hunt mode activated: enemies are visible on the minimap!"
   STR_TARGET_ENEMY: "; Target = ENEMY"
   STR_TARGET_NEUTRAL: "; Target = NEUTRAL"
@@ -146,9 +170,12 @@ en-US:
   STR_TARGET_ON_THE_GROUND: " (on the ground)"
   STR_USE_SPECIAL_ITEM: "Use Special Item"
   STR_NO_EXPERIENCE_YET: "No experience yet:"
+#BriefingState.cpp
+  STR_OPERATION_UC: "OPERATION> {0}"
 #BriefingLightState.cpp
   STR_WHAT_CAN_I_WEAR: "What can I wear?"
-  STR_STARTING_CONDITION_ARMORS: "This mission requires specific gear.{NEWLINE}{NEWLINE}Allowed armor types are: {0}"
+  STR_STARTING_CONDITION_ARMORS_FORBIDDEN: "This mission requires specific gear.{NEWLINE}{NEWLINE}Forbidden armor types are: {0}"
+  STR_STARTING_CONDITION_ARMORS_ALLOWED: "This mission requires specific gear.{NEWLINE}{NEWLINE}Allowed armor types are: {0}"
 #ConfirmEndMissionState.cpp
   STR_MISSION_OVER: "Mission complete."
   STR_UNITS_WITH_FATAL_WOUNDS:
@@ -159,7 +186,9 @@ en-US:
   STR_LOOT: "LOOT"
   STR_SELL: "SELL"
   STR_LIVE_ALIENS_SURRENDERED: "ENEMIES SURRENDERED"
+  STR_MISSION_ABORTED: "MISSION ABORTED"
   STR_BOUNTY: "BOUNTY"
+  STR_MANA_ABBREVIATION: "MAN"
 #Inventory.cpp
   STR_CANNOT_PLACE_ITEM_INTO_THIS_SECTION: "It's not allowed to place that item there.{NEWLINE}Don't ask why!"
   STR_ONE_HAND_MUST_BE_EMPTY: "At least one hand must be empty!"
@@ -177,13 +206,22 @@ en-US:
   STR_FAILED_CQB_CHECK: "Enemy managed to interrupt your attack!"
   STR_NO_TRAJECTORY: "No viable trajectory!"
   STR_HIT_LOG_NEW_BULLET: "=> "
+#SkillMenuState.cpp
+  STR_MANA_SHORT: "MA>{ALT}{0}"
+  STR_SKILL_NEEDS_ITEM: "This skill needs an item!"
 #TileEngine.cpp
   STR_HIT_LOG_NO_DAMAGE: "0 "
   STR_HIT_LOG_SMALL_DAMAGE: "hit "
   STR_HIT_LOG_BIG_DAMAGE: "HIT "
   STR_HIT_LOG_REACTION_FIRE: "Reaction fire..."
+#TurnDiaryState.cpp
+  STR_HIT_LOG: "Hit Log"
 #=================== Engine ===================
 #Options.cpp
+  STR_UPDATE_CHECK: "Automatic update check"
+  STR_UPDATE_CHECK_DESC: "If enabled, OpenXcom will automatically check for updates and give you an option to update itself by a single button click."
+  STR_LAZY_LOADING: "Lazy loading"
+  STR_LAZY_LOADING_DESC: "If enabled, graphic resources are loaded on-demand. Otherwise everything is loaded at start-up."
   STR_UFO_LANDING_ALERT: "UFO landing alert"
   STR_UFO_LANDING_ALERT_DESC: "If enabled, a message will pop up each time a detected UFO lands."
   STR_WOUNDED_DEFEND_BASE_IF: "Wounded defend (if HP above x%)"
@@ -191,15 +229,24 @@ en-US:
   STR_PLAY_BRIEFING_MUSIC_DURING_EQUIPMENT: "Play Briefing music longer"
   STR_PLAY_BRIEFING_MUSIC_DURING_EQUIPMENT_DESC: "Briefing music will continue playing during equipment phase until the Battlescape is displayed."
   STR_NIGHT_VISION_COLOR: "Select Night Vision color"
-  STR_NIGHT_VISION_COLOR_DESC: "Values from 1 to 15, each representing a different shade color. Default is 8."
+  STR_NIGHT_VISION_COLOR_DESC: "Values from 1 to 15, each representing a different shade color."
+  STR_AUTO_NIGHT_VISION_THRESHOLD: "Auto Night Vision threshold"
+  STR_AUTO_NIGHT_VISION_THRESHOLD_DESC: "If darker than this threshold, toggle Night Vision on and Personal Lights off automatically."
   STR_AUTO_SELL: "Auto-Sell Manager"
   STR_AUTO_SELL_DESC: "In the battle debriefing sell screen, any item types you sold in previous battles will be automatically marked for selling."
+  STR_REMEMBER_DISABLED_CRAFT_WEAPONS: "Remember disabled craft weapons"
+  STR_REMEMBER_DISABLED_CRAFT_WEAPONS_DESC: "Craft weapons disabled during a dogfight will stay disabled. They will also not be rearmed at the base."
   STR_GRAPHS_ZOOM_IN: "Zoom In (Graphs)"
   STR_GRAPHS_ZOOM_OUT: "Zoom Out (Graphs)"
   STR_MARK_ALL_AS_SEEN: "Mark All As Seen"
-  STR_SELECT_ALL: "Select All"
-  STR_DESELECT_ALL: "Deselect All"
-  STR_RESET_ALL: "Reset All"
+  STR_SELL_ALL: "Sell All"
+  STR_SELL_ALL_BUT_ONE: "Sell All But One"
+  STR_REMOVE_SOLDIERS_FROM_ALL_CRAFTS: "Remove Soldiers From All Crafts"
+  STR_REMOVE_SOLDIERS_FROM_CRAFT: "Remove Soldiers From Craft"
+  STR_REMOVE_EQUIPMENT_FROM_CRAFT: "Remove Equipment From Craft"
+  STR_REMOVE_ARMOR_FROM_ALL_CRAFTS: "Remove Armor From All Crafts"
+  STR_REMOVE_ARMOR_FROM_CRAFT: "Remove Armor From Craft"
+  STR_REMOVE_SOLDIERS_FROM_TRAINING: "Remove Soldiers From Training"
   STR_INVENTORY_ARMOR: "Change Armor (via Inventory)"
   STR_INVENTORY_AVATAR: "Change Avatar (via Inventory)"
   STR_ACTION_ITEM_1: "Item Action 1 (Aim/Use)"
@@ -225,7 +272,12 @@ en-US:
   STR_ALIEN_MISSILES_HAVE_DAMAGED_OUR_BASE: "Alien missiles have damaged our base {0}"
   STR_ALIEN_MISSILES_HAVE_DESTROYED_OUR_BASE: "Alien missiles have destroyed our base {0}"
 #ConfirmDestinationState.cpp
-  STR_STARTING_CONDITION_CRAFT: "This craft is unsuitable for this mission.{NEWLINE}{NEWLINE}Allowed craft: {0}"
+  STR_STARTING_CONDITION_CRAFT: "This craft is unsuitable for this mission."
+  STR_STARTING_CONDITION_CRAFT_ALLOWED: "This craft is unsuitable for this mission.{NEWLINE}{NEWLINE}Allowed craft: {0}"
+  STR_STARTING_CONDITION_CRAFT_FORBIDDEN: "This craft is unsuitable for this mission.{NEWLINE}{NEWLINE}Forbidden craft: {0}"
+  STR_STARTING_CONDITION_SOLDIER_TYPE: "Some soldiers cannot participate in this mission."
+  STR_STARTING_CONDITION_SOLDIER_TYPE_ALLOWED: "Some soldiers cannot participate in this mission.{NEWLINE}{NEWLINE}Allowed soldier types: {0}"
+  STR_STARTING_CONDITION_SOLDIER_TYPE_FORBIDDEN: "Some soldiers cannot participate in this mission.{NEWLINE}{NEWLINE}Forbidden soldier types: {0}"
   STR_STARTING_CONDITION_ITEM: "This mission requires specific item(s):{NEWLINE}{NEWLINE}{0}"
 #CraftNotEnoughPilotsState.cpp
   STR_ASSIGN_PILOTS: "Assign pilots..."
@@ -261,6 +313,7 @@ en-US:
 #NewPossibleCraftState.cpp
   STR_WE_CAN_NOW_RENT: "We can now rent"
 #NewPossibleFacilityState.cpp
+  STR_REQUIRED_BASE_SERVICES: "Required base services: {0}"
   STR_WE_CAN_NOW_BUILD: "We can now build"
 #NewPossiblePurchaseState.cpp
   STR_WE_CAN_NOW_PURCHASE: "We can now purchase"
@@ -268,15 +321,30 @@ en-US:
   STR_NOT_ENOUGH_LIVING_SPACE_AT_BASE: "Not enough living space to accomodate{NEWLINE}{0}{NEWLINE}at{NEWLINE}{1}"
 #TargetInfoState.cpp
   STR_INFO: "INFO"
+  STR_DESPAWN_PENALTY: "Despawn penalty> {0}"
 #TrainingFinishedState.cpp
-  STR_TRAINING_FINISHED: "Training Finished"
+  STR_TRAINING_FINISHED: "Training Finished{NEWLINE}at {0}"
 #UfoDetectedState.cpp
   STR_CANCEL_AND_IGNORE_UC: "CANCEL & IGNORE"
 #UfoTrackerState.cpp
   STR_UFO_TRACKER: "UFO Tracker"
 #=================== Menu ===================
+#MainMenuState.cpp
+  STR_UPDATE: "Update"
+  STR_LATEST_VERSION_INFO: "You are using the latest OpenXcom version."
 #OptionsAdvancedState.cpp
   STR_OXCE: "Extended"
+#OptionsBaseState.cpp
+  STR_FOLDERS: "FOLDERS"
+#OptionsFoldersState.cpp
+  STR_DATA_FOLDER: "Data Folder (original resources)"
+  STR_USER_FOLDER: "User Folder (mods, openxcom.log)"
+  STR_SAVE_FOLDER: "Save Folder (saved games)"
+  STR_CONFIG_FOLDER: "Config Folder (options.cfg)"
+  STR_DATA_FOLDER_DESC: "This is where OpenXcom looks for the original game resources (UFO and/or TFTD) and also where the OpenXcom built-in mods are stored."
+  STR_USER_FOLDER_DESC: "The log file ('openxcom.log') is stored here. All custom mods belong here too (in the 'mods' sub-folder)."
+  STR_SAVE_FOLDER_DESC: "Your saved games are located here. Also, the mission generator settings ('battle.cfg') can be found here."
+  STR_CONFIG_FOLDER_DESC: "This is where OpenXcom settings ('option.cfg') are stored. Normally the same as the User Folder."
 #OptionsInformExtendedState.cpp
   STR_VERSION_REQUIRED_QUESTION: "This mod requires OXCE v{0} to run correctly. Enable this mod?"
 #OptionsVideoState.cpp
@@ -312,6 +380,8 @@ en-US:
   STR_MAXIMUM_RANGE: "MAX RANGE>{ALT}{0}{ALT}"
   STR_MINIMUM_RANGE: "MIN RANGE>{ALT}{0}{ALT}"
   STR_INFINITE_RANGE: "N/A"
+#ArticleStateCraftWeapon.cpp
+  STR_TRACTOR_BEAM_POWER: "Power"
 #ArticleStateItem.cpp
   STR_WEIGHT_PEDIA1: "Wt: {0}"
   STR_WEIGHT_PEDIA2: "Wt: {0}/{1}"
@@ -337,9 +407,11 @@ en-US:
   STR_STRENGTH_AND_THROWING_ACCURACY: "STRENGTH*THROWING ACCURACY"
   STR_FIRING_ACCURACY_AND_REACTIONS: "FIRING ACCURACY*REACTIONS"
   STR_HEALTH_CURRENT: "CURRENT HEALTH"
+  STR_MANA_CURRENT: "CURRENT MANA"
   STR_TIME_UNITS_CURRENT: "CURRENT TIME UNITS"
   STR_STUN_LEVEL_CURRENT: "CURRENT STUN LEVEL"
   STR_HEALTH_NORMALIZED: "NORMALIZED HEALTH"
+  STR_MANA_NORMALIZED: "NORMALIZED MANA"
   STR_TIME_UNITS_NORMALIZED: "NORMALIZED TIME UNITS"
   STR_ENERGY_NORMALIZED: "NORMALIZED ENERGY"
   STR_MORALE_NORMALIZED: "NORMALIZED MORALE"
@@ -351,6 +423,7 @@ en-US:
   STR_COST_MORALE: "morale"
   STR_COST_HEALTH: "health"
   STR_COST_STUN: "stun"
+  STR_COST_MANA: "mana"
   STR_COST_BUILD: "build"
   STR_COST_REFUND: "refund"
 #

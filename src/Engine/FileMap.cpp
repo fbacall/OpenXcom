@@ -23,7 +23,7 @@
  * 1. mods are either directories under standard / user/mods
  *    or zip files in those directories.
  * 2. metadata.yml is required.
- * 3. zipfiles can either countain a single mod (metadata.yml at top level) or
+ * 3. zipfiles can either contain a single mod (metadata.yml at top level) or
  *    multiple mods (metadata.yml one level down).
  * 4. in both cases zipfile [sub]directory structure is what a mod dir structure is.
  * 5. mod directory can not contain zip files.
@@ -176,20 +176,94 @@ namespace OpenXcom
 namespace FileMap
 {
 
+static inline std::string concatPaths(const std::string& basePath, const std::string& relativePath)
+{
+	if(basePath.size() == 0) throw Exception("Need correct basePath");
+	if(relativePath.size() == 0) throw Exception("Need correct relativePath");
+	if (basePath[basePath.size() - 1] == '/')
+	{
+		return basePath + relativePath;
+	}
+	else
+	{
+		return basePath + "/" + relativePath;
+	}
+}
+static inline std::string concatOptionalPaths(const std::string& basePath, const std::string& relativePath)
+{
+	if (basePath.size() == 0)
+	{
+		return relativePath;
+	}
+	else if (relativePath.size() == 0)
+	{
+		return basePath;
+	}
+	else
+	{
+		return concatPaths(basePath, relativePath);
+	}
+}
+
 FileRecord::FileRecord() : fullpath(""), zip(NULL), findex(0) { }
-SDL_RWops *FileRecord::getRWops() const {
+
+SDL_RWops *FileRecord::getRWops() const
+{
 	SDL_RWops *rv;
 	if (zip != NULL) {
-		//Log(LOG_VERBOSE) << "FileRecord::getRWops(): miniz rwops for " << fullpath;
 		rv = SDL_RWFromMZ((mz_zip_archive *)zip, findex);
 	} else {
-		//Log(LOG_VERBOSE) << "FileRecord::getRWops(): stdio rwops for " << fullpath;
 		rv = SDL_RWFromFile(fullpath.c_str(), "rb");
 	}
 	if (!rv) { Log(LOG_ERROR) << "FileRecord::getRWops(): err=" << SDL_GetError(); }
 	return rv;
 }
-std::unique_ptr<std::istream>FileRecord::getIStream() const {
+
+SDL_RWops *FileRecord::getRWopsReadAll() const
+{
+	SDL_RWops *rv;
+	if (zip != NULL)
+	{
+		rv = SDL_RWFromMZ((mz_zip_archive *)zip, findex);
+	}
+	else
+	{
+		rv = SDL_RWFromFile(fullpath.c_str(), "rb");
+		if (rv)
+		{
+			size_t size = 0;
+			auto data = SDL_LoadFile_RW(rv, &size, SDL_TRUE);
+			if (data)
+			{
+				rv = SDL_RWFromConstMem(data, size);
+
+				//close callback
+				rv->close = [](struct SDL_RWops *context)
+				{
+					if (context)
+					{
+						//HACK: technically speaking `hidden` is an implementation detail, but we need to use it to deallocate memory (similar to `mzops_close`)
+						if (context->hidden.mem.base)
+						{
+							SDL_free(context->hidden.mem.base);
+						}
+						SDL_FreeRW(context);
+					}
+					return 0;
+				};
+			}
+			else
+			{
+				rv = nullptr;
+			}
+		}
+	}
+	if (!rv) { Log(LOG_ERROR) << "FileRecord::getRWopsReadAll(): err=" << SDL_GetError(); }
+	return rv;
+}
+
+std::unique_ptr<std::istream> FileRecord::getIStream() const
+{
 	if (zip != NULL) {
 		size_t size;
 		void *data = mz_zip_reader_extract_to_heap((mz_zip_archive *)zip, findex, &size, 0);
@@ -256,14 +330,14 @@ static std::string hexDumpBogusData(const std::string& bogus) {
 /* recursively list a directory */
 typedef std::vector<std::pair<std::string, std::string>> dirlist_t; // <dirname, basename>
 static bool ls_r(const std::string &basePath, const std::string &relPath, dirlist_t& dlist) {
-	auto fullDir = basePath + (relPath.length() ? "/" + relPath : "");
+	auto fullDir = concatOptionalPaths(basePath, relPath);
 	auto files = CrossPlatform::getFolderContents(fullDir);
 	//Log(LOG_VERBOSE) << "ls_r: listing "<<fullDir<<" count="<<files.size();
 	for (auto i = files.begin(); i != files.end(); ++i) {
 		if (std::get<1>(*i)) { // it's a subfolder
-			auto fullpath = fullDir + "/" + std::get<0>(*i);
+			auto fullpath = concatPaths(fullDir, std::get<0>(*i));
 			if (CrossPlatform::folderExists(fullpath)) {
-				auto nextRelPath = (relPath.length() ? relPath + "/" : "" ) + std::get<0>(*i);
+				auto nextRelPath = concatOptionalPaths(relPath, std::get<0>(*i));
 				ls_r(basePath, nextRelPath, dlist);
 				continue;
 			}
@@ -411,7 +485,7 @@ struct VFSLayer {
 				relfname = fname.substr(prefixlen, fname.npos);
 			}
 			frec.findex = fi;
-			frec.fullpath = fullpath + "/" + fname;
+			frec.fullpath = concatPaths(fullpath, fname);
 
 			if (isRuleset(relfname) && ignore_ruls) { continue; }
 			insert(relfname, frec);
@@ -437,8 +511,8 @@ struct VFSLayer {
 		std::string relpath;
 		int mapped_count = 0;
 		for (auto i = dlist.cbegin(); i != dlist.cend(); ++i) {
-			relpath = (i->first.length() ? i->first + "/" : "")  + i->second;
-			frec.fullpath = fullpath + "/" + relpath;
+			relpath = concatOptionalPaths(i->first, i->second);
+			frec.fullpath = concatPaths(fullpath, relpath);
 			if (isRuleset(i->second) && ignore_ruls) { continue; }
 			insert(relpath, frec);
 			mapped_count ++;
@@ -708,7 +782,7 @@ static void dump_mods_layers(std::ostream &out, const std::string& prefix, bool 
 	}
 }
 /**
- * Attempts to map extResources and insert the resulting layes into a mod
+ * Attempts to map extResources and insert the resulting layers into a mod
  * @param mrec - ModRec of a mod
  * @param basename - extRes name to map (from userDir/dataDir)
  */
@@ -789,7 +863,7 @@ static bool mapExtResources(ModRecord *mrec, const std::string& basename, bool e
  */
 static void mapZippedMod(mz_zip_archive *zip, const std::string& zipfname, const std::string& prefix) {
 	std::string log_ctx = "mapZippedMod(" + zipfname + ", '" + prefix + "'): ";
-	auto layer = new VFSLayer(zipfname + "/" + prefix);
+	auto layer = new VFSLayer(concatPaths(zipfname, prefix));
 	if (!layer->mapZip(zip, zipfname, prefix)) {
 		Log(LOG_WARNING) << log_ctx << "Failed to map, skipping.";
 		delete layer;
@@ -801,7 +875,7 @@ static void mapZippedMod(mz_zip_archive *zip, const std::string& zipfname, const
 		delete layer;
 		return;
 	}
-	auto modpath = zipfname + (prefix.length() > 0 ? "/" + prefix : "");
+	auto modpath = concatOptionalPaths(zipfname, prefix);
 	auto doc = frec->getYAML();
 	if (!doc.IsMap()) {
 		Log(LOG_WARNING) << log_ctx << "Bad metadata.yml found, skipping.";
@@ -867,6 +941,69 @@ void scanModZip(const std::string& fullpath) {
 	scanModZipRW(rwops, fullpath);
 }
 /**
+ * Extracts a single file to an ConstMem RWops object
+ * @param rwops - .zip file
+ * @param fullpath - what to extract, case and slash - insensitive
+ */
+SDL_RWops *zipGetFileByName(const std::string& zipfile, const std::string& fullpath) {
+	std::string log_ctx = "zipGetFileByName(rwops, " + zipfile + ", " + fullpath + "): ";
+	std::string sanpath = fullpath;
+	if (!sanitizeZipEntryName(sanpath)) {
+		Log(LOG_ERROR) << log_ctx << "Bogus fullpath given: '" << fullpath << "': " << hexDumpBogusData(sanpath);
+		return NULL;
+	}
+	Unicode::lowerCase(sanpath);
+	SDL_RWops *rwops = SDL_RWFromFile(zipfile.c_str(), "rb");
+	if (!rwops) {
+		Log(LOG_ERROR) << log_ctx << "SDL_RWFromFile(): " << SDL_GetError();
+		return NULL;
+	}
+	mz_zip_archive *mzip = (mz_zip_archive *) SDL_malloc(sizeof(mz_zip_archive));
+	if (!mzip) {
+		Log(LOG_FATAL) << log_ctx << ": " << SDL_GetError();
+		throw Exception("Out of memory");
+	}
+	if (!mz_zip_reader_init_rwops(mzip, rwops)) {
+		Log(LOG_ERROR) << log_ctx << "Bad zip: " << mz_zip_get_error_string(mz_zip_get_last_error(mzip));
+		SDL_RWclose(rwops);
+		SDL_free(mzip);
+		return NULL;
+	}
+	mz_uint filecount = mz_zip_reader_get_num_files(mzip);
+	for (mz_uint fi = 0; fi < filecount; ++fi) {
+		mz_zip_archive_file_stat fistat;
+		mz_zip_reader_file_stat (mzip, fi, &fistat);
+		if (fistat.m_is_encrypted || !fistat.m_is_supported) {
+			continue;
+		}
+		if (fistat.m_is_directory) {
+			continue;    // skip directories
+		}
+		std::string somepath = fistat.m_filename;
+		if ( !sanitizeZipEntryName ( somepath ) ) {
+			Log(LOG_WARNING) << "Bogus filename '" << somepath << "' "
+							 << hexDumpBogusData(somepath) << " in the .zip, ignoring.";
+			continue;
+		}
+		Unicode::lowerCase(somepath);
+		if (sanpath == somepath) { // gotcha
+			SDL_RWops *rv = SDL_RWFromMZ(mzip, fi);
+			if (!rv) {
+				Log(LOG_ERROR) << log_ctx << "Unzip failed: " << SDL_GetError();
+			}
+			mz_zip_reader_end(mzip);
+			SDL_RWclose(rwops);
+			SDL_free(mzip);
+			return rv;
+		}
+	}
+	Log ( LOG_ERROR ) << log_ctx << "File not found in the .zip";
+	mz_zip_reader_end(mzip);
+	SDL_RWclose(rwops);
+	SDL_free(mzip);
+	return NULL;
+}
+/**
  * this scans a mod dir.
  * which by definition is either a .zip
  * or a directory of zips and dirs.
@@ -880,7 +1017,53 @@ void scanModZip(const std::string& fullpath) {
  * and yes this has to parse the metadata.yml for the modId.
  *
  */
-void scanModDir(const std::string& dirname, const std::string& basename) {
+void scanModDir(const std::string& dirname, const std::string& basename, bool protectedLocation) {
+
+	// "standard" directory is for built-in mods only! otherwise automatic updates would delete user data
+	const std::set<std::string> standardMods = {
+		"Aliens_Pick_Up_Weapons",
+		"Aliens_Pick_Up_Weapons_TFTD",
+		"Limit_Craft_Item_Capacities",
+		"Limit_Craft_Item_Capacities_TFTD",
+		"OpenXCom_Unlimited_Waypoints",
+		"OpenXCom_Unlimited_Waypoints_TFTD",
+		"PSX_Static_Cydonia_Map",
+		"StrategyCore_Swap_Small_USOs_TFTD",
+		"TFTD_Damage",
+		"UFOextender_Gun_Melee",
+		"UFOextender_Gun_Melee_TFTD",
+		"UFOextender_Psionic_Line_Of_Fire",
+		"UFOextender_Psionic_Line_Of_Fire_TFTD",
+		"UFOextender_Starting_Avalanches",
+		"xcom1",
+		"xcom2",
+		"XcomUtil_Always_Daytime",
+		"XcomUtil_Always_Daytime_TFTD",
+		"XcomUtil_Always_Nighttime",
+		"XcomUtil_Always_Nighttime_TFTD",
+		"XcomUtil_Fighter_Transports",
+		"XcomUtil_High_Explosive_Damage",
+		"XcomUtil_High_Explosive_Damage_TFTD",
+		"XcomUtil_Improved_Gauss",
+		"XcomUtil_Improved_Ground_Tanks",
+		"XcomUtil_Improved_Heavy_Laser",
+		"XcomUtil_Infinite_Gauss",
+		"XcomUtil_No_Psionics",
+		"XcomUtil_No_Psionics_TFTD",
+		"XcomUtil_Pistol_Auto_Shot",
+		"XcomUtil_Pistol_Auto_Shot_TFTD",
+		"XcomUtil_Skyranger_Weapon_Slot",
+		"XcomUtil_Starting_Defensive_Base",
+		"XcomUtil_Starting_Defensive_Base_TFTD",
+		"XcomUtil_Starting_Defensive_Improved_Base",
+		"XcomUtil_Starting_Defensive_Improved_Base_TFTD",
+		"XcomUtil_Starting_Improved_Base",
+		"XcomUtil_Starting_Improved_Base_TFTD",
+		"XcomUtil_Statstrings",
+		"XcomUtil_Statstrings_TFTD",
+		"XCOM_Damage"
+	};
+
 	std::string log_ctx = "scanModDir('" + dirname + "', '" + basename + "'): ";
  	// first check for a .zip
 	std::string fullname = dirname + basename + ".zip";
@@ -905,15 +1088,28 @@ void scanModDir(const std::string& dirname, const std::string& basename) {
 	for (auto zi = contents.begin(); zi != contents.end(); ++zi) {
 		auto is_dir =  std::get<1>(*zi);
 		if (is_dir) {
+			if (protectedLocation)
+			{
+				if (standardMods.find(std::get<0>(*zi)) == standardMods.end())
+				{
+					Log(LOG_ERROR) << "Invalid standard mod '" << std::get<0>(*zi) << "', skipping.";
+					continue;
+				}
+			}
 			dirlist.push_back(std::get<0>(*zi)); // stash for later
 			continue;
 		}
-		auto subpath =  fullname + "/" + std::get<0>(*zi);
+		if (protectedLocation)
+		{
+			Log(LOG_ERROR) << "Invalid standard mod '" << std::get<0>(*zi) << "', skipping.";
+			continue;
+		}
+		auto subpath = concatPaths(fullname, std::get<0>(*zi));
 		scanModZip(subpath);
 	}
 	for (auto di = dirlist.begin(); di != dirlist.end(); ++di) {
 		auto mp_basename = *di;
-		auto modpath = fullname + "/" + mp_basename;
+		auto modpath = concatPaths(fullname, mp_basename);
 		// map dat dir! (if it has metadata.yml, naturally)
 		auto layer = new VFSLayer(modpath);
 		if (!layer->mapPlainDir(modpath)) {
@@ -933,7 +1129,7 @@ void scanModDir(const std::string& dirname, const std::string& basename) {
 			delete layer;
 			return;
 		}
-		auto mrec = new ModRecord(mp_basename);
+		auto mrec = new ModRecord(modpath);
 		mrec->modInfo.load(doc);
 		auto mri = ModsAvailable.find(mrec->modInfo.getId());
 		if (mri != ModsAvailable.end()) {
@@ -1035,13 +1231,31 @@ void checkModsDependencies() {
 	drop_mods(log_ctx, drop_list);
 }
 // returns currently mapped bunch of mods.
-std::unordered_map<std::string, ModInfo> getModInfos() {
-	std::unordered_map<std::string, ModInfo> rv;
+std::map<std::string, ModInfo> getModInfos() {
+	std::map<std::string, ModInfo> rv;
 	for (auto mri = ModsAvailable.begin(); mri != ModsAvailable.end(); ++mri) {
 		rv.insert(std::make_pair(mri->first, mri->second->modInfo));
 	}
 	return rv;
 }
+
+const FileRecord* getModRuleFile(const ModInfo* modInfo, const std::string& relpath)
+{
+	if (!relpath.empty())
+	{
+		auto fullPath = concatPaths(modInfo->getPath(), relpath);
+		for (auto& r : ModsAvailable.at(modInfo->getId())->stack.rulesets)
+		{
+			if (r.fullpath == fullPath)
+			{
+				return &r;
+			}
+		}
+		Log(LOG_WARNING) << "mod " << modInfo->getId() << ": unknown rulefile '" << relpath <<"'.";
+	}
+	return nullptr;
+}
+
 std::string canonicalize(const std::string &in)
 {
 	std::string ret = in;
@@ -1060,9 +1274,16 @@ const FileRecord *at(const std::string &relativeFilePath) {
 	}
 	return frec;
 }
-SDL_RWops *getRWops(const std::string &relativeFilePath) {
+
+SDL_RWops *getRWops(const std::string &relativeFilePath)
+{
 	return at(relativeFilePath)->getRWops();
 }
+SDL_RWops *getRWopsReadAll(const std::string &relativeFilePath)
+{
+	return at(relativeFilePath)->getRWopsReadAll();
+}
+
 std::unique_ptr<std::istream> getIStream(const std::string &relativeFilePath) {
 	return at(relativeFilePath)->getIStream();
 }

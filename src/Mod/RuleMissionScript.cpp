@@ -19,17 +19,20 @@
 #include "RuleMissionScript.h"
 #include "../Engine/Exception.h"
 #include "../Engine/RNG.h"
+#include <climits>
 
 namespace OpenXcom
 {
 
 /**
  * RuleMissionScript: the rules for the alien mission progression.
- * Each script element is independant, and the saved game will probe the list of these each month to determine what's going to happen.
+ * Each script element is independent, and the saved game will probe the list of these each month to determine what's going to happen.
  */
-RuleMissionScript::RuleMissionScript(const std::string &type) : _type(type), _firstMonth(0), _lastMonth(-1), _label(0), _executionOdds(100),
-															_targetBaseOdds(0), _minDifficulty(0), _maxRuns(-1), _avoidRepeats(0), _delay(0), _randomDelay(0),
-															_useTable(true), _siteType(false)
+RuleMissionScript::RuleMissionScript(const std::string &type) :
+	_type(type), _firstMonth(0), _lastMonth(-1), _label(0), _executionOdds(100),
+	_targetBaseOdds(0), _minDifficulty(0), _maxRuns(-1), _avoidRepeats(0), _delay(0), _randomDelay(0),
+	_minScore(INT_MIN), _maxScore(INT_MAX), _minFunds(INT64_MIN), _maxFunds(INT64_MAX),
+	_useTable(true), _siteType(false)
 {
 }
 
@@ -73,6 +76,10 @@ void RuleMissionScript::load(const YAML::Node& node)
 	_avoidRepeats = node["avoidRepeats"].as<int>(_avoidRepeats);
 	_delay = node["startDelay"].as<int>(_delay);
 	_randomDelay = node["randomDelay"].as<int>(_randomDelay);
+	_minScore = node["minScore"].as<int>(_minScore);
+	_maxScore = node["maxScore"].as<int>(_maxScore);
+	_minFunds = node["minFunds"].as<int64_t>(_minFunds);
+	_maxFunds = node["maxFunds"].as<int64_t>(_maxFunds);
 	_conditionals = node["conditionals"].as<std::vector<int> >(_conditionals);
 	if (const YAML::Node &weights = node["missionWeights"])
 	{
@@ -102,6 +109,8 @@ void RuleMissionScript::load(const YAML::Node& node)
 		}
 	}
 	_researchTriggers = node["researchTriggers"].as<std::map<std::string, bool> >(_researchTriggers);
+	_itemTriggers = node["itemTriggers"].as<std::map<std::string, bool> >(_itemTriggers);
+	_facilityTriggers = node["facilityTriggers"].as<std::map<std::string, bool> >(_facilityTriggers);
 	_useTable = node["useTable"].as<bool>(_useTable);
 	if (_varName.empty() && (_maxRuns > 0 || _avoidRepeats > 0))
 	{
@@ -232,6 +241,22 @@ bool RuleMissionScript::hasRegionWeights() const
 const std::map<std::string, bool> &RuleMissionScript::getResearchTriggers() const
 {
 	return _researchTriggers;
+}
+
+/**
+ * @return a list of item triggers that govern execution of this script.
+ */
+const std::map<std::string, bool> &RuleMissionScript::getItemTriggers() const
+{
+	return _itemTriggers;
+}
+
+/**
+ * @return a list of facility triggers that govern execution of this script.
+ */
+const std::map<std::string, bool> &RuleMissionScript::getFacilityTriggers() const
+{
+	return _facilityTriggers;
 }
 
 /**

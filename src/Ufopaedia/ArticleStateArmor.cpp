@@ -113,7 +113,7 @@ namespace OpenXcom
 		_lstInfo->setColumns(2, 125, 25);
 		_lstInfo->setDot(true);
 
-		_txtInfo = new Text(300, 56, 8, 150);
+		_txtInfo = new Text(300, 48, 8, 150);
 		add(_txtInfo);
 
 		_txtInfo->setColor(_textColor);
@@ -156,6 +156,7 @@ namespace OpenXcom
 		addStat("STR_THROWING_ACCURACY", armor->getStats()->throwing, true);
 		addStat("STR_MELEE_ACCURACY", armor->getStats()->melee, true);
 		addStat("STR_STRENGTH", armor->getStats()->strength, true);
+		addStat("STR_MANA_POOL", armor->getStats()->mana, true);
 		addStat("STR_PSIONIC_STRENGTH", armor->getStats()->psiStrength, true);
 		addStat("STR_PSIONIC_SKILL", armor->getStats()->psiSkill, true);
 

@@ -30,6 +30,9 @@ namespace OpenXcom
 class Position
 {
 public:
+	constexpr static int TileXY = 16;
+	constexpr static int TileZ = 24;
+
 	Sint16 x, y, z;
 
 	/// Null position constructor.
@@ -39,7 +42,7 @@ public:
 	/// Copy constructor.
 	constexpr Position(const Position& pos) = default;
 
-	/// Assigment
+	/// Assignment
 	Position& operator=(const Position& pos) = default;
 
 	Position operator+(const Position& pos) const { return Position(x + pos.x, y + pos.y, z + pos.z); }
@@ -72,12 +75,12 @@ public:
 	/// Convert tile position to voxel position.
 	constexpr Position toVoxel() const
 	{
-		return Position(x * 16, y * 16, z * 24);
+		return Position(x * TileXY, y * TileXY, z * TileZ);
 	}
 	/// Convert voxel position to tile position.
 	constexpr Position toTile() const
 	{
-		return Position(x / 16, y / 16, z / 24);
+		return Position(x / TileXY, y / TileXY, z / TileZ);
 	}
 
 	/// Calculates the distance in 3d.

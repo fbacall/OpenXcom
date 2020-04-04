@@ -177,7 +177,7 @@ void UnitDieBState::think()
 			Game *game = _parent->getSave()->getBattleState()->getGame();
 			if (_unit->getStatus() == STATUS_DEAD)
 			{
-				if (_damageType->ResistType == DT_NONE && _unit->getSpawnUnit().empty())
+				if (_damageType->ResistType == DT_NONE && !_unit->getSpawnUnit())
 				{
 					game->pushState(new InfoboxOKState(game->getLanguage()->getString("STR_HAS_DIED_FROM_A_FATAL_WOUND", _unit->getGender()).arg(_unit->getName(game->getLanguage()))));
 				}
@@ -220,7 +220,7 @@ void UnitDieBState::think()
 		{
 			_unit->setTurnsLeftSpottedForSnipers(0);
 		}
-		if (!_unit->getSpawnUnit().empty() && !_overKill)
+		if (_unit->getSpawnUnit() && !_overKill)
 		{
 			if (!_unit->getAlreadyRespawned())
 			{
@@ -260,8 +260,7 @@ void UnitDieBState::convertUnitToCorpse()
 
 	if (!_noSound)
 	{
-		_parent->getSave()->getBattleState()->showPsiButton(false);
-		_parent->getSave()->getBattleState()->showSpecialButton(false);
+		_parent->getSave()->getBattleState()->resetUiButton();
 	}
 	// remove the unconscious body item corresponding to this unit, and if it was being carried, keep track of what slot it was in
 	if (lastPosition != TileEngine::invalid)

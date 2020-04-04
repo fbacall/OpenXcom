@@ -31,9 +31,14 @@ class SavedBattleGame;
 class BattleUnit;
 class BattleItem;
 class Tile;
+class RuleSkill;
 struct BattleAction;
-struct GraphSubset;
+template<typename Tag, typename DataType> struct AreaSubset;
 
+/**
+ * Define some part of map
+ */
+using MapSubset = AreaSubset<Position, Sint16>;
 enum BattleActionType : Uint8;
 enum LightLayers : Uint8;
 
@@ -45,13 +50,13 @@ enum LightLayers : Uint8;
 class TileEngine
 {
 public:
-	/// Value represent not exisiting position.
+	/// Value representing non-existing position.
 	static constexpr Position invalid = { -1, -1, -1 };
 
 	/// Size of tile in voxels
-	static constexpr Position voxelTileSize = { 16, 16, 24 };
+	static constexpr Position voxelTileSize = { Position::TileXY, Position::TileXY, Position::TileZ };
 	/// Half of size of tile in voxels
-	static constexpr Position voxelTileCenter = { 8, 8, 12 };
+	static constexpr Position voxelTileCenter = { Position::TileXY / 2, Position::TileXY / 2, Position::TileZ / 2 };
 
 private:
 	/**
@@ -78,6 +83,7 @@ private:
 	struct ReactionScore
 	{
 		BattleUnit *unit;
+		BattleItem *weapon;
 		BattleActionType attackType;
 		double reactionScore;
 		double reactionReduction;
@@ -104,7 +110,7 @@ private:
 	BattleUnit* _movingUnit = nullptr;
 
 	/// Add light source.
-	void addLight(GraphSubset gs, Position center, int power, LightLayers layer);
+	void addLight(MapSubset gs, Position center, int power, LightLayers layer);
 	/// Calculate blockage amount.
 	int blockage(Tile *tile, const TilePart part, ItemDamageType type, int direction = -1, bool checkingFromOrigin = false);
 	/// Get max distance that fire light can reach.
@@ -126,13 +132,13 @@ private:
 	inline bool inEventVisibilitySector(const Position &toCheck) const;
 
 	/// Calculates sun shading of the whole map.
-	void calculateSunShading(GraphSubset gs);
+	void calculateSunShading(MapSubset gs);
 	/// Recalculates lighting of the battlescape for terrain.
-	void calculateTerrainBackground(GraphSubset gs);
+	void calculateTerrainBackground(MapSubset gs);
 	/// Recalculates lighting of the battlescape for terrain.
-	void calculateTerrainItems(GraphSubset gs);
+	void calculateTerrainItems(MapSubset gs);
 	/// Recalculates lighting of the battlescape for units.
-	void calculateUnitLighting(GraphSubset gs);
+	void calculateUnitLighting(MapSubset gs);
 
 	/// Checks validity of a snap shot to this position.
 	ReactionScore determineReactionType(BattleUnit *unit, BattleUnit *target);
@@ -141,7 +147,7 @@ private:
 	/// Given a vector of spotters, and a unit, picks the spotter with the highest reaction score.
 	ReactionScore *getReactor(std::vector<ReactionScore> &spotters, BattleUnit *unit);
 	/// Tries to perform a reaction snap shot to this location.
-	bool tryReaction(BattleUnit *unit, BattleUnit *target, BattleActionType attackType, const BattleAction &originalAction);
+	bool tryReaction(ReactionScore *reaction, BattleUnit *target, const BattleAction &originalAction);
 public:
 	/// Creates a new TileEngine class.
 	TileEngine(SavedBattleGame *save, Mod *mod);
@@ -157,7 +163,7 @@ public:
 	void calculateFOV(Position position, int eventRadius = -1, const bool updateTiles = true, const bool appendToTileVisibility = false);
 	/// Checks reaction fire.
 	bool checkReactionFire(BattleUnit *unit, const BattleAction &originalAction);
-	/// Recalcualte all lighting in some area.
+	/// Recalculate all lighting in some area.
 	void calculateLighting(LightLayers layer, Position position = invalid, int eventRadius = 0, bool terrianChanged = false);
 	/// Handles tile hit.
 	int hitTile(Tile *tile, int damage, const RuleDamageType* type);
@@ -194,7 +200,7 @@ public:
 	/// Checks the vertical blockage of a tile.
 	int verticalBlockage(Tile *startTile, Tile *endTile, ItemDamageType type, bool skipObject = false);
 	/// Calculate success rate of psi attack.
-	int psiAttackCalculate(BattleActionType type, BattleUnit *attacker, BattleUnit *victim, BattleItem *weapon);
+	int psiAttackCalculate(BattleActionAttack::ReadOnly attack, const BattleUnit *victim);
 	/// Attempts a panic or mind control action.
 	bool psiAttack(BattleActionAttack attack, BattleUnit *victim);
 	/// Attempts a melee attack action.
@@ -202,12 +208,11 @@ public:
 	/// Remove the medikit from the game if consumable and empty.
 	void medikitRemoveIfEmpty(BattleAction *action);
 	/// Try using medikit heal ability.
-	void medikitHeal(BattleAction *action, BattleUnit *target, int bodyPart);
-	/// Try using medikit stimulant ability.
-	void medikitStimulant(BattleAction *action, BattleUnit *target);
-	/// Try using medikit pain killer ability.
-	void medikitPainKiller(BattleAction *action, BattleUnit *target);
-
+	bool medikitUse(BattleAction *action, BattleUnit *target, BattleMediKitAction medikitAction, int bodyPart);
+	/// Try using a skill.
+	bool skillUse(BattleAction *action, const RuleSkill *skill);
+	/// Try to conceal a unit.
+	bool tryConcealUnit(BattleUnit* unit);
 	/// Applies gravity to anything that occupy this tile.
 	Tile *applyGravity(Tile *t);
 
@@ -263,6 +268,7 @@ public:
 	void setDangerZone(Position pos, int radius, BattleUnit *unit);
 	/// Checks if a position is valid for a unit, used for spawning and forced movement.
 	bool isPositionValidForUnit(Position &position, BattleUnit *unit, bool checkSurrounding = false, int startSurroundingCheckDirection = 0);
+	void updateGameStateAfterScript(BattleActionAttack battleActionAttack, Position pos);
 
 };
 

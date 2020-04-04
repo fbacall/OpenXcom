@@ -55,7 +55,7 @@ namespace OpenXcom
 		centerAllSurfaces();
 
 		// Set up objects
-		_window->setBackground(_game->getMod()->getSurface("BACK01.SCR"));
+		setWindowBackground(_window, "optionsMenu");
 
 		_btnYes->setText(tr("STR_YES"));
 		_btnYes->onMouseClick((ActionHandler)&OptionsInformExtendedState::btnYesClick);
@@ -81,7 +81,7 @@ namespace OpenXcom
 	 * Closes the window. Enables the mod.
 	 * @param action Pointer to an action.
 	 */
-	void OptionsInformExtendedState::btnYesClick(Action *action)
+	void OptionsInformExtendedState::btnYesClick(Action *)
 	{
 		_game->popState();
 

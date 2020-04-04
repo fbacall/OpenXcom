@@ -50,7 +50,7 @@ struct BattleUnitStatistics;
 struct StatAdjustment;
 
 enum UnitStatus {STATUS_STANDING, STATUS_WALKING, STATUS_FLYING, STATUS_TURNING, STATUS_AIMING, STATUS_COLLAPSING, STATUS_DEAD, STATUS_UNCONSCIOUS, STATUS_PANICKING, STATUS_BERSERK, STATUS_IGNORE_ME};
-enum UnitFaction {FACTION_PLAYER, FACTION_HOSTILE, FACTION_NEUTRAL};
+enum UnitFaction : int {FACTION_PLAYER, FACTION_HOSTILE, FACTION_NEUTRAL};
 enum UnitBodyPart {BODYPART_HEAD, BODYPART_TORSO, BODYPART_RIGHTARM, BODYPART_LEFTARM, BODYPART_RIGHTLEG, BODYPART_LEFTLEG, BODYPART_MAX};
 enum UnitBodyPartEx {BODYPART_LEGS = BODYPART_MAX, BODYPART_COLLAPSING, BODYPART_ITEM_RIGHTHAND, BODYPART_ITEM_LEFTHAND, BODYPART_ITEM_FLOOR, BODYPART_ITEM_INVENTORY, BODYPART_LARGE_TORSO, BODYPART_LARGE_PROPULSION = BODYPART_LARGE_TORSO + 4, BODYPART_LARGE_TURRET = BODYPART_LARGE_PROPULSION + 4};
 
@@ -92,7 +92,7 @@ private:
 	std::vector<BattleUnit *> _visibleUnits, _unitsSpottedThisTurn;
 	std::vector<Tile *> _visibleTiles;
 	std::unordered_set<Tile *> _visibleTilesLookup;
-	int _tu, _energy, _health, _morale, _stunlevel;
+	int _tu, _energy, _health, _morale, _stunlevel, _mana;
 	bool _kneeled, _floating, _dontReselect;
 	bool _haveNoFloorBelow = false;
 	int _currentArmor[SIDE_MAX], _maxArmor[SIDE_MAX];
@@ -106,15 +106,15 @@ private:
 	int _motionPoints;
 	int _scannedTurn;
 	int _kills;
-	int _faceDirection; // used only during strafeing moves
+	int _faceDirection; // used only during strafing moves
 	bool _hitByFire, _hitByAnything, _alreadyExploded;
 	int _fireMaxHit;
 	int _smokeMaxHit;
 	int _moraleRestored;
 	int _coverReserve;
 	BattleUnit *_charging;
-	int _turnsSinceSpotted, _turnsLeftSpottedForSnipers;
-	std::string _spawnUnit;
+	int _turnsSinceSpotted, _turnsLeftSpottedForSnipers, _turnsSinceStunned = 255;
+	const Unit *_spawnUnit = nullptr;
 	std::string _activeHand;
 	BattleUnitStatistics* _statistics;
 	int _murdererId;	// used to credit the murderer with the kills that this unit got by blowing up on death
@@ -132,6 +132,7 @@ private:
 	int _standHeight, _kneelHeight, _floatHeight;
 	int _lastReloadSound;
 	std::vector<int> _deathSound;
+	std::vector<int> _selectUnitSound, _startMovingSound, _selectWeaponSound, _annoyedSound;
 	int _value, _aggroSound, _moveSound;
 	int _intelligence, _aggression;
 	int _maxViewDistanceAtDark, _maxViewDistanceAtDay;
@@ -154,9 +155,9 @@ private:
 	bool _capturable;
 	ScriptValues<BattleUnit> _scriptValues;
 
-	/// Calculate stat improvment.
+	/// Calculate stat improvement.
 	int improveStat(int exp) const;
-	/// Helper function initing recolor vector.
+	/// Helper function initializing recolor vector.
 	void setRecolor(int basicLook, int utileLook, int rankLook);
 	/// Helper function preparing Time Units recovery at beginning of turn.
 	void prepareTimeUnits(int tu);
@@ -164,10 +165,18 @@ private:
 	void prepareEnergy(int energy);
 	/// Helper function preparing Health recovery at beginning of turn.
 	void prepareHealth(int helath);
+	/// Helper function preparing Mana recovery at beginning of turn.
+	void prepareMana(int mana);
 	/// Helper function preparing Stun recovery at beginning of turn.
 	void prepareStun(int strun);
 	/// Helper function preparing Morale recovery at beginning of turn.
 	void prepareMorale(int morale);
+	/// Helper function preparing unit sounds.
+	void prepareUnitSounds();
+	/// Helper function preparing unit response sounds.
+	void prepareUnitResponseSounds(const Mod *mod);
+	/// Applies percentual and/or flat adjustments to the use costs.
+	void applyPercentages(RuleItemUseCost &cost, const RuleItemUseCost &flat) const;
 public:
 	static const int MAX_SOLDIER_ID = 1000000;
 	/// Name of class used in script.
@@ -178,15 +187,15 @@ public:
 	static void ScriptFill(ScriptWorkerBlit* w, BattleUnit* unit, int body_part, int anim_frame, int shade, int burn);
 
 	/// Creates a BattleUnit from solder.
-	BattleUnit(Soldier *soldier, int depth, int maxViewDistance);
+	BattleUnit(const Mod *mod, Soldier *soldier, int depth);
 	/// Creates a BattleUnit from unit.
-	BattleUnit(Unit *unit, UnitFaction faction, int id, const RuleStartingCondition* sc, Armor *armor, StatAdjustment *adjustment, int depth, int maxViewDistance);
+	BattleUnit(const Mod *mod, Unit *unit, UnitFaction faction, int id, const RuleEnviroEffects* enviro, Armor *armor, StatAdjustment *adjustment, int depth);
 	/// Updates BattleUnit's armor and related attributes (after a change/transformation of armor).
-	void updateArmorFromSoldier(Soldier *soldier, Armor *ruleArmor, int depth, int maxViewDistance);
+	void updateArmorFromSoldier(const Mod *mod, Soldier *soldier, Armor *ruleArmor, int depth);
 	/// Cleans up the BattleUnit.
 	~BattleUnit();
 	/// Loads the unit from YAML.
-	void load(const YAML::Node &node, const ScriptGlobal *shared);
+	void load(const YAML::Node &node, const Mod *mod, const ScriptGlobal *shared);
 	/// Saves the unit to YAML.
 	YAML::Node save(const ScriptGlobal *shared) const;
 	/// Gets the BattleUnit's ID.
@@ -197,7 +206,7 @@ public:
 	Position getPosition() const;
 	/// Gets the unit's position.
 	Position getLastPosition() const;
-	/// Gets the unit's position of center in vexels.
+	/// Gets the unit's position of center in voxels.
 	Position getPositionVexels() const;
 	/// Sets the unit's direction 0-7.
 	void setDirection(int direction);
@@ -264,6 +273,8 @@ public:
 	int getEnergy() const;
 	/// Gets the unit's health.
 	int getHealth() const;
+	/// Gets the unit's mana.
+	int getMana() const;
 	/// Gets the unit's bravery.
 	int getMorale() const;
 	/// Get overkill damage to unit.
@@ -292,6 +303,8 @@ public:
 	RuleItemUseCost getActionTUs(BattleActionType actionType, const BattleItem *item) const;
 	/// Get the number of time units a certain action takes.
 	RuleItemUseCost getActionTUs(BattleActionType actionType, const RuleItem *item) const;
+	/// Get the number of time units a certain skill action takes.
+	RuleItemUseCost getActionTUs(BattleActionType actionType, const RuleSkill *skillRules) const;
 	/// Spend time units if it can.
 	bool spendTimeUnits(int tu);
 	/// Spend energy if it can.
@@ -313,17 +326,20 @@ public:
 	/// Add unit to visible tiles.
 	bool addToVisibleTiles(Tile *tile);
 	/// Has this unit marked this tile as within its view?
-	bool hasVisibleTile(Tile *tile) const;
+	bool hasVisibleTile(Tile *tile) const
+	{
+		return _visibleTilesLookup.find(tile) != _visibleTilesLookup.end(); //find?
+	}
 	/// Get the list of visible tiles.
 	const std::vector<Tile*> *getVisibleTiles();
 	/// Clear visible tiles.
 	void clearVisibleTiles();
 	/// Calculate psi attack accuracy.
-	int getPsiAccuracy(BattleActionType actionType, BattleItem *item);
+	static int getPsiAccuracy(BattleActionAttack::ReadOnly attack);
 	/// Calculate firing accuracy.
-	int getFiringAccuracy(BattleActionType actionType, BattleItem *item, Mod *mod);
+	static int getFiringAccuracy(BattleActionAttack::ReadOnly attack, Mod *mod);
 	/// Calculate accuracy modifier.
-	int getAccuracyModifier(BattleItem *item = 0);
+	int getAccuracyModifier(const BattleItem *item = 0) const;
 	/// Set armor value.
 	void setArmor(int armor, UnitSide side);
 	/// Get armor value.
@@ -340,7 +356,7 @@ public:
 	void updateUnitStats(bool tuAndEnergy, bool rest);
 	/// Morale change
 	void moraleChange(int change);
-	/// Calculate value of morale change based on breavy.
+	/// Calculate value of morale change based on bravery.
 	int reduceByBravery(int moraleChange) const;
 	/// Calculate power reduction by resistances.
 	int reduceByResistance(int power, ItemDamageType resistType) const;
@@ -377,7 +393,7 @@ public:
 	void updateTileFloorState(SavedBattleGame *saveBattleGame);
 	/// Sets the unit's tile it's standing on
 	void setTile(Tile *tile, SavedBattleGame *saveBattleGame = 0);
-	/// Set only unit tile without any addtional logic.
+	/// Set only unit tile without any additional logic.
 	void setInventoryTile(Tile *tile);
 	/// Gets the unit's tile.
 	Tile *getTile() const;
@@ -394,7 +410,7 @@ public:
 	BattleItem *getRightHandWeapon() const;
 	/// Gets the item from left hand.
 	BattleItem *getLeftHandWeapon() const;
-	/// Reloads righthand weapon if needed.
+	/// Reloads a weapon if needed.
 	bool reloadAmmo();
 	/// Check if this unit is in the exit area
 	bool isInExitArea(SpecialTileType stt = START_POINT) const;
@@ -415,6 +431,8 @@ public:
 	void addPsiSkillExp();
 	/// Adds one to the psi strength exp counter.
 	void addPsiStrengthExp();
+	/// Adds one to the mana exp counter.
+	void addManaExp();
 	/// Adds one to the melee exp counter.
 	void addMeleeExp();
 	/// Did the unit gain any experience yet?
@@ -422,7 +440,7 @@ public:
 	/// Updates the stats of a Geoscape soldier.
 	void updateGeoscapeStats(Soldier *soldier) const;
 	/// Check if unit eligible for squaddie promotion.
-	bool postMissionProcedures(SavedGame *geoscape, SavedBattleGame *battle, StatAdjustment &statsDiff);
+	bool postMissionProcedures(const Mod *mod, SavedGame *geoscape, SavedBattleGame *battle, StatAdjustment &statsDiff);
 	/// Get the sprite index for the minimap
 	int getMiniMapSpriteIndex() const;
 	/// Set the turret type. -1 is no turret.
@@ -436,7 +454,7 @@ public:
 	/// Give pain killers to this unit
 	void painKillers(int moraleAmount, float painKillersStrength);
 	/// Give stimulant to this unit
-	void stimulant (int energy, int stun);
+	void stimulant (int energy, int stun, int mana);
 	/// Get motion points for the motion scanner.
 	int getMotionPoints() const;
 	/// Get turn when unit was scanned by the motion scanner.
@@ -465,6 +483,14 @@ public:
 	int getReloadSound() const { return _lastReloadSound; }
 	/// Get the unit's death sounds.
 	const std::vector<int> &getDeathSounds() const;
+	/// Gets the unit's "select unit" sounds.
+	const std::vector<int> &getSelectUnitSounds() const { return _selectUnitSound; }
+	/// Gets the unit's "start moving" sounds.
+	const std::vector<int> &getStartMovingSounds() const { return _startMovingSound; }
+	/// Gets the unit's "select weapon" sounds.
+	const std::vector<int> &getSelectWeaponSounds() const { return _selectWeaponSound; }
+	/// Gets the unit's "annoyed" sounds.
+	const std::vector<int> &getAnnoyedSounds() const { return _annoyedSound; }
 	/// Get the unit's move sound.
 	int getMoveSound() const;
 	/// Get whether the unit is affected by fatal wounds.
@@ -511,11 +537,13 @@ public:
 	/// Set health to 0 and set status dead
 	void instaKill();
 	/// Gets the unit's spawn unit.
-	std::string getSpawnUnit() const;
+	const Unit *getSpawnUnit() const;
 	/// Sets the unit's spawn unit.
-	void setSpawnUnit(const std::string &spawnUnit);
+	void setSpawnUnit(const Unit *spawnUnit);
 	/// Gets the unit's aggro sound.
 	int getAggroSound() const;
+	/// Sets the unit's time units.
+	void setTimeUnits(int tu);
 	/// Sets the unit's energy level.
 	void setEnergy(int energy);
 	/// Get the faction that killed this unit.
@@ -528,6 +556,7 @@ public:
 	BattleUnit *getCharging();
 	/// Get the carried weight in strength units.
 	int getCarriedWeight(BattleItem *draggingItem = 0) const;
+
 	/// Set how many turns this unit will be exposed for.
 	void setTurnsSinceSpotted (int turns);
 	/// Set how many turns this unit will be exposed for.
@@ -536,6 +565,13 @@ public:
 	void setTurnsLeftSpottedForSnipers (int turns);
 	/// Get how many turns left snipers know about this target.
 	int  getTurnsLeftSpottedForSnipers() const;
+	/// Reset how many turns passed since stunned last time.
+	void resetTurnsSinceStunned() { _turnsSinceStunned = 255; }
+	/// Increse how many turns passed since stunned last time.
+	void incTurnsSinceStunned() { _turnsSinceStunned = std::max(255, _turnsSinceStunned + 1); }
+	/// Return how many truns passed since stunned last time.
+	int getTurnsSinceStunned() const { return _turnsSinceStunned; }
+
 	/// Get this unit's original faction
 	UnitFaction getOriginalFaction() const;
 	/// Get alien/HWP unit.
@@ -573,18 +609,20 @@ public:
 	bool getFloorAbove() const;
 	/// Get any utility weapon we may be carrying, or a built in one.
 	BattleItem *getUtilityWeapon(BattleType type);
-	/// Set fire damage form environment.
+	/// Set fire damage from environment.
 	void setEnviFire(int damage);
-	/// Set smoke damage form environment.
+	/// Set smoke damage from environment.
 	void setEnviSmoke(int damage);
-	/// Calculate smoke and fire damage form environment.
+	/// Calculate smoke and fire damage from environment.
 	void calculateEnviDamage(Mod *mod, SavedBattleGame *save);
 	/// Use this function to check the unit's movement type.
 	MovementType getMovementType() const;
 	/// Create special weapon for unit.
 	void setSpecialWeapon(SavedBattleGame *save);
-	/// Get special weapon.
+	/// Get special weapon by battle type.
 	BattleItem *getSpecialWeapon(BattleType type) const;
+	/// Get special weapon by name.
+	BattleItem *getSpecialWeapon(const RuleItem *weaponRule) const;
 	/// Gets special weapon that uses an icon, if any.
 	BattleItem *getSpecialIconWeapon(BattleType &type) const;
 	/// Checks if this unit is in hiding for a turn.

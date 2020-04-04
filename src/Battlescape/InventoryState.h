@@ -44,7 +44,7 @@ class InventoryState : public State
 {
 private:
 	Surface *_bg, *_soldier;
-	Text *_txtItem, *_txtAmmo, *_txtWeight, *_txtTus, *_txtFiringAcc, *_txtThrowingAcc, *_txtMeleeAcc, *_txtPsi;
+	Text *_txtItem, *_txtAmmo, *_txtWeight, *_txtTus, *_txtStatLine1, *_txtStatLine2, *_txtStatLine3, *_txtStatLine4;
 	TextEdit *_txtName;
 	TextEdit *_btnQuickSearch;
 	BattlescapeButton *_btnOk, *_btnPrev, *_btnNext, *_btnUnload, *_btnGround, *_btnRank, *_btnArmor;
@@ -73,7 +73,7 @@ public:
 	/// Cleans up the Inventory state.
 	~InventoryState();
 	/// Updates all soldier info.
-	void setGlobalLayoutIndex(int index);
+	void setGlobalLayoutIndex(int index, bool armorChanged);
 	void init() override;
 	/// Handler for pressing on the Name edit.
 	void edtSoldierPress(Action *action);
@@ -88,8 +88,9 @@ public:
 	void btnArmorClickRight(Action *action);
 	void btnArmorClickMiddle(Action *action);
 	/// Methods for handling the global equipment layout save/load hotkeys.
-	void saveGlobalLayout(int index);
+	void saveGlobalLayout(int index, bool includingArmor);
 	void loadGlobalLayout(int index);
+	bool loadGlobalLayoutArmor(int index);
 	void btnGlobalEquipmentLayoutClick(Action *action);
 	/// Handler for clicking the Load button.
 	void btnInventoryLoadClick(Action *action);
@@ -118,7 +119,7 @@ public:
 	void btnApplyTemplateClick(Action *action);
 	/// Handler for hitting the Clear Inventory hotkey.
 	void onClearInventory(Action *action);
-	/// Handler for hitting the Autoequip hotkey.
+	/// Handler for hitting the Auto-equip hotkey.
 	void onAutoequip(Action *action);
 	/// Handler for clicking on the inventory.
 	void invClick(Action *action);

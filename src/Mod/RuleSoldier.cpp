@@ -19,10 +19,13 @@
 
 #include <algorithm>
 #include "RuleSoldier.h"
+#include "RuleSkill.h"
 #include "Mod.h"
 #include "ModScript.h"
+#include "RuleItem.h"
 #include "SoldierNamePool.h"
 #include "StatString.h"
+#include "../Engine/Collections.h"
 #include "../Engine/FileMap.h"
 #include "../Engine/ScriptBind.h"
 #include "../Engine/Unicode.h"
@@ -31,16 +34,16 @@ namespace OpenXcom
 {
 
 /**
- * Creates a blank ruleunit for a certain
+ * Creates a blank RuleSoldier for a certain
  * type of soldier.
  * @param type String defining the type.
  */
-RuleSoldier::RuleSoldier(const std::string &type) : _type(type), _listOrder(0), _costBuy(0), _costSalary(0),
+RuleSoldier::RuleSoldier(const std::string &type) : _type(type), _listOrder(0), _specWeapon(nullptr), _costBuy(0), _costSalary(0),
 	_costSalarySquaddie(0), _costSalarySergeant(0), _costSalaryCaptain(0), _costSalaryColonel(0), _costSalaryCommander(0),
 	_standHeight(0), _kneelHeight(0), _floatHeight(0), _femaleFrequency(50), _value(20), _transferTime(0), _moraleLossWhenKilled(100),
 	_avatarOffsetX(67), _avatarOffsetY(48), _flagOffset(0),
-	_allowPromotion(true), _allowPiloting(true),
-	_rankSprite(42), _rankSpriteBattlescape(20), _rankSpriteTiny(0)
+	_allowPromotion(true), _allowPiloting(true), _showTypeInInventory(false),
+	_rankSprite(42), _rankSpriteBattlescape(20), _rankSpriteTiny(0), _skillIconSprite(1)
 {
 }
 
@@ -56,31 +59,6 @@ RuleSoldier::~RuleSoldier()
 	for (std::vector<StatString*>::iterator i = _statStrings.begin(); i != _statStrings.end(); ++i)
 	{
 		delete *i;
-	}
-}
-
-/**
- * Loads a sound vector for a given attribute/node.
- * @param node YAML node.
- * @param mod Mod for the item.
- * @param vector Sound vector to load into.
- */
-void RuleSoldier::loadSoundVector(const YAML::Node &node, Mod *mod, std::vector<int> &vector)
-{
-	if (node)
-	{
-		vector.clear();
-		if (node.IsSequence())
-		{
-			for (YAML::const_iterator i = node.begin(); i != node.end(); ++i)
-			{
-				vector.push_back(mod->getSoundOffset(i->as<int>(), "BATTLE.CAT"));
-			}
-		}
-		else
-		{
-			vector.push_back(mod->getSoundOffset(node.as<int>(), "BATTLE.CAT"));
-		}
 	}
 }
 
@@ -102,9 +80,7 @@ void RuleSoldier::load(const YAML::Node &node, Mod *mod, int listOrder, const Mo
 
 	//requires
 	_requires = node["requires"].as< std::vector<std::string> >(_requires);
-	_requiresBuyBaseFunc = node["requiresBuyBaseFunc"].as< std::vector<std::string> >(_requiresBuyBaseFunc);
-
-	std::sort(_requiresBuyBaseFunc.begin(), _requiresBuyBaseFunc.end());
+	mod->loadBaseFunction(_type, _requiresBuyBaseFunc, node["requiresBuyBaseFunc"]);
 
 
 	_minStats.merge(node["minStats"].as<UnitStats>(_minStats));
@@ -120,6 +96,7 @@ void RuleSoldier::load(const YAML::Node &node, Mod *mod, int listOrder, const Mo
 	}
 	_dogfightExperience.merge(node["dogfightExperience"].as<UnitStats>(_dogfightExperience));
 	_armor = node["armor"].as<std::string>(_armor);
+	_specWeaponName = node["specialWeapon"].as<std::string>(_specWeaponName);
 	_armorForAvatar = node["armorForAvatar"].as<std::string>(_armorForAvatar);
 	_avatarOffsetX = node["avatarOffsetX"].as<int>(_avatarOffsetX);
 	_avatarOffsetY = node["avatarOffsetY"].as<int>(_avatarOffsetY);
@@ -140,13 +117,23 @@ void RuleSoldier::load(const YAML::Node &node, Mod *mod, int listOrder, const Mo
 	_value = node["value"].as<int>(_value);
 	_transferTime = node["transferTime"].as<int>(_transferTime);
 	_moraleLossWhenKilled = node["moraleLossWhenKilled"].as<int>(_moraleLossWhenKilled);
+	_showTypeInInventory = node["showTypeInInventory"].as<bool>(_showTypeInInventory);
 
-	loadSoundVector(node["deathMale"], mod, _deathSoundMale);
-	loadSoundVector(node["deathFemale"], mod, _deathSoundFemale);
-	loadSoundVector(node["panicMale"], mod, _panicSoundMale);
-	loadSoundVector(node["panicFemale"], mod, _panicSoundFemale);
-	loadSoundVector(node["berserkMale"], mod, _berserkSoundMale);
-	loadSoundVector(node["berserkFemale"], mod, _berserkSoundFemale);
+	mod->loadSoundOffset(_type, _deathSoundMale, node["deathMale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _deathSoundFemale, node["deathFemale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _panicSoundMale, node["panicMale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _panicSoundFemale, node["panicFemale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _berserkSoundMale, node["berserkMale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _berserkSoundFemale, node["berserkFemale"], "BATTLE.CAT");
+
+	mod->loadSoundOffset(_type, _selectUnitSoundMale, node["selectUnitMale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _selectUnitSoundFemale, node["selectUnitFemale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _startMovingSoundMale, node["startMovingMale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _startMovingSoundFemale, node["startMovingFemale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _selectWeaponSoundMale, node["selectWeaponMale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _selectWeaponSoundFemale, node["selectWeaponFemale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _annoyedSoundMale, node["annoyedMale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _annoyedSoundFemale, node["annoyedFemale"], "BATTLE.CAT");
 
 	for (YAML::const_iterator i = node["soldierNames"].begin(); i != node["soldierNames"].end(); ++i)
 	{
@@ -188,18 +175,12 @@ void RuleSoldier::load(const YAML::Node &node, Mod *mod, int listOrder, const Mo
 	}
 
 	_rankStrings = node["rankStrings"].as< std::vector<std::string> >(_rankStrings);
-	if (node["rankSprite"])
-	{
-		_rankSprite = mod->getSpriteOffset(node["rankSprite"].as<int>(_rankSprite), "BASEBITS.PCK");
-	}
-	if (node["rankBattleSprite"])
-	{
-		_rankSpriteBattlescape = mod->getSpriteOffset(node["rankBattleSprite"].as<int>(_rankSpriteBattlescape), "SMOKE.PCK");
-	}
-	if (node["rankTinySprite"])
-	{
-		_rankSpriteTiny = mod->getSpriteOffset(node["rankTinySprite"].as<int>(_rankSpriteTiny), "TinyRanks");
-	}
+	mod->loadSpriteOffset(_type, _rankSprite, node["rankSprite"], "BASEBITS.PCK");
+	mod->loadSpriteOffset(_type, _rankSpriteBattlescape, node["rankBattleSprite"], "SMOKE.PCK");
+	mod->loadSpriteOffset(_type, _rankSpriteTiny, node["rankTinySprite"], "TinyRanks");
+	mod->loadSpriteOffset(_type, _skillIconSprite, node["skillIconSprite"], "SPICONS.DAT");
+
+	_skillNames = node["skills"].as<std::vector<std::string> >(_skillNames);
 
 	_listOrder = node["listOrder"].as<int>(_listOrder);
 	if (!_listOrder)
@@ -208,6 +189,35 @@ void RuleSoldier::load(const YAML::Node &node, Mod *mod, int listOrder, const Mo
 	}
 
 	_scriptValues.load(node, parsers.getShared());
+}
+
+/**
+ * Cross link with other Rules.
+ */
+void RuleSoldier::afterLoad(const Mod* mod)
+{
+	if (!_specWeaponName.empty())
+	{
+		_specWeapon = mod->getItem(_specWeaponName, true);
+
+		if (_specWeapon)
+		{
+			if ((_specWeapon->getBattleType() == BT_FIREARM || _specWeapon->getBattleType() == BT_MELEE) && !_specWeapon->getClipSize())
+			{
+				throw Exception("Weapon " + _specWeaponName + " is used as a special weapon, but doesn't have its own ammo - give it a clipSize!");
+			}
+		}
+	}
+	for (auto& skillName : _skillNames)
+	{
+		_skills.push_back(mod->getSkill(skillName, true));
+	}
+
+	_manaMissingWoundThreshold = mod->getManaWoundThreshold();
+	_healthMissingWoundThreshold = mod->getHealthWoundThreshold();
+
+	//remove not needed data
+	Collections::removeAll(_skillNames);
 }
 
 void RuleSoldier::addSoldierNamePool(const std::string &namFile)
@@ -244,15 +254,6 @@ int RuleSoldier::getListOrder() const
 const std::vector<std::string> &RuleSoldier::getRequirements() const
 {
 	return _requires;
-}
-
-/**
- * Gets the base functions required to buy solder.
- * @retreturn The sorted list of base functions ID
- */
-const std::vector<std::string> &RuleSoldier::getRequiresBuyBaseFunc() const
-{
-	return _requiresBuyBaseFunc;
 }
 
 /**
@@ -316,6 +317,33 @@ int RuleSoldier::getBuyCost() const
 bool RuleSoldier::isSalaryDynamic() const
 {
 	return _costSalarySquaddie || _costSalarySergeant || _costSalaryCaptain || _costSalaryColonel || _costSalaryCommander;
+}
+
+/**
+ * Is a skill menu defined?
+ * @return True if a skill menu has been defined, false otherwise.
+ */
+bool RuleSoldier::isSkillMenuDefined() const
+{
+	return !_skills.empty();
+}
+
+/**
+ * Gets the list of defined skills.
+ * @return The list of defined skills.
+ */
+const std::vector<const RuleSkill*> &RuleSoldier::getSkills() const
+{
+	return _skills;
+}
+
+/**
+ * Gets the sprite index into SPICONS for the skill icon sprite.
+ * @return The sprite index.
+ */
+int RuleSoldier::getSkillIconSprite() const
+{
+	return _skillIconSprite;
 }
 
 /**
@@ -594,9 +622,9 @@ void RuleSoldier::ScriptRegister(ScriptParserBase* parser)
 {
 	Bind<RuleSoldier> ra = { parser };
 
-	UnitStats::addGetStatsScript<RuleSoldier, &RuleSoldier::_statCaps>(ra, "StatsCap.");
-	UnitStats::addGetStatsScript<RuleSoldier, &RuleSoldier::_minStats>(ra, "StatsMin.");
-	UnitStats::addGetStatsScript<RuleSoldier, &RuleSoldier::_maxStats>(ra, "StatsMax.");
+	UnitStats::addGetStatsScript<&RuleSoldier::_statCaps>(ra, "StatsCap.");
+	UnitStats::addGetStatsScript<&RuleSoldier::_minStats>(ra, "StatsMin.");
+	UnitStats::addGetStatsScript<&RuleSoldier::_maxStats>(ra, "StatsMax.");
 
 	ra.addScriptValue<&RuleSoldier::_scriptValues>(false);
 	ra.addDebugDisplay<&debugDisplayScript>();

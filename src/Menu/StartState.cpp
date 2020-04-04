@@ -63,6 +63,7 @@ StartState::StartState() : _anim(0)
 	_thread = 0;
 	loading = LOADING_STARTED;
 	error = "";
+	_oldMaster = Options::getActiveMaster();
 
 	_font = new Font();
 	_font->loadTerminal();
@@ -173,12 +174,12 @@ void StartState::think()
 	case LOADING_SUCCESSFUL:
 		CrossPlatform::flashWindow();
 		Log(LOG_INFO) << "OpenXcom started successfully!";
-		_game->setState(new GoToMainMenuState);
-		if (!Options::reload && Options::playIntro)
+		_game->setState(new GoToMainMenuState(true));
+		if (_oldMaster != Options::getActiveMaster() && Options::playIntro)
 		{
 			_game->pushState(new CutsceneState("intro"));
 		}
-		else
+		if (Options::reload)
 		{
 			Options::reload = false;
 		}

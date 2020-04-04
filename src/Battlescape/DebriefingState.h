@@ -66,11 +66,11 @@ private:
 	Base *_base;
 	std::vector<DebriefingStat*> _stats;
 	std::vector<SoldierStatsEntry> _soldierStats;
-	TextButton *_btnOk, *_btnStats, *_btnSell;
+	TextButton *_btnOk, *_btnStats, *_btnSell, *_btnTransfer;
 	Window *_window;
-	Text *_txtTitle, *_txtItem, *_txtQuantity, *_txtScore, *_txtRecovery, *_txtRating,
-	     *_txtSoldier, *_txtTU, *_txtStamina, *_txtHealth, *_txtBravery, *_txtReactions,
-	     *_txtFiring, *_txtThrowing, *_txtMelee, *_txtStrength, *_txtPsiStrength, *_txtPsiSkill;
+	Text *_txtTitle, *_txtItem, *_txtQuantity, *_txtScore, *_txtRecovery, *_txtRating;
+	Text *_txtSoldier, *_txtTU, *_txtStamina, *_txtHealth, *_txtBravery, *_txtReactions;
+	Text *_txtFiring, *_txtThrowing, *_txtMelee, *_txtStrength, *_txtPsiStrength, *_txtPsiSkill;
 	TextList *_lstStats, *_lstRecovery, *_lstTotal, *_lstSoldierStats, *_lstRecoveredItems;
 	std::string _currentTooltip;
 	Text *_txtTooltip;
@@ -116,14 +116,20 @@ public:
 	void btnStatsClick(Action *action);
 	/// Handler for clicking the SELL button.
 	void btnSellClick(Action *action);
+	/// Handler for clicking the TRANSFER button.
+	void btnTransferClick(Action *action);
 	/// Handler for showing tooltip.
 	void txtTooltipIn(Action *action);
 	/// Handler for hiding tooltip.
 	void txtTooltipOut(Action *action);
 	// Gets the number of recovered items of certain type.
 	int getRecoveredItemCount(RuleItem *rule);
-	// Sets the visibility of the SELL button.
-	void setShowSellButton(bool showSellButton);
+	// Gets the total number of recovered items.
+	int getTotalRecoveredItemCount();
+	// Decreases the number of recovered items by the sold/transferred amount.
+	void decreaseRecoveredItemCount(RuleItem *rule, int amount);
+	// Hides the SELL and TRANSFER buttons.
+	void hideSellTransferButtons();
 };
 
 }

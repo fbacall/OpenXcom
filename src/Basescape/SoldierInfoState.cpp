@@ -39,9 +39,11 @@
 #include "../Menu/ErrorMessageState.h"
 #include "SellState.h"
 #include "SoldierArmorState.h"
+#include "SoldierBonusState.h"
 #include "SackSoldierState.h"
 #include "../Mod/RuleInterface.h"
 #include "../Mod/RuleSoldier.h"
+#include "../Mod/RuleSoldierBonus.h"
 #include "../Savegame/SoldierDeath.h"
 
 namespace OpenXcom
@@ -53,7 +55,7 @@ namespace OpenXcom
  * @param base Pointer to the base to get info from. NULL to use the dead soldiers list.
  * @param soldierId ID of the selected soldier.
  */
-SoldierInfoState::SoldierInfoState(Base *base, size_t soldierId) : _base(base), _soldierId(soldierId)
+SoldierInfoState::SoldierInfoState(Base *base, size_t soldierId) : _base(base), _soldierId(soldierId), _soldier(0)
 {
 	if (_base == 0)
 	{
@@ -80,6 +82,7 @@ SoldierInfoState::SoldierInfoState(Base *base, size_t soldierId) : _base(base), 
 	_btnOk = new TextButton(48, 14, 30, 33);
 	_btnNext = new TextButton(28, 14, 80, 33);
 	_btnArmor = new TextButton(110, 14, 130, 33);
+	_btnBonuses = new TextButton(16, 14, 242, 33);
 	_edtSoldier = new TextEdit(this, 210, 16, 40, 9);
 	_btnSack = new TextButton(60, 14, 260, 33);
 	_btnDiary = new TextButton(60, 14, 260, 48);
@@ -93,6 +96,11 @@ SoldierInfoState::SoldierInfoState(Base *base, size_t soldierId) : _base(base), 
 
 	int yPos = 80;
 	int step = 11;
+	if (_game->getMod()->isManaFeatureEnabled())
+	{
+		yPos = 81;
+		step = 10;
+	}
 
 	_txtTimeUnits = new Text(120, 9, 6, yPos);
 	_numTimeUnits = new Text(18, 9, 131, yPos);
@@ -139,6 +147,14 @@ SoldierInfoState::SoldierInfoState(Base *base, size_t soldierId) : _base(base), 
 	_barStrength = new Bar(170, 7, 150, yPos);
 	yPos += step;
 
+	if (_game->getMod()->isManaFeatureEnabled())
+	{
+		_txtMana = new Text(120, 9, 6, yPos);
+		_numMana = new Text(18, 9, 131, yPos);
+		_barMana = new Bar(170, 7, 150, yPos);
+		yPos += step;
+	}
+
 	_txtPsiStrength = new Text(120, 9, 6, yPos);
 	_numPsiStrength = new Text(18, 9, 131, yPos);
 	_barPsiStrength = new Bar(170, 7, 150, yPos);
@@ -158,6 +174,7 @@ SoldierInfoState::SoldierInfoState(Base *base, size_t soldierId) : _base(base), 
 	add(_btnPrev, "button", "soldierInfo");
 	add(_btnNext, "button", "soldierInfo");
 	add(_btnArmor, "button", "soldierInfo");
+	add(_btnBonuses, "button", "soldierInfo");
 	add(_edtSoldier, "text1", "soldierInfo");
 	add(_btnSack, "button", "soldierInfo");
 	add(_btnDiary, "button", "soldierInfo");
@@ -205,6 +222,13 @@ SoldierInfoState::SoldierInfoState(Base *base, size_t soldierId) : _base(base), 
 	add(_numStrength, "numbers", "soldierInfo");
 	add(_barStrength, "barStrength", "soldierInfo");
 
+	if (_game->getMod()->isManaFeatureEnabled())
+	{
+		add(_txtMana, "text2", "soldierInfo");
+		add(_numMana, "numbers", "soldierInfo");
+		add(_barMana, "barMana", "soldierInfo");
+	}
+
 	add(_txtPsiStrength, "text2", "soldierInfo");
 	add(_numPsiStrength, "numbers", "soldierInfo");
 	add(_barPsiStrength, "barPsiStrength", "soldierInfo");
@@ -248,6 +272,9 @@ SoldierInfoState::SoldierInfoState(Base *base, size_t soldierId) : _base(base), 
 
 	_btnArmor->setText(tr("STR_ARMOR"));
 	_btnArmor->onMouseClick((ActionHandler)&SoldierInfoState::btnArmorClick);
+
+	_btnBonuses->setText(tr("STR_BONUSES_BUTTON")); // tiny button, default translation is " "
+	_btnBonuses->onMouseClick((ActionHandler)&SoldierInfoState::btnBonusesClick);
 
 	_edtSoldier->setBig();
 	_edtSoldier->onChange((ActionHandler)&SoldierInfoState::edtSoldierChange);
@@ -308,6 +335,12 @@ SoldierInfoState::SoldierInfoState(Base *base, size_t soldierId) : _base(base), 
 
 	_barStrength->setScale(1.0);
 
+	if (_game->getMod()->isManaFeatureEnabled())
+	{
+		_txtMana->setText(tr("STR_MANA_POOL"));
+		_barMana->setScale(1.0);
+	}
+
 	_txtPsiStrength->setText(tr("STR_PSIONIC_STRENGTH"));
 
 	_barPsiStrength->setScale(1.0);
@@ -347,8 +380,9 @@ void SoldierInfoState::init()
 	UnitStats *initial = _soldier->getInitStats();
 	UnitStats *current = _soldier->getCurrentStats();
 
-	UnitStats withArmor(*current);
-	withArmor += *(_soldier->getArmor()->getStats());
+	bool hasBonus = _soldier->prepareStatsWithBonuses(_game->getMod()); // refresh all bonuses
+	UnitStats withArmor = *_soldier->getStatsWithAllBonuses();
+	_btnBonuses->setVisible(hasBonus);
 
 	SurfaceSet *texture = _game->getMod()->getSurfaceSet("BASEBITS.PCK");
 	texture->getFrame(_soldier->getRankSprite())->blitNShade(_rank, 0, 0);
@@ -475,21 +509,62 @@ void SoldierInfoState::init()
 	}
 	_txtCraft->setText(tr("STR_CRAFT_").arg(craft));
 
+	auto recovery = _base ? _base->getSumRecoveryPerDay() : BaseSumDailyRecovery();
+	auto getDaysOrInfinity = [&](int days)
+	{
+		if (days < 0)
+		{
+			return std::string{ "∞" };
+		}
+		else
+		{
+			return std::string{tr("STR_DAY", days)};
+		}
+	};
 	if (_soldier->isWounded())
 	{
-		int recoveryTime = 0;
-		if (_base != 0)
-		{
-			recoveryTime = _soldier->getWoundRecovery(_base->getSickBayAbsoluteBonus(), _base->getSickBayRelativeBonus());
-		}
-		_txtRecovery->setText(tr("STR_WOUND_RECOVERY").arg(tr("STR_DAY", recoveryTime)));
+		int recoveryTime = _soldier->getNeededRecoveryTime(recovery);
+		_txtRecovery->setText(tr("STR_WOUND_RECOVERY").arg(getDaysOrInfinity(recoveryTime)));
 	}
 	else
 	{
 		_txtRecovery->setText("");
+		if (_soldier->getManaMissing() > 0)
+		{
+			int manaRecoveryTime = _soldier->getManaRecovery(recovery.ManaRecovery);
+			_txtRecovery->setText(tr("STR_MANA_RECOVERY").arg(getDaysOrInfinity(manaRecoveryTime)));
+		}
+		if (_soldier->getHealthMissing() > 0)
+		{
+			int healthRecoveryTime = _soldier->getHealthRecovery(recovery.HealthRecovery);
+			_txtRecovery->setText(tr("STR_HEALTH_RECOVERY").arg(getDaysOrInfinity(healthRecoveryTime)));
+		}
 	}
 
 	_txtPsionic->setVisible(_soldier->isInPsiTraining());
+
+	if (_game->getMod()->isManaFeatureEnabled())
+	{
+		if (_game->getSavedGame()->isManaUnlocked(_game->getMod()))
+		{
+			std::ostringstream ss16;
+			ss16 << withArmor.mana;
+			_numMana->setText(ss16.str());
+			_barMana->setMax(current->mana);
+			_barMana->setValue(withArmor.mana);
+			_barMana->setValue2(std::min(withArmor.mana, initial->mana));
+
+			_txtMana->setVisible(true);
+			_numMana->setVisible(true);
+			_barMana->setVisible(true);
+		}
+		else
+		{
+			_txtMana->setVisible(false);
+			_numMana->setVisible(false);
+			_barMana->setVisible(false);
+		}
+	}
 
 	if (current->psiSkill > 0 || (Options::psiStrengthEval && _game->getSavedGame()->isResearched(_game->getMod()->getPsiRequirements())))
 	{
@@ -630,6 +705,15 @@ void SoldierInfoState::btnArmorClick(Action *)
 	{
 		_game->pushState(new SoldierArmorState(_base, _soldierId, SA_GEOSCAPE));
 	}
+}
+
+/**
+ * Shows the SoldierBonus window.
+ * @param action Pointer to an action.
+ */
+void SoldierInfoState::btnBonusesClick(Action *)
+{
+	_game->pushState(new SoldierBonusState(_base, _soldierId));
 }
 
 /**

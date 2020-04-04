@@ -27,6 +27,7 @@
 #include "../Mod/RuleManufacture.h"
 #include "../Basescape/ManufactureState.h"
 #include "../Engine/Options.h"
+#include <unordered_set>
 
 namespace OpenXcom
 {
@@ -46,6 +47,7 @@ NewPossibleManufactureState::NewPossibleManufactureState(Base * base, const std:
 	_btnManufacture = new TextButton(160, 14, 80, 165);
 	_txtTitle = new Text(288, 40, 16, 20);
 	_lstPossibilities = new TextList(250, 80, 35, 50);
+	_txtCaveat = new Text(250, 16, 35, 131);
 
 	// Set palette
 	setInterface("geoManufacture");
@@ -55,11 +57,12 @@ NewPossibleManufactureState::NewPossibleManufactureState(Base * base, const std:
 	add(_btnManufacture, "button", "geoManufacture");
 	add(_txtTitle, "text1", "geoManufacture");
 	add(_lstPossibilities, "text2", "geoManufacture");
+	add(_txtCaveat, "text1", "geoManufacture");
 
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK17.SCR"));
+	setWindowBackground(_window, "geoManufacture");
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&NewPossibleManufactureState::btnOkClick);
@@ -70,6 +73,29 @@ NewPossibleManufactureState::NewPossibleManufactureState(Base * base, const std:
 	_txtTitle->setBig();
 	_txtTitle->setAlign(ALIGN_CENTER);
 	_txtTitle->setText(tr("STR_WE_CAN_NOW_PRODUCE"));
+
+	// Caveat
+	{
+		RuleBaseFacilityFunctions requiredServices;
+		for (auto& it : possibilities)
+		{
+			requiredServices |= it->getRequireBaseFunc();
+		}
+		std::ostringstream ss;
+		int i = 0;
+		for (auto& it : _game->getMod()->getBaseFunctionNames(requiredServices))
+		{
+			if (i > 0)
+				ss << ", ";
+			ss << tr(it);
+			i++;
+		}
+		std::string argument = ss.str();
+
+		_txtCaveat->setAlign(ALIGN_CENTER);
+		_txtCaveat->setText(tr("STR_REQUIRED_BASE_SERVICES").arg(argument));
+		_txtCaveat->setVisible(requiredServices.any());
+	}
 
 	_lstPossibilities->setColumns(1, 250);
 	_lstPossibilities->setBig();

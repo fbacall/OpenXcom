@@ -71,9 +71,17 @@ private:
 	void addSection(const std::string &name, const std::string &desc, Uint8 color, bool forceShow = false);
 	void addHeading(const std::string &propertyName, const std::string &moreDetail = "", bool addDifficulty = false);
 	void endHeading();
+
 	void addSingleString(std::ostringstream &ss, const std::string &id, const std::string &propertyName, const std::string &defaultId = "", bool translate = true);
 	void addVectorOfStrings(std::ostringstream &ss, const std::vector<std::string> &vec, const std::string &propertyName);
+
 	void addVectorOfResearch(std::ostringstream &ss, const std::vector<const RuleResearch *> &vec, const std::string &propertyName);
+
+	template<typename T>
+	void addRule(std::ostringstream &ss, T* rule, const std::string &propertyName);
+	template<typename T>
+	void addVectorOfRules(std::ostringstream &ss, const std::vector<T*> &vec, const std::string &propertyName);
+
 	void addBoolean(std::ostringstream &ss, const bool &value, const std::string &propertyName, const bool &defaultvalue = false);
 	void addFloat(std::ostringstream &ss, const float &value, const std::string &propertyName, const float &defaultvalue = 0.0f);
 	void addFloatAsPercentage(std::ostringstream &ss, const float &value, const std::string &propertyName, const float &defaultvalue = 0.0f);
@@ -95,6 +103,8 @@ private:
 	void addPercentageSignOrNothing(std::ostringstream &ss, const int &value, bool smartFormat);
 	void addRuleItemUseCostFull(std::ostringstream &ss, const RuleItemUseCost &value, const std::string &propertyName, const RuleItemUseCost &defaultvalue = RuleItemUseCost(), bool smartFormat = false, const RuleItemUseCost &formatBy = RuleItemUseCost());
 	void addBattleMediKitType(std::ostringstream &ss, const BattleMediKitType &value, const std::string &propertyName, const BattleMediKitType &defaultvalue = BMT_NORMAL);
+	void addMediKitTargets(std::ostringstream& ss, const RuleItem* value, const std::string& propertyName, const int& defaultvalue);
+	void addPsiampTargets(std::ostringstream& ss, const RuleItem* value, const std::string& propertyName, const int& defaultvalue);
 	void addExperienceTrainingMode(std::ostringstream &ss, const ExperienceTrainingMode &value, const std::string &propertyName, const ExperienceTrainingMode &defaultvalue = ETM_DEFAULT);
 	void addRuleStatBonus(std::ostringstream &ss, const RuleStatBonus &value, const std::string &propertyName);
 	void addSpriteResourcePath(std::ostringstream &ss, Mod *mod, const std::string &resourceSetName, const int &resourceId);
@@ -107,6 +117,7 @@ private:
 	void addForcedTorso(std::ostringstream &ss, const ForcedTorso &value, const std::string &propertyName, const ForcedTorso &defaultvalue = TORSO_USE_GENDER);
 	void addDrawingRoutine(std::ostringstream &ss, const int &value, const std::string &propertyName, const int &defaultvalue = 0);
 	void initArmorList();
+	void initSoldierBonusList();
 	void addVectorOfPositions(std::ostringstream &ss, const std::vector<Position> &vec, const std::string &propertyName);
 	void addBuildCostItem(std::ostringstream &ss, const std::pair<const std::string, std::pair<int, int> > &costItem);
 	void addRightClickActionType(std::ostringstream &ss, const int &value, const std::string &propertyName, const int &defaultvalue = 0);
@@ -115,6 +126,7 @@ private:
 	void addHuntMode(std::ostringstream &ss, const int &value, const std::string &propertyName, const int &defaultvalue = 0);
 	void addHuntBehavior(std::ostringstream &ss, const int &value, const std::string &propertyName, const int &defaultvalue = 0);
 	void initUfoList();
+	void initCraftWeaponList();
 public:
 	static const std::map<std::string, std::string> translationMap;
 	/// Creates the StatsForNerdsState state.

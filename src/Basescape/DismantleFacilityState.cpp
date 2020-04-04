@@ -67,7 +67,7 @@ DismantleFacilityState::DismantleFacilityState(Base *base, BaseView *view, BaseF
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK13.SCR"));
+	setWindowBackground(_window, "dismantleFacility");
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&DismantleFacilityState::btnOkClick);
@@ -121,7 +121,7 @@ void DismantleFacilityState::btnOkClick(Action *)
 
 		if (_fac->getBuildTime() > _fac->getRules()->getBuildTime())
 		{
-			// Give full refund if this is an unstarted, queued build.
+			// Give full refund if this is a (not yet started) queued build.
 			_game->getSavedGame()->setFunds(_game->getSavedGame()->getFunds() + _fac->getRules()->getBuildCost());
 			for (std::map<std::string, std::pair<int, int> >::const_iterator i = itemCost.begin(); i != itemCost.end(); ++i)
 			{
@@ -146,17 +146,11 @@ void DismantleFacilityState::btnOkClick(Action *)
 				// Determine if we leave behind any facilities when this one is removed
 				if (_fac->getBuildTime() == 0 && _fac->getRules()->getLeavesBehindOnSell().size() != 0)
 				{
-					const std::vector<std::string> &facList = _fac->getRules()->getLeavesBehindOnSell();
+					const auto &facList = _fac->getRules()->getLeavesBehindOnSell();
 					// Make sure the size of the facilities left behind matches the one we removed
-					if (_fac->getRules()->getSize() == _game->getMod()->getBaseFacility(facList.at(0))->getSize()) // equal size facilities
+					if (facList.at(0)->getSize() == _fac->getRules()->getSize()) // equal size facilities
 					{
-						RuleBaseFacility *newFacilityRules = _game->getMod()->getBaseFacility(facList.at(0));
-						if (!newFacilityRules)
-						{
-							throw Exception(_fac->getRules()->getType() + ": could not find facility " + facList.at(0) + " to leave behind.");
-						}
-
-						BaseFacility *fac = new BaseFacility(_game->getMod()->getBaseFacility(facList.at(0)), _base);
+						BaseFacility *fac = new BaseFacility(facList.at(0), _base);
 						fac->setX(_fac->getX());
 						fac->setY(_fac->getY());
 						if (_fac->getRules()->getRemovalTime() <= -1)
@@ -181,17 +175,7 @@ void DismantleFacilityState::btnOkClick(Action *)
 						{
 							for (int x = _fac->getX(); x != _fac->getX() + _fac->getRules()->getSize(); ++x)
 							{
-								RuleBaseFacility *newFacilityRules = _game->getMod()->getBaseFacility(facList.at(j));
-								if (!newFacilityRules)
-								{
-									throw Exception(_fac->getRules()->getType() + ": could not find facility " + facList.at(j) + " to leave behind.");
-								}
-								else if (newFacilityRules->getSize() != 1)
-								{
-									throw Exception(_fac->getRules()->getType() + ": facility " + facList.at(j) + " is too large, it should be size 1.");
-								}
-
-								BaseFacility *fac = new BaseFacility(newFacilityRules, _base);
+								BaseFacility *fac = new BaseFacility(facList.at(j), _base);
 								fac->setX(x);
 								fac->setY(y);
 								if (_fac->getRules()->getRemovalTime() <= -1)

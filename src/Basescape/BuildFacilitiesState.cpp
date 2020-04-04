@@ -62,7 +62,7 @@ BuildFacilitiesState::BuildFacilitiesState(Base *base, State *state) : _base(bas
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK05.SCR"));
+	setWindowBackground(_window, "selectFacility");
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&BuildFacilitiesState::btnOkClick);
@@ -90,41 +90,6 @@ BuildFacilitiesState::~BuildFacilitiesState()
 
 }
 
-namespace
-{
-/**
- * Find if two vector ranges intersects.
- * @param a First Vector.
- * @param b Second Vector.
- * @return True if have common value.
- */
-bool intersection(const std::vector<std::string> &a, const std::vector<std::string> &b)
-{
-	auto a_begin = std::begin(a);
-	auto a_end = std::end(a);
-	auto b_begin = std::begin(b);
-	auto b_end = std::end(b);
-	while (true)
-	{
-		if (b_begin == b_end)
-		{
-			return false;
-		}
-		a_begin = std::lower_bound(a_begin, a_end, *b_begin);
-		if (a_begin == a_end)
-		{
-			return false;
-		}
-		if (*a_begin == *b_begin)
-		{
-			return true;
-		}
-		b_begin = std::lower_bound(b_begin, b_end, *a_begin);
-	}
-}
-
-}
-
 /**
  * Populates the build list from the current "available" facilities.
  */
@@ -135,14 +100,18 @@ void BuildFacilitiesState::populateBuildList()
 
 	std::vector<RuleBaseFacility*> _disabledFacilities;
 
-	const std::vector<std::string> &providedBaseFunc = _base->getProvidedBaseFunc();
-	const std::vector<std::string> &forbiddenBaseFunc = _base->getForbiddenBaseFunc();
-	const std::vector<std::string> &futureBaseFunc = _base->getFutureBaseFunc();
+	auto providedBaseFunc = _base->getProvidedBaseFunc({});
+	auto forbiddenBaseFunc = _base->getForbiddenBaseFunc({});
+	auto futureBaseFunc = _base->getFutureBaseFunc({});
 
 	const std::vector<std::string> &facilities = _game->getMod()->getBaseFacilitiesList();
 	for (std::vector<std::string>::const_iterator i = facilities.begin(); i != facilities.end(); ++i)
 	{
 		RuleBaseFacility *rule = _game->getMod()->getBaseFacility(*i);
+		if (!rule->isAllowedForBaseType(_base->isFakeUnderwater()))
+		{
+			continue;
+		}
 		if (rule->isLift() || !_game->getSavedGame()->isResearched(rule->getRequirements()))
 		{
 			continue;
@@ -152,23 +121,28 @@ void BuildFacilitiesState::populateBuildList()
 			_disabledFacilities.push_back(rule);
 			continue;
 		}
-		const std::vector<std::string> &req = rule->getRequireBaseFunc();
-		const std::vector<std::string> &forb = rule->getForbiddenBaseFunc();
-		const std::vector<std::string> &prov = rule->getProvidedBaseFunc();
-		if (!std::includes(providedBaseFunc.begin(), providedBaseFunc.end(), req.begin(), req.end()))
+		auto req = rule->getRequireBaseFunc();
+		auto forb = rule->getForbiddenBaseFunc();
+		auto prov = rule->getProvidedBaseFunc();
+		if ((~providedBaseFunc & req).any())
 		{
 			_disabledFacilities.push_back(rule);
 			continue;
 		}
-		if (intersection(forbiddenBaseFunc, prov))
+
+		// do not check requirments for bulding that can overbuild others, correct check will be done when you will try place it at some spot
+		if (rule->getBuildOverFacilities().empty())
 		{
-			_disabledFacilities.push_back(rule);
-			continue;
-		}
-		if (intersection(futureBaseFunc, forb))
-		{
-			_disabledFacilities.push_back(rule);
-			continue;
+			if ((forbiddenBaseFunc & prov).any())
+			{
+				_disabledFacilities.push_back(rule);
+				continue;
+			}
+			if ((futureBaseFunc & forb).any())
+			{
+				_disabledFacilities.push_back(rule);
+				continue;
+			}
 		}
 		_facilities.push_back(rule);
 	}
@@ -182,7 +156,7 @@ void BuildFacilitiesState::populateBuildList()
 
 	if (!_disabledFacilities.empty())
 	{
-		auto disabledColor = _txtTitle->getColor();
+		auto disabledColor = _lstFacilities->getSecondaryColor();
 		for (std::vector<RuleBaseFacility*>::iterator i = _disabledFacilities.begin(); i != _disabledFacilities.end(); ++i)
 		{
 			_lstFacilities->addRow(1, tr((*i)->getType()).c_str());

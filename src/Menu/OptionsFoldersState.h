@@ -1,6 +1,6 @@
 #pragma once
 /*
- * Copyright 2010-2018 OpenXcom Developers.
+ * Copyright 2010-2019 OpenXcom Developers.
  *
  * This file is part of OpenXcom.
  *
@@ -17,34 +17,26 @@
  * You should have received a copy of the GNU General Public License
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include "../Engine/State.h"
+#include "OptionsBaseState.h"
 
 namespace OpenXcom
 {
 
-class Surface;
 class Text;
-class TextButton;
 
 /**
- * Easter Egg.
+ * Screen that shows the user various folders used by OpenXcom.
  */
-class HelloCommanderState : public State
+class OptionsFoldersState : public OptionsBaseState
 {
 private:
-	Surface *_bg;
-	Text *_txtMessage;
-	TextButton *_btnOk;
-	bool _exit;
+	Text *_txtDataFolder, *_txtUserFolder, *_txtSaveFolder, *_txtConfigFolder;
+	Text *_txtDataFolderPath, *_txtUserFolderPath, *_txtSaveFolderPath, *_txtConfigFolderPath;
 public:
-	/// Creates the HelloCommander state.
-	HelloCommanderState();
-	/// Cleans up the HelloCommander state.
-	~HelloCommanderState();
-	/// Initializes the state.
-	void init() override;
-	/// Handler for clicking the OK button.
-	void btnOkClick(Action *action);
+	/// Creates the Folders Options state.
+	OptionsFoldersState(OptionsOrigin origin);
+	/// Cleans up the Folders Options state.
+	~OptionsFoldersState();
 };
 
 }

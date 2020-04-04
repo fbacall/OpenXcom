@@ -21,6 +21,7 @@
 #include <map>
 #include <yaml-cpp/yaml.h>
 #include "RuleCraft.h"
+#include "ModScript.h"
 
 namespace OpenXcom
 {
@@ -40,12 +41,19 @@ struct RuleUfoStats : RuleCraftStats
 		if (!r.missionCustomDeploy.empty()) missionCustomDeploy = r.missionCustomDeploy;
 		return *this;
 	}
-	/// Loads stats form YAML.
+	/// Loads stats from YAML.
 	void load(const YAML::Node &node)
 	{
 		(*(RuleCraftStats*)this).load(node);
 		craftCustomDeploy = node["craftCustomDeploy"].as<std::string>(craftCustomDeploy);
 		missionCustomDeploy = node["missionCustomDeploy"].as<std::string>(missionCustomDeploy);
+	}
+
+	template<auto Stat, typename TBind>
+	static void addGetStatsScript(TBind& b, std::string prefix)
+	{
+		RuleCraftStats::addGetStatsScript<Stat>(b, prefix);
+//		b.template addField<Stat, &RuleUfoStats::?>(prefix + "?");
 	}
 };
 
@@ -65,17 +73,27 @@ private:
 	int _missilePower;
 	int _fireSound;
 	int _alertSound;
+	int _huntAlertSound;
 	RuleTerrain *_battlescapeTerrainData;
 	RuleUfoStats _stats;
 	std::map<std::string, RuleUfoStats> _statsRaceBonus;
 	std::string _modSprite;
+
+	ModScript::UfoScripts::Container _ufoScripts;
+	ScriptValues<RuleUfo> _scriptValues;
 public:
+
+	/// Name of class used in script.
+	static constexpr const char *ScriptName = "RuleUfo";
+	/// Register all useful function used by script.
+	static void ScriptRegister(ScriptParserBase* parser);
+
 	/// Creates a blank UFO ruleset.
 	RuleUfo(const std::string &type);
 	/// Cleans up the UFO ruleset.
 	~RuleUfo();
 	/// Loads UFO data from YAML.
-	void load(const YAML::Node& node, Mod *mod);
+	void load(const YAML::Node& node, const ModScript &parsers, Mod *mod);
 	/// Gets the UFO's type.
 	const std::string &getType() const;
 	/// Gets the UFO's size.
@@ -104,8 +122,10 @@ public:
 	int getBreakOffTime() const;
 	/// Gets the UFO's fire sound.
 	int getFireSound() const;
-	/// Gets the alert sound for this UFO.
+	/// Gets the alert sound for this UFO (UFO detected alert).
 	int getAlertSound() const;
+	/// Gets the alert sound for this UFO (UFO on intercept course alert).
+	int getHuntAlertSound() const;
 	/// Gets the name of the surface that represents this UFO.
 	const std::string &getModSprite() const;
 	/// Get basic statistic of UFO.
@@ -125,6 +145,10 @@ public:
 	int getHuntBehavior() const;
 	/// Gets the missile power (of a UFO that represents one or more missiles).
 	int getMissilePower() const { return _missilePower; }
+	/// Gets script.
+	template<typename Script>
+	const typename Script::Container &getScript() const { return _ufoScripts.get<Script>(); }
+	const ScriptValues<RuleUfo> &getScriptValuesRaw() const { return _scriptValues; }
 };
 
 }

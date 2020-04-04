@@ -43,9 +43,9 @@ StatString::~StatString()
  */
 void StatString::load(const YAML::Node &node)
 {
-	std::string conditionNames[] = {"psiStrength", "psiSkill", "bravery", "strength", "firing", "reactions", "stamina", "tu", "health", "throwing", "melee", "psiTraining"};
+	std::string conditionNames[] = {"psiStrength", "psiSkill", "bravery", "strength", "firing", "reactions", "stamina", "tu", "health", "throwing", "melee", "psiTraining", "manaPool"};
 	_stringToBeAddedIfAllConditionsAreMet = node["string"].as<std::string>(_stringToBeAddedIfAllConditionsAreMet);
-	for (size_t i = 0; i < sizeof(conditionNames)/sizeof(conditionNames[0]); i++)
+	for (size_t i = 0; i < std::size(conditionNames); i++)
 	{
 		if (node[conditionNames[i]])
 		{
@@ -160,6 +160,7 @@ std::map<std::string, int> StatString::getCurrentStats(UnitStats &currentStats)
 	currentStatsMap["health"] = currentStats.health;
 	currentStatsMap["throwing"] = currentStats.throwing;
 	currentStatsMap["melee"] = currentStats.melee;
+	currentStatsMap["manaPool"] = currentStats.mana;
 	return currentStatsMap;
 }
 

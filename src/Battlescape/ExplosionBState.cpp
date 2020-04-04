@@ -45,8 +45,11 @@ namespace OpenXcom
  * @param tile Tile the explosion is on.
  * @param lowerWeapon Whether the unit causing this explosion should now lower their weapon.
  * @param range Distance between weapon and target.
+ * @param explosionCounter Counter for chain terrain explosions.
  */
-ExplosionBState::ExplosionBState(BattlescapeGame *parent, Position center, BattleActionAttack attack, Tile *tile, bool lowerWeapon, int range) : BattleState(parent), _attack(attack), _center(center), _damageType(), _tile(tile), _targetPsiOrHit(nullptr), _power(0), _radius(6), _range(range), _areaOfEffect(false), _lowerWeapon(lowerWeapon), _hit(false), _psi(false)
+ExplosionBState::ExplosionBState(BattlescapeGame *parent, Position center, BattleActionAttack attack, Tile *tile, bool lowerWeapon, int range, int explosionCounter) : BattleState(parent),
+	_explosionCounter(explosionCounter), _attack(attack), _center(center), _damageType(), _tile(tile), _targetPsiOrHit(nullptr),
+	_power(0), _radius(6), _range(range), _areaOfEffect(false), _lowerWeapon(lowerWeapon), _hit(false), _psi(false)
 {
 
 }
@@ -93,17 +96,17 @@ void ExplosionBState::init()
 		_psi = type == BT_PSIAMP && action != BA_USE && !_hit;
 		if (_hit && type != BT_MELEE)
 		{
-			_power += itemRule->getMeleeBonus(_attack.attacker);
+			_power += itemRule->getMeleeBonus(_attack);
 
 			_radius = 0;
 			_damageType = itemRule->getMeleeType();
 		}
 		else
 		{
-			_power += itemRule->getPowerBonus(_attack.attacker);
+			_power += itemRule->getPowerBonus(_attack);
 			_power -= itemRule->getPowerRangeReduction(_range);
 
-			_radius = itemRule->getExplosionRadius(_attack.attacker);
+			_radius = itemRule->getExplosionRadius(_attack);
 			_damageType = itemRule->getDamageType();
 		}
 
@@ -177,9 +180,9 @@ void ExplosionBState::init()
 	else if (_attack.attacker && (_attack.attacker->getSpecialAbility() == SPECAB_EXPLODEONDEATH || _attack.attacker->getSpecialAbility() == SPECAB_BURN_AND_EXPLODE))
 	{
 		itemRule = _parent->getMod()->getItem(_attack.attacker->getArmor()->getCorpseGeoscape(), true);
-		_power = itemRule->getPowerBonus(_attack.attacker);
+		_power = itemRule->getPowerBonus(_attack);
 		_damageType = itemRule->getDamageType();
-		_radius = itemRule->getExplosionRadius(_attack.attacker);
+		_radius = itemRule->getExplosionRadius(_attack);
 		_areaOfEffect = true;
 		if (!RNG::percent(itemRule->getSpecialChance()))
 		{
@@ -232,7 +235,16 @@ void ExplosionBState::init()
 					frameDelay++;
 				}
 			}
-			_parent->setStateInterval(BattlescapeState::DEFAULT_ANIM_SPEED/2);
+			int explosionSpeed = BattlescapeState::DEFAULT_ANIM_SPEED/2;
+			if (itemRule)
+			{
+				explosionSpeed -= (10 * itemRule->getExplosionSpeed());
+			}
+			if (_explosionCounter > 6)
+			{
+				explosionSpeed = 1; // maximum animation speed for long chain terrain explosions
+			}
+			_parent->setStateInterval(std::max(1, explosionSpeed));
 			// explosion sound
 			_parent->playSound(sound);
 			_parent->getMap()->getCamera()->centerOnPosition(_center.toTile(), false);
@@ -428,7 +440,7 @@ void ExplosionBState::explode()
 	{
 		Position p = t->getPosition().toVoxel();
 		p += Position(8,8,0);
-		_parent->statePushFront(new ExplosionBState(_parent, p, BattleActionAttack{ BA_NONE, _attack.attacker, }, t));
+		_parent->statePushFront(new ExplosionBState(_parent, p, BattleActionAttack{ BA_NONE, _attack.attacker, }, t, false, 0, _explosionCounter + 1));
 	}
 
 	// Spawn a unit if the item does that

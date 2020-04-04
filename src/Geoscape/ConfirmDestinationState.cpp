@@ -23,6 +23,7 @@
 #include "../Mod/Mod.h"
 #include "../Mod/AlienRace.h"
 #include "../Mod/RuleStartingCondition.h"
+#include "../Mod/RuleSoldier.h"
 #include "../Mod/AlienDeployment.h"
 #include "../Mod/ArticleDefinition.h"
 #include "../Engine/LocalizedText.h"
@@ -70,7 +71,7 @@ ConfirmDestinationState::ConfirmDestinationState(Craft *craft, Target *target) :
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK12.SCR"));
+	setWindowBackground(_window, "confirmDestination");
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&ConfirmDestinationState::btnOkClick);
@@ -114,7 +115,7 @@ std::string ConfirmDestinationState::checkStartingCondition()
 	AlienDeployment *ruleDeploy = 0;
 	if (u != 0)
 	{
-		ruleDeploy = _game->getMod()->getDeployment(u->getRules()->getType());
+		ruleDeploy = _game->getMod()->getDeployment(u->getRules()->getType()); // no need to check for fake underwater UFOs here
 	}
 	else if (m != 0)
 	{
@@ -146,12 +147,12 @@ std::string ConfirmDestinationState::checkStartingCondition()
 	}
 
 	// check required item(s)
-	const std::map<std::string, int> *requiredItems = rule->getRequiredItems();
+	auto requiredItems = rule->getRequiredItems();
 	if (!_craft->areRequiredItemsOnboard(requiredItems))
 	{
 		std::ostringstream ss2;
 		int i2 = 0;
-		for (std::map<std::string, int>::const_iterator it2 = requiredItems->begin(); it2 != requiredItems->end(); ++it2)
+		for (std::map<std::string, int>::const_iterator it2 = requiredItems.begin(); it2 != requiredItems.end(); ++it2)
 		{
 			if (i2 > 0)
 				ss2 << ", ";
@@ -162,17 +163,57 @@ std::string ConfirmDestinationState::checkStartingCondition()
 		return tr("STR_STARTING_CONDITION_ITEM").arg(argument2);
 	}
 
-	if (rule->isCraftAllowed(_craft->getRules()->getType()))
+	// check permitted soldiers
+	if (!_craft->areOnlyPermittedSoldierTypesOnboard(rule))
 	{
-		// craft is allowed
+		auto list = rule->getForbiddenSoldierTypes();
+		std::string messageCode = "STR_STARTING_CONDITION_SOLDIER_TYPE_FORBIDDEN";
+		if (list.empty())
+		{
+			list = rule->getAllowedSoldierTypes();
+			messageCode = "STR_STARTING_CONDITION_SOLDIER_TYPE_ALLOWED";
+		}
+
+		std::ostringstream ss;
+		int i = 0;
+		for (std::vector<std::string>::const_iterator it = list.begin(); it != list.end(); ++it)
+		{
+			RuleSoldier* soldierTypeRule = _game->getMod()->getSoldier((*it), false);
+			if (soldierTypeRule && _game->getSavedGame()->isResearched(soldierTypeRule->getRequirements()))
+			{
+				if (i > 0)
+					ss << ", ";
+				ss << tr(*it);
+				i++;
+			}
+		}
+		std::string argument = ss.str();
+		if (argument.empty())
+		{
+			// no suitable soldier type yet?
+			argument = tr("STR_UNKNOWN");
+		}
+		return tr(messageCode).arg(argument);
+	}
+
+	if (rule->isCraftPermitted(_craft->getRules()->getType()))
+	{
+		// craft is permitted
 		return "";
 	}
 
-	// craft is not allowed
-	const std::vector<std::string> *list = rule->getAllowedCraft();
+	// craft is not permitted (= either forbidden or not allowed)
+	auto list = rule->getForbiddenCraft();
+	std::string messageCode = "STR_STARTING_CONDITION_CRAFT_FORBIDDEN";
+	if (list.empty())
+	{
+		list = rule->getAllowedCraft();
+		messageCode = "STR_STARTING_CONDITION_CRAFT_ALLOWED";
+	}
+
 	std::ostringstream ss;
 	int i = 0;
-	for (std::vector<std::string>::const_iterator it = list->begin(); it != list->end(); ++it)
+	for (std::vector<std::string>::const_iterator it = list.begin(); it != list.end(); ++it)
 	{
 		ArticleDefinition *article = _game->getMod()->getUfopaediaArticle((*it), false);
 		if (article && _game->getSavedGame()->isResearched(article->requires))
@@ -189,7 +230,7 @@ std::string ConfirmDestinationState::checkStartingCondition()
 		// no suitable craft yet
 		argument = tr("STR_UNKNOWN");
 	}
-	return tr("STR_STARTING_CONDITION_CRAFT").arg(argument);
+	return tr(messageCode).arg(argument);
 }
 
 /**

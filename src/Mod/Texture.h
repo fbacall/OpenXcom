@@ -43,6 +43,8 @@ class Texture
 {
 private:
 	int _id;
+	bool _fakeUnderwater;
+	std::string _startingCondition;
 	std::map<std::string, int> _deployments;
 	std::vector<TerrainCriteria> _terrain;
 	std::vector<TerrainCriteria> _baseTerrain;
@@ -65,6 +67,10 @@ public:
 	const std::map<std::string, int> &getDeployments() const;
 	/// Gets a random deployment.
 	std::string getRandomDeployment() const;
+	/// Is the texture a fake underwater texture?
+	bool isFakeUnderwater() const { return _fakeUnderwater; }
+	/// Gets the Texture's starting condition.
+	const std::string &getStartingCondition() const { return _startingCondition; }
 };
 
 }

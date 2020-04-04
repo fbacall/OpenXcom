@@ -18,6 +18,7 @@
  */
 #include "ResearchState.h"
 #include <sstream>
+#include "../Engine/Action.h"
 #include "../Engine/Game.h"
 #include "../Mod/Mod.h"
 #include "../Engine/LocalizedText.h"
@@ -33,6 +34,7 @@
 #include "../Mod/RuleResearch.h"
 #include "ResearchInfoState.h"
 #include "TechTreeViewerState.h"
+#include <algorithm>
 
 namespace OpenXcom
 {
@@ -75,7 +77,7 @@ ResearchState::ResearchState(Base *base) : _base(base)
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK05.SCR"));
+	setWindowBackground(_window, "researchMenu");
 
 	_btnNew->setText(tr("STR_NEW_PROJECT"));
 	_btnNew->onMouseClick((ActionHandler)&ResearchState::btnNewClick);
@@ -106,6 +108,7 @@ ResearchState::ResearchState(Base *base) : _base(base)
 	_lstResearch->onMouseClick((ActionHandler)&ResearchState::onSelectProject, SDL_BUTTON_LEFT);
 	_lstResearch->onKeyboardPress((ActionHandler)&ResearchState::onSelectProject, Options::keyOk);
 	_lstResearch->onMouseClick((ActionHandler)&ResearchState::onOpenTechTreeViewer, SDL_BUTTON_MIDDLE);
+	_lstResearch->onMousePress((ActionHandler)&ResearchState::lstResearchMousePress);
 }
 
 /**
@@ -153,6 +156,51 @@ void ResearchState::onOpenTechTreeViewer(Action *)
 	const std::vector<ResearchProject *> & baseProjects(_base->getResearch());
 	const RuleResearch *selectedTopic = baseProjects[_lstResearch->getSelectedRow()]->getRules();
 	_game->pushState(new TechTreeViewerState(selectedTopic, 0));
+}
+
+/**
+ * Handles the mouse-wheels.
+ * @param action Pointer to an action.
+ */
+void ResearchState::lstResearchMousePress(Action *action)
+{
+	if (_lstResearch->isScrollbarVisible())
+		return;
+
+	// 175 +/- 20
+	if (action->getAbsoluteXMouse() < (_txtAllocated->getX() - 5) ||
+		action->getAbsoluteXMouse() > (_txtAllocated->getX() + 35))
+	{
+		return;
+	}
+
+	int change = 1;
+	if (SDL_GetModState() & KMOD_CTRL)
+		change = 10;
+
+	if (action->getDetails()->button.button == SDL_BUTTON_WHEELUP)
+	{
+		change = std::min(change, _base->getAvailableScientists());
+		change = std::min(change, _base->getFreeLaboratories());
+		if (change > 0)
+		{
+			ResearchProject *selectedProject = _base->getResearch()[_lstResearch->getSelectedRow()];
+			selectedProject->setAssigned(selectedProject->getAssigned() + change);
+			_base->setScientists(_base->getScientists() - change);
+			fillProjectList();
+		}
+	}
+	else if (action->getDetails()->button.button == SDL_BUTTON_WHEELDOWN)
+	{
+		ResearchProject *selectedProject = _base->getResearch()[_lstResearch->getSelectedRow()];
+		change = std::min(change, selectedProject->getAssigned());
+		if (change > 0)
+		{
+			selectedProject->setAssigned(selectedProject->getAssigned() - change);
+			_base->setScientists(_base->getScientists() + change);
+			fillProjectList();
+		}
+	}
 }
 
 /**

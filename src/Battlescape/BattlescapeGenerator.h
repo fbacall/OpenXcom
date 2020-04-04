@@ -37,6 +37,7 @@ class RuleInventory;
 class RuleItem;
 class Unit;
 class AlienRace;
+class RuleEnviroEffects;
 class RuleStartingCondition;
 class AlienDeployment;
 class Game;
@@ -45,6 +46,7 @@ class MissionSite;
 class AlienBase;
 class BattleUnit;
 class Texture;
+class Position;
 
 /**
  * A utility class that generates the initial battlescape data. Taking into account mission type, craft and ufo involved, terrain type,...
@@ -62,16 +64,16 @@ private:
 	Base *_base;
 	MissionSite *_mission;
 	AlienBase *_alienBase;
-	RuleTerrain *_terrain;
-	RuleTerrain *_baseTerrain;
+	RuleTerrain *_terrain, *_baseTerrain, *_globeTerrain, *_alternateTerrain;
 	int _mapsize_x, _mapsize_y, _mapsize_z;
-	Texture *_worldTexture;
+	Texture *_missionTexture, *_globeTexture;
 	int _worldShade;
 	int _unitSequence;
 	Tile *_craftInventoryTile;
 	std::string _alienRace;
 	const AlienDeployment *_alienCustomDeploy, *_alienCustomMission;
 	int _alienItemLevel;
+	int _ufoDamagePercentage;
 	bool _allowAutoLoadout, _baseInventory, _generateFuel, _craftDeployed, _ufoDeployed;
 	int _craftZ;
 	SDL_Rect _craftPos;
@@ -81,51 +83,44 @@ private:
 	std::vector< std::vector<MapBlock*> > _blocks;
 	std::vector< std::vector<bool> > _landingzone;
 	std::vector< std::vector<int> > _segments, _drillMap;
-	std::vector<MapBlock*> _alternateTerrainMaps;
-	std::vector<RuleTerrain*> _alternateTerrains;
-	std::vector<SDL_Rect> _alternateTerrainRects;
-	std::vector<int> _alternateTerrainHeights;
-	std::vector<MapBlock*> _notInBlocks;
-	std::vector<SDL_Rect> _notInBlocksRects;
-	std::vector<int> _notInBlocksOffsets;
 	MapBlock *_dummy;
 	std::vector<SDL_Rect> _placedBlockRects;
 	std::vector<VerticalLevel> _verticalLevels;
+	std::map<RuleTerrain*, int> _loadedTerrains;
+	std::vector<std::pair<MapBlock*, Position> > _verticalLevelSegments;
 
 	/// sets the map size and associated vars
 	void init(bool resetTerrain);
 	/// Generates a new battlescape map.
-	void generateMap(const std::vector<MapScript*> *script);
+	void generateMap(const std::vector<MapScript*> *script, const std::string &customUfoName);
 	/// Adds a vehicle to the game.
 	BattleUnit *addXCOMVehicle(Vehicle *v);
 	/// Adds a soldier to the game.
 	BattleUnit *addXCOMUnit(BattleUnit *unit);
 	/// Adds an alien to the game.
 	BattleUnit *addAlien(Unit *rules, int alienRank, bool outside);
-	/// Adds a civlian to the game.
-	BattleUnit *addCivilian(Unit *rules);
+	/// Adds a civilian to the game.
+	BattleUnit *addCivilian(Unit *rules, int nodeRank);
 	/// Places an item on a soldier based on equipment layout.
 	bool placeItemByLayout(BattleItem *item, const std::vector<BattleItem*> &itemList);
 	/// Loads an XCom MAP file.
-	int loadMAP(MapBlock *mapblock, int xoff, int yoff, int zoff, RuleTerrain *terrain, int objectIDOffset, bool discovered = false, bool craft = false);
-	/// Sets an XCom MAP file to be loaded after mapscript is processed.
-	void addMAPAlternate(MapBlock *mapblock, int x, int y, int z, RuleTerrain *terrain);
-	/// Add information to connect nodes from a verticalLevels MapBlock.
-	void addSegmentVertical(MapBlock *mapblock, int x, int y, int z);
+	int loadMAP(MapBlock *mapblock, int xoff, int yoff, int zoff, RuleTerrain *terrain, int objectIDOffset, bool discovered = false, bool craft = false, int ufoIndex = -1);
 	/// Loads an XCom RMP file.
 	void loadRMP(MapBlock *mapblock, int xoff, int yoff, int zoff, int segment);
+	/// Checks a terrain requested by a command and loads it if necessary
+	int loadExtraTerrain(RuleTerrain *terrain);
 	/// Fills power sources with an alien fuel object.
 	void fuelPowerSources();
-	/// Possibly explodes ufo powersources.
+	/// Possibly explodes ufo power sources.
 	void explodePowerSources();
 	/// Deploys the XCOM units on the mission.
-	void deployXCOM(const RuleStartingCondition *startingCondition);
+	void deployXCOM(const RuleStartingCondition* startingCondition, const RuleEnviroEffects* enviro);
 	/// Runs necessary checks before physically setting the position.
 	bool canPlaceXCOMUnit(Tile *tile);
 	/// Deploys the aliens, according to the alien deployment rules.
 	void deployAliens(const AlienDeployment *deployment);
 	/// Spawns civilians on a terror mission.
-	void deployCivilians(int max, bool roundUp = false, const std::string &civilianType = "");
+	void deployCivilians(int nodeRank, int max, bool roundUp = false, const std::string &civilianType = "");
 	/// Finds a spot near a friend to spawn at.
 	bool placeUnitNearFriend(BattleUnit *unit);
 	/// Load all Xcom weapons.
@@ -133,9 +128,9 @@ private:
 	/// Adds a craft (either a ufo or an xcom craft) somewhere on the map.
 	bool addCraft(MapBlock *craftMap, MapScript *command, SDL_Rect &craftPos, RuleTerrain *terrain);
 	/// Adds a line (generally a road) to the map.
-	bool addLine(MapDirection lineType, const std::vector<SDL_Rect*> *rects, RuleTerrain *terrain, int zOff);
+	bool addLine(MapDirection lineType, const std::vector<SDL_Rect*> *rects, RuleTerrain *terrain, int verticalGroup, int horizontalGroup, int crossingGroup);
 	/// Adds a single block at a given position.
-	bool addBlock(int x, int y, MapBlock *block, bool placeMap);
+	bool addBlock(int x, int y, MapBlock *block, RuleTerrain *terrain);
 	/// Load the nodes from the associated map blocks.
 	void loadNodes();
 	/// Connects all the nodes together.
@@ -144,12 +139,16 @@ private:
 	bool selectPosition(const std::vector<SDL_Rect *> *rects, int &X, int &Y, int sizeX, int sizeY);
 	/// Generates a map from base modules.
 	void generateBaseMap();
-	/// Populates _verticalLevels vector according to map and command size.
+	/// Populates _verticalLevels vector according to a mapscript command and sorts them for use
 	bool populateVerticalLevels(MapScript *command);
+	/// Gets a terrain from a terrain name for a command or a vertical level
+	RuleTerrain* pickTerrain(std::string terrainName);
+	/// Loads the maps from the _verticalLevels vector
+	void loadVerticalLevels(MapScript *command, bool repopulate = false, MapBlock *craftMap = 0);
 	/// Clears a module from the map.
 	void clearModule(int x, int y, int sizeX, int sizeY);
 	/// Drills some tunnels between map blocks.
-	void drillModules(TunnelData* data, const std::vector<SDL_Rect *> *rects, MapDirection dir);
+	void drillModules(TunnelData* data, const std::vector<SDL_Rect *> *rects, MapDirection dir, RuleTerrain* terrain);
 	/// Clears all modules in a rect from a command.
 	bool removeBlocks(MapScript *command);
 	/// Sets the depth based on the terrain or the provided AlienDeployment rule.
@@ -166,13 +165,15 @@ public:
 	/// Sets the ufo.
 	void setUfo(Ufo* ufo);
 	/// Sets the polygon texture.
-	void setWorldTexture(Texture *texture);
+	void setWorldTexture(Texture *missionTexture, Texture *globeTexture);
 	/// Sets the polygon shade.
 	void setWorldShade(int shade);
 	/// Sets the alien race.
 	void setAlienRace(const std::string &alienRace);
 	/// Sets the alien item level.
 	void setAlienItemlevel(int alienItemLevel);
+	/// Sets the UFO damage percentage.
+	void setUfoDamagePercentage(int ufoDamagePercentage);
 	/// Sets the alien weapon deploy items.
 	void setAlienCustomDeploy(const AlienDeployment *alienCustomDeploy = 0, const AlienDeployment* alienCustomBase = 0);
 	/// Sets the XCom base.
@@ -191,7 +192,7 @@ public:
 	void runInventory(Craft *craft);
 	/// Sets up the objectives for the map.
 	void setupObjectives(const AlienDeployment *ruleDeploy);
-	// Autoequip a set of units
+	// Auto-equip a set of units
 	static void autoEquip(std::vector<BattleUnit*> units, Mod *mod, std::vector<BattleItem*> *craftInv,
 		RuleInventory *groundRuleInv, int worldShade, bool allowAutoLoadout, bool overrideEquipmentLayout);
 };

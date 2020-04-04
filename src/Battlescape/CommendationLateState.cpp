@@ -57,7 +57,7 @@ CommendationLateState::CommendationLateState(std::vector<Soldier*> soldiersMedal
 	centerAllSurfaces();
 
 	// Set up object
-	_window->setBackground(_game->getMod()->getSurface("BACK02.SCR"));
+	setWindowBackground(_window, "commendationsLate");
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&CommendationLateState::btnOkClick);
@@ -148,7 +148,7 @@ CommendationLateState::CommendationLateState(std::vector<Soldier*> soldiersMedal
 						}
 						vectorIterator++;
 					}
-					// Establish comms name
+					// Establish commendation's name
 					// Medal name
 					wssCommendation << "   ";
 					if (modularCommendation)

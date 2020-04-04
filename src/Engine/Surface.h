@@ -86,7 +86,9 @@ protected:
 	UniqueSurfacePtr _surface;
 	Sint16 _x, _y;
 	Uint16 _width, _height, _pitch;
-	bool _visible, _hidden, _redraw;
+	Uint8 _visible: 1;
+	Uint8 _hidden: 1;
+	Uint8 _redraw: 1;
 
 	/// Copies raw pixels.
 	template <typename T>
@@ -94,7 +96,7 @@ protected:
 	/// Resizes the surface.
 	void resize(int width, int height);
 public:
-	/// Default empy surface.
+	/// Default empty surface.
 	Surface();
 	/// Creates a new surface with the specified size and position.
 	Surface(int width, int height, int x = 0, int y = 0);
@@ -102,14 +104,14 @@ public:
 	Surface(const Surface& other);
 	/// Move surface to another place.
 	Surface(Surface&& other) = default;
-	/// Move assigment
+	/// Move assignment
 	Surface& operator=(Surface&& other) = default;
-	/// Copy assigment
+	/// Copy assignment
 	Surface& operator=(const Surface& other) { *this = Surface(other); return *this; };
 	/// Cleans up the surface.
 	virtual ~Surface();
 
-	/// Is surface empy?
+	/// Is surface empty?
 	explicit operator bool() const
 	{
 		return _alignedBuffer.get();
@@ -127,7 +129,7 @@ public:
 	void loadBdy(const std::string &filename);
 	/// Loads a general image file.
 	void loadImage(const std::string &filename);
-	/// Clears the surface's contents eith a specified colour.
+	/// Clears the surface's contents with a specified colour.
 	void clear();
 	/// Offsets the surface's colors by a set amount.
 	void offset(int off, int min = -1, int max = -1, int mul = 1);
@@ -321,7 +323,7 @@ public:
 };
 
 /**
- * Raw pointer to surface buffer, can be created from diffrent sources
+ * Raw pointer to surface buffer, can be created from different sources
  */
 template<typename Pixel>
 class SurfaceRaw
@@ -417,14 +419,14 @@ public:
 		assert(width*height <= I && "Incorrect dimensions compared to array size");
 	}
 
-	/// Assigment from nullptr
+	/// Assignment from nullptr
 	SurfaceRaw& operator=(std::nullptr_t)
 	{
 		*this = SurfaceRaw{};
 		return *this;
 	}
 
-	/// Assigment
+	/// Assignment
 	SurfaceRaw& operator=(const SurfaceRaw&) = default;
 
 	/// Is empty?
@@ -516,7 +518,7 @@ public:
 		return _y;
 	}
 
-	/// Blit Croped surface to another surface.
+	/// Blit Cropped surface to another surface.
 	void blit(Surface* dest);
 };
 

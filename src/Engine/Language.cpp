@@ -84,7 +84,7 @@ Language::Language() : _handler(0), _direction(DIRECTION_LTR), _wrap(WRAP_WORDS)
 	}
 	if (_rtl.empty())
 	{
-		_rtl.push_back("he");
+		//_rtl.push_back("he"); needs translation
 	}
 	if (_cjk.empty())
 	{
@@ -269,20 +269,17 @@ std::string Language::getName() const
  * @param id ID of the string.
  * @return String with the requested ID.
  */
-const LocalizedText &Language::getString(const std::string &id) const
+LocalizedText Language::getString(const std::string &id) const
 {
-	static LocalizedText hack("");
 	if (id.empty())
 	{
-		hack = LocalizedText("");
-		return hack;
+		return id;
 	}
 	std::map<std::string, LocalizedText>::const_iterator s = _strings.find(id);
 	// Check if translation strings recently learned pluralization.
 	if (s == _strings.end())
 	{
-		hack = getString(id, UINT_MAX);
-		return hack;
+		return getString(id, UINT_MAX);
 	}
 	else
 	{
@@ -356,7 +353,7 @@ LocalizedText Language::getString(const std::string &id, unsigned n) const
  * @param gender Current soldier gender.
  * @return String with the requested ID.
  */
-const LocalizedText &Language::getString(const std::string &id, SoldierGender gender) const
+LocalizedText Language::getString(const std::string &id, SoldierGender gender) const
 {
 	std::string genderId;
 	if (gender == GENDER_MALE)

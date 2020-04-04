@@ -19,7 +19,7 @@
  */
 #include "../Engine/State.h"
 #include "../Savegame/BattleUnit.h"
-#include "../Mod/RuleStartingCondition.h"
+#include "../Mod/RuleEnviroEffects.h"
 
 namespace OpenXcom
 {
@@ -44,6 +44,7 @@ private:
 	BattlescapeState *_state;
 	Timer *_timer;
 	Surface *_bg;
+	int _currentTurn;
 	/// Applies a given environmental condition effects to a given faction.
 	bool applyEnvironmentalConditionToFaction(UnitFaction faction, EnvironmentalCondition condition);
 	/// Checks if bug hunt mode should be activated or not.

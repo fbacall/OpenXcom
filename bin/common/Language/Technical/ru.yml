@@ -4,11 +4,17 @@ ru:
   STR_BAD_NODES: "Ошибочные узлы в файлах RMP"
   STR_BAD_NODES_DESC: "Ищет узлы, расположенные за пределами карты.{NEWLINE}Это не приводит к падению игры, однако ошибочные узлы будут проигн., а значит, поведение игры будет отличаться от запланир."
 #
-  STR_ZERO_COST_MOVEMENT: "Перемещение без расхода ОД в файлах MCD"
-  STR_ZERO_COST_MOVEMENT_DESC: "Проверяет файлы MCD на наличие тайлов, передвижение по которым не отнимает ОД. Это не приводит к падению игры, но может ввести игру в бесконечный цикл из-за некорректной работы ИИ."
+  STR_MCD_CHECK: "Проверка MCD"
+  STR_MCD_CHECK_DESC: "Проверяет файлы MCD на наличие тайлов, на пересечение которых не расходуются ОД. Также ищет некорректные ссылки DieMCD/AltMCD."
 #
   STR_PALETTE_CHECK: "Сопоставление палитры"
   STR_PALETTE_CHECK_DESC: "Сопоставляет палитры модфицированных изображений с официальными и выводит предупреждение при обнаружении несоответствий."
+#
+  STR_SCRIPT_TAGS: "Экспорт тегов скриптов"
+  STR_SCRIPT_TAGS_DESC: "Экспорт тегов скриптов в формате CSV."
+#
+  STR_MAP_RESOURCES: "Проверка ассетов карт"
+  STR_MAP_RESOURCES_DESC: "Ищет не задействованные или отсутствующие файлы и рулсеты в картах."
 #
   STR_CHECKING_TERRAIN: "Проверка ландшафта..."
   STR_CHECKING_UFOS: "Проверка НЛО..."
@@ -94,8 +100,10 @@ ru:
 #
   battleType: "Тип предмета"
   experienceTrainingMode: "Режим тренировки"
+  manaExperience: "Опыт для маны"
   arcingShot: "Навесная стрельба?"
   isFireExtinguisher: "Тушение огня?"
+  isExplodingInHands: "Взрывается в инвентаре?"
   waypoints: "Макс. точек траектории"
   sprayWaypoints: "Точек веерного огня"
 #
@@ -107,6 +115,8 @@ ru:
   underwaterOnly: "Только подводное?"
   landOnly: "Только атмосферное?"
   psiRequired: "Требует пси-навыка?"
+  psiTargetMatrix: "Пси-усилитель действует на"
+  manaRequired: "Требует маны?"
   LOSRequired: "Нужна прям. видимость?"
 #
   noLOSAccuracyPenalty: "Множит. штрафа за отсут. прямой видимости"
@@ -195,6 +205,8 @@ ru:
   RandomMorale: "Разброс урона морали?"
   ToItem: "Множитель урона предметам"
   RandomItem: "Разброс урона предметам?"
+  ToMana: "Множит. урона мане"
+  RandomMana: "Разброс урона мане?"
   ToTile: "Множит. урона местности"
   RandomTile: "Разброс урона местности?"
   TileDamageMethod: "Нанесение повреждений окружению"
@@ -221,7 +233,9 @@ ru:
   armor: "Броня"
 #
   medikitType: "Тип медкомплекта"
-  allowSelfHeal: "Применим на себе?"
+  medikitTargetSelf: "Применение медкомплекта на себе?"
+  medikitTargetImmune: "Применение медкомплекта на истекающем кровью?"
+  medikitTargetMatrix: "Цели применения медкомплекта"
   isConsumable: "Расходуется?"
   painKiller: "Кол-во обезболивающих"
   heal: "Количество перевязок"
@@ -230,6 +244,7 @@ ru:
   healthRecovery: "Восстан. здоровья"
   stunRecovery: "Восстан. от оглушения"
   energyRecovery: "Восстановление энергии"
+  manaRecovery: "Восстановление маны"
   moraleRecovery: "Восстановление морали"
   painKillerRecovery: "Эффективность болеутоляющего"
 #
@@ -311,6 +326,7 @@ ru:
   morale: "Мораль"
   health: "Здоровье"
   stun: "Оглушение"
+  mana: "Мана"
   units: "Могут использовать"
 #
   buildCost: "Цена постройки"
@@ -324,6 +340,7 @@ ru:
   lift: "Входной лифт?"
   hyper: "Гиперволновой декодер?"
   mind: "Ментальный щит?"
+  mindPower: "Энергия ментального щита"
   grav: "Гравитационный щит?"
   storage: "Объем хранилища"
   personnel: "Жилая площадь"
@@ -338,6 +355,7 @@ ru:
   defense: "Мощность защиты"
   hitRatio: "Вероятность попадания"
   maxAllowedPerBase: "Максимум на базе"
+  manaRecoveryPerDay: "Маны в день"
   sickBayAbsoluteBonus: "Абс. бонус к скорости лечения"
   sickBayRelativeBonus: "Отн. бонус к скорости лечения"
   prisonType: "Вид камер"
@@ -397,7 +415,7 @@ ru:
   huntSpeed: "Скорость преследования"
   huntBehavior: "Действия при преслед."
   range: "Дальность"
-  reload: "Время на подвеску"
+  reload: "Время заряжания"
   breakOffTime: "Время пролета"
   score: "Очков"
   missionScore: "Очков за задание"
@@ -414,3 +432,17 @@ ru:
   HB_FLEE: "отступл. в случае опасности"
   HB_KAMIKAZE: "бой насмерть"
   HB_RANDOM: "случайные"
+#
+  tractorBeamPower: "Мощность притяг. луча"
+  damage: "Урон"
+  shieldDamageModifier: "Модификатор урона щиту"
+  accuracy: "Точность"
+  reloadCautious: "Заряжание (остор.)"
+  reloadStandard: "Заряжание (обычн.)"
+  reloadAggressive: "Заряжание (агрессив.)"
+  launcher: "Подвеска"
+  weaponType: "Тип оружия"
+  clip: "Боеприпасы"
+  ammoMax: "Боезапас"
+  rearmRate: "Выстрелов в боеприпасе"
+  _averageTotalDamage: "Макс. усредн. урон"

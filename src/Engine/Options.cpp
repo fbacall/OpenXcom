@@ -19,11 +19,11 @@
 
 #include "Options.h"
 #include "../version.h"
+#include "../md5.h"
 #include <SDL.h>
 #include <SDL_keysym.h>
 #include <SDL_mixer.h>
 #include <map>
-#include <unordered_map>
 #include <sstream>
 #include <iostream>
 #include <algorithm>
@@ -33,7 +33,6 @@
 #include "CrossPlatform.h"
 #include "FileMap.h"
 #include "Screen.h"
-#include "Unicode.h"
 
 namespace OpenXcom
 {
@@ -51,8 +50,9 @@ std::string _configFolder;
 std::vector<std::string> _userList;
 std::map<std::string, std::string> _commandLine;
 std::vector<OptionInfo> _info;
-std::unordered_map<std::string, ModInfo> _modInfos;
+std::map<std::string, ModInfo> _modInfos;
 std::string _masterMod;
+int _passwordCheck = -1;
 bool _loadLastSave = false;
 bool _loadLastSaveExpended = false;
 
@@ -97,6 +97,7 @@ void create()
 	_info.push_back(OptionInfo("useOpenGLShader", &useOpenGLShader, "Shaders/Raw.OpenGL.shader"));
 	_info.push_back(OptionInfo("vSyncForOpenGL", &vSyncForOpenGL, true));
 	_info.push_back(OptionInfo("useOpenGLSmoothing", &useOpenGLSmoothing, true));
+	_info.push_back(OptionInfo("password", &password, "secret"));
 	_info.push_back(OptionInfo("debug", &debug, false));
 	_info.push_back(OptionInfo("debugUi", &debugUi, false));
 	_info.push_back(OptionInfo("soundVolume", &soundVolume, 2*(MIX_MAX_VOLUME/3)));
@@ -145,8 +146,13 @@ void create()
 	_info.push_back(OptionInfo("musicAlwaysLoop", &musicAlwaysLoop, false));
 	_info.push_back(OptionInfo("touchEnabled", &touchEnabled, false));
 	_info.push_back(OptionInfo("rootWindowedMode", &rootWindowedMode, false));
+	_info.push_back(OptionInfo("rawScreenShots", &rawScreenShots, false));
+	_info.push_back(OptionInfo("backgroundMute", &backgroundMute, false));
 
 	// advanced option
+#ifdef _WIN32
+	_info.push_back(OptionInfo("oxceUpdateCheck", &oxceUpdateCheck, false, "STR_UPDATE_CHECK", "STR_GENERAL"));
+#endif
 	_info.push_back(OptionInfo("playIntro", &playIntro, true, "STR_PLAYINTRO", "STR_GENERAL"));
 	_info.push_back(OptionInfo("autosave", &autosave, true, "STR_AUTOSAVE", "STR_GENERAL"));
 	_info.push_back(OptionInfo("autosaveFrequency", &autosaveFrequency, 5, "STR_AUTOSAVE_FREQUENCY", "STR_GENERAL"));
@@ -212,8 +218,12 @@ void create()
 	_info.push_back(OptionInfo("oxceUfoLandingAlert", &oxceUfoLandingAlert, false, "STR_UFO_LANDING_ALERT", "STR_OXCE"));
 	_info.push_back(OptionInfo("oxceWoundedDefendBaseIf", &oxceWoundedDefendBaseIf, 100, "STR_WOUNDED_DEFEND_BASE_IF", "STR_OXCE"));
 	_info.push_back(OptionInfo("oxcePlayBriefingMusicDuringEquipment", &oxcePlayBriefingMusicDuringEquipment, false, "STR_PLAY_BRIEFING_MUSIC_DURING_EQUIPMENT", "STR_OXCE"));
-	_info.push_back(OptionInfo("oxceNightVisionColor", &oxceNightVisionColor, 8, "STR_NIGHT_VISION_COLOR", "STR_OXCE"));
+	_info.push_back(OptionInfo("oxceNightVisionColor", &oxceNightVisionColor, 5, "STR_NIGHT_VISION_COLOR", "STR_OXCE"));
+	_info.push_back(OptionInfo("oxceAutoNightVisionThreshold", &oxceAutoNightVisionThreshold, 15, "STR_AUTO_NIGHT_VISION_THRESHOLD", "STR_OXCE"));
 	_info.push_back(OptionInfo("oxceAutoSell", &oxceAutoSell, false, "STR_AUTO_SELL", "STR_OXCE"));
+	_info.push_back(OptionInfo("oxceRememberDisabledCraftWeapons", &oxceRememberDisabledCraftWeapons, false, "STR_REMEMBER_DISABLED_CRAFT_WEAPONS", "STR_OXCE"));
+	_info.push_back(OptionInfo("oxceHighlightNewTopicsHidden", &oxceHighlightNewTopicsHidden, true));
+	_info.push_back(OptionInfo("oxceEnableUnitResponseSounds", &oxceEnableUnitResponseSounds, true));
 
 	// controls
 	_info.push_back(OptionInfo("keyOk", &keyOk, SDLK_RETURN, "STR_OK", "STR_GENERAL"));
@@ -294,6 +304,17 @@ void create()
 	_info.push_back(OptionInfo("keyInvAutoEquip", &keyInvAutoEquip, SDLK_z, "STR_AUTO_EQUIP", "STR_BATTLESCAPE"));
 
 	// OXCE
+	_info.push_back(OptionInfo("keyBasescapeBuildNewBase", &keyBasescapeBuildNewBase, SDLK_n, "STR_BUILD_NEW_BASE_UC", "STR_OXCE"));
+	_info.push_back(OptionInfo("keyBasescapeBaseInformation", &keyBasescapeBaseInfo, SDLK_i, "STR_BASE_INFORMATION", "STR_OXCE"));
+	_info.push_back(OptionInfo("keyBasescapeSoldiers", &keyBasescapeSoldiers, SDLK_s, "STR_SOLDIERS_UC", "STR_OXCE"));
+	_info.push_back(OptionInfo("keyBasescapeEquipCraft", &keyBasescapeCrafts, SDLK_e, "STR_EQUIP_CRAFT", "STR_OXCE"));
+	_info.push_back(OptionInfo("keyBasescapeBuildFacilities", &keyBasescapeFacilities, SDLK_f, "STR_BUILD_FACILITIES", "STR_OXCE"));
+	_info.push_back(OptionInfo("keyBasescapeResearch", &keyBasescapeResearch, SDLK_r, "STR_RESEARCH", "STR_OXCE"));
+	_info.push_back(OptionInfo("keyBasescapeManufacture", &keyBasescapeManufacture, SDLK_m, "STR_MANUFACTURE", "STR_OXCE"));
+	_info.push_back(OptionInfo("keyBasescapeTransfer", &keyBasescapeTransfer, SDLK_t, "STR_TRANSFER_UC", "STR_OXCE"));
+	_info.push_back(OptionInfo("keyBasescapePurchase", &keyBasescapePurchase, SDLK_p, "STR_PURCHASE_RECRUIT", "STR_OXCE"));
+	_info.push_back(OptionInfo("keyBasescapeSell", &keyBasescapeSell, SDLK_l, "STR_SELL_SACK_UC", "STR_OXCE"));
+
 	_info.push_back(OptionInfo("keyGeoUfoTracker", &keyGeoUfoTracker, SDLK_t, "STR_UFO_TRACKER", "STR_OXCE"));
 	_info.push_back(OptionInfo("keyGeoTechTreeViewer", &keyGeoTechTreeViewer, SDLK_q, "STR_TECH_TREE_VIEWER", "STR_OXCE"));
 	_info.push_back(OptionInfo("keyGeoGlobalProduction", &keyGeoGlobalProduction, SDLK_p, "STR_PRODUCTION_OVERVIEW", "STR_OXCE"));
@@ -306,9 +327,14 @@ void create()
 	_info.push_back(OptionInfo("keyCraftLoadoutLoad", &keyCraftLoadoutLoad, SDLK_F9, "STR_LOAD_CRAFT_LOADOUT_TEMPLATE", "STR_OXCE"));
 
 	_info.push_back(OptionInfo("keyMarkAllAsSeen", &keyMarkAllAsSeen, SDLK_x, "STR_MARK_ALL_AS_SEEN", "STR_OXCE"));
-	_info.push_back(OptionInfo("keySelectAll", &keySelectAll, SDLK_x, "STR_SELECT_ALL", "STR_OXCE"));
-	_info.push_back(OptionInfo("keyDeselectAll", &keyDeselectAll, SDLK_x, "STR_DESELECT_ALL", "STR_OXCE"));
-	_info.push_back(OptionInfo("keyResetAll", &keyResetAll, SDLK_x, "STR_RESET_ALL", "STR_OXCE"));
+	_info.push_back(OptionInfo("keySellAll", &keySellAll, SDLK_x, "STR_SELL_ALL", "STR_OXCE"));
+	_info.push_back(OptionInfo("keySellAllButOne", &keySellAllButOne, SDLK_z, "STR_SELL_ALL_BUT_ONE", "STR_OXCE"));
+	_info.push_back(OptionInfo("keyRemoveSoldiersFromAllCrafts", &keyRemoveSoldiersFromAllCrafts, SDLK_x, "STR_REMOVE_SOLDIERS_FROM_ALL_CRAFTS", "STR_OXCE"));
+	_info.push_back(OptionInfo("keyRemoveSoldiersFromCraft", &keyRemoveSoldiersFromCraft, SDLK_z, "STR_REMOVE_SOLDIERS_FROM_CRAFT", "STR_OXCE"));
+	_info.push_back(OptionInfo("keyRemoveEquipmentFromCraft", &keyRemoveEquipmentFromCraft, SDLK_x, "STR_REMOVE_EQUIPMENT_FROM_CRAFT", "STR_OXCE"));
+	_info.push_back(OptionInfo("keyRemoveArmorFromAllCrafts", &keyRemoveArmorFromAllCrafts, SDLK_x, "STR_REMOVE_ARMOR_FROM_ALL_CRAFTS", "STR_OXCE"));
+	_info.push_back(OptionInfo("keyRemoveArmorFromCraft", &keyRemoveArmorFromCraft, SDLK_z, "STR_REMOVE_ARMOR_FROM_CRAFT", "STR_OXCE"));
+	_info.push_back(OptionInfo("keyRemoveSoldiersFromTraining", &keyRemoveSoldiersFromTraining, SDLK_x, "STR_REMOVE_SOLDIERS_FROM_TRAINING", "STR_OXCE"));
 
 	_info.push_back(OptionInfo("keyInventoryArmor", &keyInventoryArmor, SDLK_a, "STR_INVENTORY_ARMOR", "STR_OXCE"));
 	_info.push_back(OptionInfo("keyInventoryAvatar", &keyInventoryAvatar, SDLK_m, "STR_INVENTORY_AVATAR", "STR_OXCE"));
@@ -352,7 +378,7 @@ void create()
 // that the *correct* files are there complex.
 static bool _gameIsInstalled(const std::string &gameName)
 {
-	// look for game data in either the data or user directorie
+	// look for game data in either the data or user directories
 	std::string dataGameFolder = CrossPlatform::searchDataFolder(gameName);
 	std::string dataGameZipFile = CrossPlatform::searchDataFile(gameName + ".zip");
 	std::string userGameFolder = _userFolder + gameName;
@@ -455,6 +481,10 @@ static void loadArgs()
 						_configFolder.push_back('/');
 					}
 				}
+				else if (argname == "master")
+				{
+					_masterMod = argv[i];
+				}
 				else
 				{
 					//save this command line option for now, we will apply it later
@@ -485,8 +515,10 @@ static bool showHelp()
 	help << "        use PATH as the default User Folder instead of auto-detecting" << std::endl << std::endl;
 	help << "-cfg PATH  or  -config PATH" << std::endl;
 	help << "        use PATH as the default Config Folder instead of auto-detecting" << std::endl << std::endl;
+	help << "-master MOD" << std::endl;
+	help << "        set MOD to the current master mod (eg. -master xcom2)" << std::endl << std::endl;
 	help << "-KEY VALUE" << std::endl;
-	help << "        set option KEY to VALUE instead of default/loaded value (eg. -displayWidth 640)" << std::endl << std::endl;
+	help << "        override option KEY with VALUE (eg. -displayWidth 640)" << std::endl << std::endl;
 	help << "-help" << std::endl;
 	help << "-?" << std::endl;
 	help << "        show command-line help" << std::endl;
@@ -510,7 +542,7 @@ static bool showHelp()
 	return false;
 }
 
-const std::unordered_map<std::string, ModInfo> &getModInfos() { return _modInfos; }
+const std::map<std::string, ModInfo> &getModInfos() { return _modInfos; }
 
 /**
  * Splits the game's User folder by master mod,
@@ -591,9 +623,14 @@ bool init()
 }
 
 // called from the dos screen state (StartState)
-void updateMods()
+void refreshMods()
 {
-	FileMap::clear(false, embeddedOnly);
+	if (reload)
+	{
+		_masterMod = "";
+	}
+
+	_modInfos.clear();
 	SDL_RWops *rwops = CrossPlatform::getEmbeddedAsset("standard.zip");
 	if (rwops) {
 		Log(LOG_INFO) << "Scanning embedded standard mods...";
@@ -603,10 +640,10 @@ void updateMods()
 		Log(LOG_INFO) << "Modding embedded resources is disabled, set 'embeddedOnly: false' in options.cfg to enable.";
 	} else {
 		Log(LOG_INFO) << "Scanning standard mods in '" << getDataFolder() << "'...";
-		FileMap::scanModDir(getDataFolder(), "standard");
+		FileMap::scanModDir(getDataFolder(), "standard", true);
 	}
 	Log(LOG_INFO) << "Scanning user mods in '" << getUserFolder() << "'...";
-	FileMap::scanModDir(getUserFolder(), "mods");
+	FileMap::scanModDir(getUserFolder(), "mods", false);
 
 	// Check mods' dependencies on other mods and extResources (UFO, TFTD, etc),
 	// also breaks circular dependency loops.
@@ -617,6 +654,8 @@ void updateMods()
 	_modInfos = FileMap::getModInfos();
 
 	// remove mods from list that no longer exist
+	bool nonMasterModFound = false;
+	std::map<std::string, bool> corruptedMasters;
 	for (auto i = mods.begin(); i != mods.end();)
 	{
 		auto modIt = _modInfos.find(i->first);
@@ -626,23 +665,32 @@ void updateMods()
 			i = mods.erase(i);
 			continue;
 		}
-		++i;
-	}
-	// sort mods if that's the first time we see any (one or two are added in _setDefaultMods())
-	if (mods.size() <= 2) {
-		std::unordered_set<std::string> seen_modrefs;
-		for (const auto& seen_modref: mods) {
-			seen_modrefs.insert(seen_modref.first);
-		}
-		for (const auto& i: _modInfos) {
-			if (seen_modrefs.find(i.first) == seen_modrefs.end()) {
-				mods.push_back(std::make_pair(i.first, false));
+		else
+		{
+			if ((*modIt).second.isMaster())
+			{
+				if (nonMasterModFound)
+				{
+					Log(LOG_ERROR) << "Removing master mod '" << i->first << "' from the list, because it is on a wrong position. It will be re-added automatically.";
+					corruptedMasters[i->first] = i->second;
+					i = mods.erase(i);
+					continue;
+				}
+			}
+			else
+			{
+				nonMasterModFound = true;
 			}
 		}
-		std::sort(mods.begin(), mods.end(),
-			[](const std::pair<std::string, bool>& a, const std::pair<std::string, bool> &b)
-				{ return Unicode::naturalCompare(a.first, b.first); });
+		++i;
 	}
+	// re-insert corrupted masters at the beginning of the list
+	for (auto j : corruptedMasters)
+	{
+		std::pair<std::string, bool> newMod(j.first, j.second);
+		mods.insert(mods.begin(), newMod);
+	}
+
 	// add in any new mods picked up from the scan and ensure there is but a single
 	// master active
 	std::string activeMaster;
@@ -657,6 +705,10 @@ void updateMods()
 				found = true;
 				if (i->second.isMaster())
 				{
+					if (!_masterMod.empty())
+					{
+						j->second = (_masterMod == j->first);
+					}
 					if (j->second)
 					{
 						if (!activeMaster.empty())
@@ -725,19 +777,47 @@ void updateMods()
 	{
 		_masterMod = activeMaster;
 	}
+	save();
+}
 
-	updateReservedSpace();
+void updateMods()
+{
+	// pick up stuff in common before-hand
+	FileMap::clear(false, embeddedOnly);
+
+	refreshMods();
 	FileMap::setup(getActiveMods(), embeddedOnly);
 	userSplitMasters();
 
 	// report active mods that don't meet the minimum OXCE requirements
-	for (auto& modInf : getActiveMods())
+	Log(LOG_INFO) << "Active mods:";
+	auto activeMods = getActiveMods();
+	for (auto modInf : activeMods)
 	{
+		Log(LOG_INFO) << "- " << modInf->getId() << " v" << modInf->getVersion();
 		if (!modInf->isVersionOk())
 		{
 			Log(LOG_ERROR) << "Mod '" << modInf->getName() << "' requires at least OXCE v" << modInf->getRequiredExtendedVersion();
 		}
 	}
+}
+
+/**
+ * Is the password correct?
+ * @return Mostly false.
+ */
+bool isPasswordCorrect()
+{
+	if (_passwordCheck < 0)
+	{
+		std::string md5hash = md5(Options::password);
+		if (md5hash == "52bd8e15118862c40fc0d6107e197f42")
+			_passwordCheck = 1;
+		else
+			_passwordCheck = 0;
+	}
+
+	return _passwordCheck > 0;
 }
 
 /**
@@ -757,57 +837,6 @@ bool getLoadLastSave()
 void expendLoadLastSave()
 {
 	_loadLastSaveExpended = true;
-}
-
-void updateReservedSpace()
-{
-	Log(LOG_VERBOSE) << "Updating reservedSpace for master mods if necessary...";
-
-	Log(LOG_VERBOSE) << "_masterMod = " << _masterMod;
-
-	int maxSize = 1;
-	for (auto i = mods.rbegin(); i != mods.rend(); ++i)
-	{
-		if (!i->second)
-		{
-			Log(LOG_VERBOSE) << "skipping inactive mod: " << i->first;
-			continue;
-		}
-
-		const ModInfo &modInfo = _modInfos.find(i->first)->second;
-		if (!modInfo.canActivate(_masterMod))
-		{
-			Log(LOG_VERBOSE) << "skipping mod for non-current master: " << i->first << "(" << modInfo.getMaster() << " != " << _masterMod << ")";
-			continue;
-		}
-
-		if (modInfo.getReservedSpace() > maxSize)
-		{
-			maxSize = modInfo.getReservedSpace();
-		}
-	}
-
-	if (maxSize > 1)
-	{
-		// Small hack: update ALL masters, not only active master!
-		// this is because, there can be a hierarchy of multiple masters (e.g. xcom1 master > fluffyUnicorns master > some fluffyUnicorns mod)
-		// and the one that needs to be updated is actually the "root", i.e. xcom1 master
-		for (auto i = _modInfos.begin(); i != _modInfos.end(); ++i)
-		{
-			if (i->second.isMaster())
-			{
-				if (i->second.getReservedSpace() < maxSize)
-				{
-					i->second.setReservedSpace(maxSize);
-					Log(LOG_INFO) << "reservedSpace for: " << i->first << " updated to: " << i->second.getReservedSpace();
-				}
-				else
-				{
-					Log(LOG_INFO) << "reservedSpace for: " << i->first << " is: " << i->second.getReservedSpace();
-				}
-			}
-		}
-	}
 }
 
 /**

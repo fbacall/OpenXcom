@@ -1,3 +1,4 @@
+#pragma once
 /*
  * Copyright 2010-2015 OpenXcom Developers.
  *
@@ -16,15 +17,32 @@
  * You should have received a copy of the GNU General Public License
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef OPENXCOM_SCRIPTBIND_H
-#define	OPENXCOM_SCRIPTBIND_H
-
 #include "Script.h"
 #include "Exception.h"
 #include "Logger.h"
+#include <functional>
+#include <utility>
 
 namespace OpenXcom
 {
+
+
+/**
+ * Hack needed by Clang 6.0 to properly transfer `auto` template parameters,
+ * This need be macro because GCC 7.4 fail on this hack,
+ * VS look it could handle both cases
+ */
+#ifdef __clang__
+template<auto T>
+static constexpr decltype(T) _clang_auto_hack()
+{
+	return T;
+}
+#define MACRO_CLANG_AUTO_HACK(T) _clang_auto_hack<T>()
+#else
+#define MACRO_CLANG_AUTO_HACK(T) T
+#endif
+
 
 /**
  * Type of code block
@@ -50,7 +68,7 @@ struct ParserWriter
 		ScriptRefData finalLabel;
 	};
 
-	template<typename T, typename = typename std::enable_if<std::is_pod<T>::value>::type>
+	template<typename T, typename = typename std::enable_if_t<std::is_pod<T>::value>>
 	class ReservedPos
 	{
 		ProgPos _pos;
@@ -66,7 +84,57 @@ struct ParserWriter
 		friend struct ParserWriter;
 	};
 
+	/// Tag type representing position script operation id in proc vector.
 	class ProcOp { };
+
+	/// List of all places in proc vector where we need have same values
+	template<typename T, typename CompType = T>
+	class ReservedCrossRefrenece
+	{
+		enum Ref : std::size_t { };
+
+		/// list of places of usage.
+		std::vector<std::pair<ReservedPos<T>, Ref>> positions;
+		/// list of final values.
+		std::vector<CompType> values;
+	public:
+
+		ReservedCrossRefrenece() {}
+
+		ScriptValueData addValue(CompType defualtValue)
+		{
+			auto index = static_cast<Ref>(values.size());
+			values.push_back(defualtValue);
+			return index;
+		}
+
+		CompType getValue(ScriptValueData data)
+		{
+			auto index = data.getValue<Ref>();
+			return values[index];
+		}
+
+		void setValue(ScriptValueData data, CompType value)
+		{
+			auto index = data.getValue<Ref>();
+			values[index] = value;
+		}
+
+		void pushPosition(ParserWriter& pw, ScriptValueData data)
+		{
+			auto index = data.getValue<Ref>();
+			positions.push_back(std::make_pair(pw.pushReserved<T>(), index));
+		}
+
+		template<typename Func>
+		void forEachPosition(Func&& f)
+		{
+			for (const auto& pos : positions)
+			{
+				f(pos.first, values[static_cast<std::size_t>(pos.second)]);
+			}
+		}
+	};
 
 	/// member pointer accessing script operations.
 	ScriptContainerBase& container;
@@ -74,10 +142,10 @@ struct ParserWriter
 	const ScriptParserBase& parser;
 	/// temporary script data.
 	std::vector<ScriptRefData> refListCurr;
-	/// list of labels places of usage.
-	std::vector<std::pair<ReservedPos<ProgPos>, int>> refLabelsUses;
-	/// list of labels positions.
-	std::vector<ProgPos> refLabelsList;
+	/// list of labels.
+	ReservedCrossRefrenece<ProgPos> refLabels;
+	/// list of texts.
+	ReservedCrossRefrenece<ScriptText, ScriptRef> refTexts;
 
 	/// index of used script registers.
 	Uint8 regIndexUsed;
@@ -93,17 +161,17 @@ struct ParserWriter
 			ScriptContainerBase& c,
 			const ScriptParserBase& d);
 
-	/// Finall fixes of data.
+	/// Final fixes of data.
 	void relese();
 
-	/// Get referece based on name.
+	/// Get reference based on name.
 	ScriptRefData getReferece(const ScriptRef& s) const;
-	/// Add referece based.
+	/// Add reference based.
 	ScriptRefData addReferece(const ScriptRefData& data);
 
 	/// Get current position in proc vector.
 	ProgPos getCurrPos() const;
-	/// Get distance betwean two positions in proc vector.
+	/// Get distance between two positions in proc vector.
 	size_t getDiffPos(ProgPos begin, ProgPos end) const;
 
 	/// Push zeros to fill empty space.
@@ -117,7 +185,7 @@ struct ParserWriter
 	{
 		return { ParserWriter::push(sizeof(T)) };
 	}
-	/// Setting previosly prepared place with value.
+	/// Setting previously prepared place with value.
 	template<typename T>
 	void updateReserved(ReservedPos<T> pos, T value)
 	{
@@ -130,7 +198,7 @@ struct ParserWriter
 	/// Pushing proc operation id on proc vector.
 	ReservedPos<ProcOp> pushProc(Uint8 procId);
 
-	/// Updating previosoly added proc operation id.
+	/// Updating previously added proc operation id.
 	void updateProc(ReservedPos<ProcOp> pos, int procOffset);
 
 	/// Try pushing label arg on proc vector. Can't use this to create loop back label.
@@ -141,6 +209,9 @@ struct ParserWriter
 
 	/// Setting offset of label on proc vector.
 	bool setLabel(const ScriptRefData& data, ProgPos offset);
+
+	/// Try pushing text literal arg on proc vector.
+	bool pushTextTry(const ScriptRefData& data);
 
 	/// Try pushing reg arg on proc vector.
 	template<typename T>
@@ -171,6 +242,10 @@ struct ParserWriter
 
 	/// Add new reg arg.
 	bool addReg(const ScriptRef& s, ArgEnum type);
+
+
+	/// Dump to log error info about ref.
+	void logDump(const ScriptRefData&) const;
 }; //struct ParserWriter
 
 
@@ -196,7 +271,7 @@ struct SumListIndexImpl<MaxSize, T1, T...> : SumListIndexImpl<MaxSize, T...>
 	using SumListIndexImpl<MaxSize, T...>::typeFunc;
 	static T1 typeFunc(tag);
 
-	static constexpr FuncCommon getDynamic(int i)
+	static constexpr ScriptFunc getDynamic(int i)
 	{
 		return tag::value == i ? T1::func : SumListIndexImpl<MaxSize, T...>::getDynamic(i);
 	}
@@ -216,7 +291,7 @@ struct SumListIndexImpl<MaxSize>
 		}
 	};
 	static End typeFunc(...);
-	static constexpr FuncCommon getDynamic(int i)
+	static constexpr ScriptFunc getDynamic(int i)
 	{
 		return End::func;
 	}
@@ -283,14 +358,7 @@ struct Arg<A1, A2...> : public Arg<A2...>
 			int curr = parse(ph, *begin);
 			if (curr < 0)
 			{
-				if (**begin)
-				{
-					Log(LOG_ERROR) << "Incorrect type of argument '"<< (*begin)->name.toString() <<"'";
-				}
-				else
-				{
-					Log(LOG_ERROR) << "Unknown argument '"<< (*begin)->name.toString() <<"'";
-				}
+				ph.logDump(**begin);
 				return -1;
 			}
 			++*begin;
@@ -304,7 +372,11 @@ struct Arg<A1, A2...> : public Arg<A2...>
 	}
 	static ScriptRange<ArgEnum> argTypes()
 	{
-		const static ArgEnum types[ver()] = { typeHelper<A1>(), typeHelper<A2>()... };
+		enum
+		{
+			ver_temp = ver()
+		};
+		const static ArgEnum types[ver_temp] = { typeHelper<A1>(), typeHelper<A2>()... };
 		return { std::begin(types), std::end(types) };
 	}
 };
@@ -440,7 +512,7 @@ struct ArgColection<MaxSize>
 	}
 	static int parse(ParserWriter& ph, const ScriptRefData* begin, const ScriptRefData* end)
 	{
-		//we shoud have used all avaiable tokens.
+		//we should have used all available tokens.
 		if (begin == end)
 		{
 			return 0;
@@ -459,7 +531,7 @@ struct ArgColection<MaxSize>
 };
 
 ////////////////////////////////////////////////////////////
-//						Arguments impl
+//						Arguments implementation
 ////////////////////////////////////////////////////////////
 
 struct ArgContextDef : ArgInternal<ArgContextDef>
@@ -529,7 +601,7 @@ struct ArgLabelDef
 	static constexpr size_t size = sizeof(ReturnType);
 	static ReturnType get(ScriptWorkerBase& sw, const Uint8* arg, ProgPos& curr)
 	{
-		return sw.const_val<ProgPos>(arg);
+		return sw.const_val<ReturnType>(arg);
 	}
 
 	static bool parse(ParserWriter& ph, const ScriptRefData& t)
@@ -543,13 +615,33 @@ struct ArgLabelDef
 	}
 };
 
+struct ArgTextDef
+{
+	using ReturnType = ScriptText;
+	static constexpr size_t size = sizeof(ReturnType);
+	static ReturnType get(ScriptWorkerBase& sw, const Uint8* arg, ProgPos& curr)
+	{
+		return sw.const_val<ReturnType>(arg);
+	}
+
+	static bool parse(ParserWriter& ph, const ScriptRefData& t)
+	{
+		return ph.pushTextTry(t);
+	}
+
+	static ArgEnum type()
+	{
+		return ArgText;
+	}
+};
+
 struct ArgFuncDef
 {
-	using ReturnType = FuncCommon;
+	using ReturnType = ScriptFunc;
 	static constexpr size_t size = sizeof(ReturnType);
-	static FuncCommon get(ScriptWorkerBase& sw, const Uint8* arg, ProgPos& curr)
+	static ReturnType get(ScriptWorkerBase& sw, const Uint8* arg, ProgPos& curr)
 	{
-		return sw.const_val<FuncCommon>(arg);
+		return sw.const_val<ReturnType>(arg);
 	}
 
 	static bool parse(ParserWriter& ph, const ScriptRefData& t)
@@ -615,23 +707,53 @@ struct ArgSelector<ScriptWorkerBase&>
 	using type = ArgContextDef;
 };
 
+
+
 template<>
-struct ArgSelector<int&>
+struct ArgSelector<ScriptInt&>
 {
-	using type = Arg<ArgRegDef<int&>>;
+	using type = Arg<ArgRegDef<ScriptInt&>>;
 };
 
 template<>
-struct ArgSelector<int>
+struct ArgSelector<ScriptInt>
 {
-	using type = Arg<ArgValueDef<int>, ArgRegDef<int>>;
+	using type = Arg<ArgValueDef<ScriptInt>, ArgRegDef<ScriptInt>>;
 };
 
 template<>
-struct ArgSelector<const int&> : ArgSelector<int>
+struct ArgSelector<const ScriptInt&> : ArgSelector<ScriptInt>
 {
 
 };
+
+template<>
+struct ArgSelector<bool>
+{
+	using type = Arg<ArgValueDef<ScriptInt>, ArgRegDef<ScriptInt>>;
+};
+
+
+
+template<>
+struct ArgSelector<ScriptText&>
+{
+	using type = Arg<ArgRegDef<ScriptText&>>;
+};
+
+template<>
+struct ArgSelector<ScriptText>
+{
+	using type = Arg<ArgTextDef, ArgRegDef<ScriptText>>;
+};
+
+template<>
+struct ArgSelector<const std::string&>
+{
+	using type = Arg<ArgTextDef, ArgRegDef<ScriptText>>;
+};
+
+
 
 template<typename T, typename I>
 struct ArgSelector<ScriptTag<T, I>>
@@ -651,6 +773,9 @@ struct ArgSelector<const ScriptTag<T, I>&> : ArgSelector<ScriptTag<T, I>>
 
 };
 
+
+
+
 template<>
 struct ArgSelector<ProgPos&>
 {
@@ -663,8 +788,11 @@ struct ArgSelector<ProgPos>
 	using type = Arg<ArgLabelDef>;
 };
 
+
+
+
 template<>
-struct ArgSelector<FuncCommon>
+struct ArgSelector<ScriptFunc>
 {
 	using type = Arg<ArgFuncDef>;
 };
@@ -700,9 +828,9 @@ struct ArgSelector<const T*&>
 };
 
 template<>
-struct ArgSelector<std::nullptr_t>
+struct ArgSelector<ScriptNull>
 {
-	using type = Arg<ArgNullDef<std::nullptr_t>>;
+	using type = Arg<ArgNullDef<ScriptNull>>;
 };
 
 template<typename T>
@@ -760,12 +888,48 @@ struct FuncGroup<Func, ListTag<Ver...>> : GetArgs<Func>
 	using GetArgs<Func>::parse;
 	using GetArgs<Func>::overloadType;
 
-	static constexpr FuncCommon getDynamic(int i) { return FuncList::getDynamic(i); }
+	static constexpr ScriptFunc getDynamic(int i) { return FuncList::getDynamic(i); }
 };
 
 ////////////////////////////////////////////////////////////
 //					Bind helper classes
 ////////////////////////////////////////////////////////////
+
+template<auto F>
+struct WarpValue
+{
+	using Type = decltype(F);
+	constexpr static Type val() { return F; }
+};
+
+template<typename Ptr, typename... Rest>
+struct BindMemberInvokeImpl //Work araound ICC 19.0.1 bug
+{
+	template<typename T, typename... TRest>
+	static auto f(T&& a, TRest&&... b) -> decltype(auto)
+	{
+		using ReturnType = std::invoke_result_t<typename Ptr::Type, T, TRest...>;
+
+		ReturnType v = std::invoke(Ptr::val(), std::forward<T>(a), std::forward<TRest>(b)...);
+		if constexpr (sizeof...(Rest) > 0)
+		{
+			return BindMemberInvokeImpl<Rest...>::f(std::forward<ReturnType>(v));
+		}
+		else
+		{
+			return std::forward<ReturnType>(v);
+		}
+	}
+};
+
+template<auto... Rest>
+struct BindMemberInvoke : BindMemberInvokeImpl<WarpValue<Rest>...>
+{
+
+};
+
+template<typename T, auto... Rest>
+using BindMemberFinalType = std::decay_t<decltype(BindMemberInvoke<Rest...>::f(std::declval<T>()))>;
 
 template<typename T>
 struct BindSet
@@ -804,58 +968,40 @@ struct BindClear
 	}
 };
 
-template<typename T, typename P, P T::*X>
+template<typename T, auto... X>
 struct BindPropGet
 {
-	static RetEnum func(const T* t, P& p)
+	static RetEnum func(const T* t, BindMemberFinalType<T, X...>& p)
 	{
-		if (t) p = t->*X; else p = P{};
+		if (t) p = BindMemberInvoke<X...>::f(t); else p = BindMemberFinalType<T, X...>{};
 		return RetContinue;
 	}
 };
-template<typename T, typename P, P T::*X>
+template<typename T, auto... X>
 struct BindPropSet
 {
-	static RetEnum func(T* t, P p)
+	static RetEnum func(T* t, BindMemberFinalType<T, X...> p)
 	{
-		if (t) t->*X = p;
-		return RetContinue;
-	}
-};
-template<typename T, ScriptValues<T> T::*X>
-struct BindScriptValueGet
-{
-	static RetEnum func(const T* t, int& p, typename ScriptValues<T>::Tag st)
-	{
-		if (t) p = (t->*X).get(st); else p = int{};
-		return RetContinue;
-	}
-};
-template<typename T, ScriptValues<T> T::*X>
-struct BindScriptValueSet
-{
-	static RetEnum func(T* t, typename ScriptValues<T>::Tag st, int p)
-	{
-		if (t) (t->*X).set(st, p);
+		if (t) BindMemberInvoke<X...>::f(t) = p;
 		return RetContinue;
 	}
 };
 
-template<typename T, typename N, typename P, N T::*X, P N::*XX>
-struct BindPropNestGet
+template<typename T, auto... X>
+struct BindPropCustomGet
 {
-	static RetEnum func(const T* t, P& p)
+	static RetEnum func(const T* t, int& p, typename BindMemberFinalType<T, X...>::Tag st)
 	{
-		if (t) p = (t->*X).*XX; else p = P{};
+		if (t) p = BindMemberInvoke<X...>::f(t).get(st); else p = int{};
 		return RetContinue;
 	}
 };
-template<typename T, typename N, typename P, N T::*X, P N::*XX>
-struct BindPropNestSet
+template<typename T, auto... X>
+struct BindPropCustomSet
 {
-	static RetEnum func(T* t, P p)
+	static RetEnum func(T* t, typename BindMemberFinalType<T, X...>::Tag st, int p)
 	{
-		if (t) (t->*X).*XX = p;
+		if (t) BindMemberInvoke<X...>::f(t).set(st, p);
 		return RetContinue;
 	}
 };
@@ -880,11 +1026,11 @@ struct BindDebugDisplay
 	}
 };
 
-template<typename T, T f>
-struct BindFunc;
+template<typename T, T X>
+struct BindFuncImpl;
 
 template<typename... Args, void(*X)(Args...)>
-struct BindFunc<void(*)(Args...), X>
+struct BindFuncImpl<void(*)(Args...), X>
 {
 	static RetEnum func(Args... a)
 	{
@@ -894,17 +1040,7 @@ struct BindFunc<void(*)(Args...), X>
 };
 
 template<typename T, typename... Args, bool(T::*X)(Args...)>
-struct BindFunc<bool(T::*)(Args...), X>
-{
-	static RetEnum func(T* t, int& r, Args... a)
-	{
-		if (t) r = (t->*X)(std::forward<Args>(a)...); else r = 0;
-		return RetContinue;
-	}
-};
-
-template<typename T, typename... Args, int(T::*X)(Args...)>
-struct BindFunc<int(T::*)(Args...), X>
+struct BindFuncImpl<bool(T::*)(Args...), X>
 {
 	static RetEnum func(T* t, int& r, Args... a)
 	{
@@ -914,7 +1050,7 @@ struct BindFunc<int(T::*)(Args...), X>
 };
 
 template<typename T, typename... Args, bool(T::*X)(Args...) const>
-struct BindFunc<bool(T::*)(Args...) const, X>
+struct BindFuncImpl<bool(T::*)(Args...) const, X>
 {
 	static RetEnum func(const T* t, int& r, Args... a)
 	{
@@ -923,18 +1059,48 @@ struct BindFunc<bool(T::*)(Args...) const, X>
 	}
 };
 
-template<typename T, typename... Args, int(T::*X)(Args...) const>
-struct BindFunc<int(T::*)(Args...) const, X>
+template<typename T, typename R, typename... Args, R(T::*X)(Args...)>
+struct BindFuncImpl<R(T::*)(Args...), X>
 {
-	static RetEnum func(const T* t, int& r, Args... a)
+	static RetEnum func(T* t, R& r, Args... a)
 	{
-		if (t) r = (t->*X)(std::forward<Args>(a)...); else r = 0;
+		if (t) r = (t->*X)(std::forward<Args>(a)...); else r = {};
+		return RetContinue;
+	}
+};
+
+template<typename T, typename R, typename... Args, R(T::*X)(Args...) const>
+struct BindFuncImpl<R(T::*)(Args...) const, X>
+{
+	static RetEnum func(const T* t, R& r, Args... a)
+	{
+		if (t) r = (t->*X)(std::forward<Args>(a)...); else r = {};
+		return RetContinue;
+	}
+};
+
+template<typename T, typename P, typename... Args, P*(T::*X)(Args...)>
+struct BindFuncImpl<P*(T::*)(Args...), X>
+{
+	static RetEnum func(T* t, P*& r, Args... a)
+	{
+		if (t) r = (t->*X)(std::forward<Args>(a)...); else r = {};
+		return RetContinue;
+	}
+};
+
+template<typename T, typename P, typename... Args, P*(T::*X)(Args...) const>
+struct BindFuncImpl<P*(T::*)(Args...) const, X>
+{
+	static RetEnum func(const T* t, const P*& r, Args... a)
+	{
+		if (t) r = (t->*X)(std::forward<Args>(a)...); else r = {};
 		return RetContinue;
 	}
 };
 
 template<typename T, typename... Args, void(T::*X)(Args...)>
-struct BindFunc<void(T::*)(Args...), X>
+struct BindFuncImpl<void(T::*)(Args...), X>
 {
 	static RetEnum func(T* t, Args... a)
 	{
@@ -943,24 +1109,10 @@ struct BindFunc<void(T::*)(Args...), X>
 	}
 };
 
-template<typename T, typename P, typename... Args, P *(T::*X)(Args...)>
-struct BindFunc<P *(T::*)(Args...), X>
+template<auto F>
+struct BindFunc : BindFuncImpl<decltype(F), F> //Work araound ICC 19.0.1 bug
 {
-	static RetEnum func(T* t, P*& p, Args... a)
-	{
-		if (t) p = (t->*X)(std::forward<Args>(a)...); else p = nullptr;
-		return RetContinue;
-	}
-};
 
-template<typename T, typename P, typename... Args, P *(T::*X)(Args...) const>
-struct BindFunc<P *(T::*)(Args...) const, X>
-{
-	static RetEnum func(const T* t, P*& p, Args... a)
-	{
-		if (t) p = (t->*X)(std::forward<Args>(a)...); else p = nullptr;
-		return RetContinue;
-	}
 };
 
 } //namespace helper
@@ -971,6 +1123,9 @@ struct BindFunc<P *(T::*)(Args...) const, X>
 
 struct BindBase
 {
+	constexpr static const char* functionWithoutDescription = "-";
+	constexpr static const char* functionInvisible = "";
+
 	ScriptParserBase* parser;
 	BindBase(ScriptParserBase* p) : parser{ p }
 	{
@@ -978,7 +1133,7 @@ struct BindBase
 	}
 
 	template<typename X>
-	void addCustomFunc(const std::string& name, const std::string& description = "-")
+	void addCustomFunc(const std::string& name, const std::string& description = functionWithoutDescription)
 	{
 		parser->addParser<helper::FuncGroup<X>>(name, description);
 	}
@@ -996,8 +1151,16 @@ struct BindBase
 template<typename T>
 struct Bind : BindBase
 {
+	using Type = T;
 
-	Bind(ScriptParserBase* p) : BindBase{ p }
+	std::string prefix;
+
+	Bind(ScriptParserBase* p) : Bind{ p, T::ScriptName }
+	{
+
+	}
+
+	Bind(ScriptParserBase* p, std::string r) : BindBase{ p }, prefix{ r }
 	{
 		parser->addParser<helper::FuncGroup<helper::BindSet<T*>>>("set", "arg1 = arg2");
 		parser->addParser<helper::FuncGroup<helper::BindSet<const T*>>>("set", "arg1 = arg2");
@@ -1005,12 +1168,12 @@ struct Bind : BindBase
 		parser->addParser<helper::FuncGroup<helper::BindSwap<const T*>>>("swap", "Swap value of arg1 and arg2");
 		parser->addParser<helper::FuncGroup<helper::BindClear<T*>>>("clear", "arg1 = null");
 		parser->addParser<helper::FuncGroup<helper::BindClear<const T*>>>("clear", "arg1 = null");
-		parser->addParser<helper::FuncGroup<helper::BindEq<const T*>>>("test_eq", "");
+		parser->addParser<helper::FuncGroup<helper::BindEq<const T*>>>("test_eq", BindBase::functionInvisible);
 	}
 
 	std::string getName(const std::string& s)
 	{
-		return std::string{ T::ScriptName } + "." + s;
+		return prefix + "." + s;
 	}
 
 	template<typename X>
@@ -1027,90 +1190,88 @@ struct Bind : BindBase
 	template<int T::*X>
 	void addField(const std::string& get, const std::string& set = "")
 	{
-		addCustomFunc<helper::BindPropGet<T, int, X>>(getName(get), "Get int field of " + std::string{ T::ScriptName });
+		addCustomFunc<helper::BindPropGet<T, X>>(getName(get), "Get int field of " + prefix);
 		if (!set.empty())
 		{
-			addCustomFunc<helper::BindPropSet<T, int, X>>(getName(set), "Set int field of " + std::string{ T::ScriptName });
+			addCustomFunc<helper::BindPropSet<T, X>>(getName(set), "Set int field of " + prefix);
 		}
 	}
+	template<auto MemPtr0, auto MemPtr1, auto... MemPtrR>
+	void addField(const std::string& get)
+	{
+		addCustomFunc<helper::BindPropGet<T, MACRO_CLANG_AUTO_HACK(MemPtr0), MACRO_CLANG_AUTO_HACK(MemPtr1), MACRO_CLANG_AUTO_HACK(MemPtrR)...>>(getName(get), "Get inner field of " + prefix);
+	}
+
+	template<typename TagValues = ScriptValues<T>, typename Parent = typename TagValues::Parent*>
 	void addScriptTag()
 	{
-		using Tag = typename ScriptValues<T>::Tag;
+		using Tag = typename TagValues::Tag;
 		parser->getGlobal()->addTagType<Tag>();
 		if (!parser->haveType<Tag>())
 		{
-			parser->addType<Tag>(getName("Tag"));
+			const ScriptTypeData* conf = parser->getType(ScriptParserBase::getArgType<Parent>());
+			if (conf == nullptr)
+			{
+				throw Exception("Errow with adding script tag to unknow type");
+			}
+			parser->addType<Tag>(conf->name.toString() + ".Tag");
 			parser->addParser<helper::FuncGroup<helper::BindSet<Tag>>>("set", "arg1 = arg2");
 			parser->addParser<helper::FuncGroup<helper::BindSwap<Tag>>>("swap", "Swap value of arg1 and arg2");
 			parser->addParser<helper::FuncGroup<helper::BindClear<Tag>>>("clear", "arg1 = null");
-			parser->addParser<helper::FuncGroup<helper::BindEq<Tag>>>("test_eq", "");
+			parser->addParser<helper::FuncGroup<helper::BindEq<Tag>>>("test_eq", BindBase::functionInvisible);
 		}
 	}
-	template<ScriptValues<T> T::*X>
+	template<auto X>
 	void addScriptValue(bool canEdit = true)
 	{
-		addScriptTag();
-		addCustomFunc<helper::BindScriptValueGet<T, X>>(getName("getTag"), "Get tag of " + std::string{ T::ScriptName });
+		using TagValues = helper::BindMemberFinalType<T, MACRO_CLANG_AUTO_HACK(X)>;
+		addScriptTag<TagValues>();
+		addCustomFunc<helper::BindPropCustomGet<T, MACRO_CLANG_AUTO_HACK(X)>>(getName("getTag"), "Get tag of " + prefix);
 		if (canEdit)
 		{
-			addCustomFunc<helper::BindScriptValueSet<T, X>>(getName("setTag"), "Set tag of " + std::string{ T::ScriptName });
+			addCustomFunc<helper::BindPropCustomSet<T, MACRO_CLANG_AUTO_HACK(X)>>(getName("setTag"), "Set tag of " + prefix);
 		}
 	}
 	template<std::string (*X)(const T*)>
 	void addDebugDisplay()
 	{
-		addCustomFunc<helper::BindDebugDisplay<T, X>>("debug_impl", "");
+		addCustomFunc<helper::BindDebugDisplay<T, X>>("debug_impl", BindBase::functionInvisible);
 	}
 	template<int X>
 	void addFake(const std::string& get)
 	{
-		addCustomFunc<helper::BindValue<T, int, X>>(getName(get), "Get int field of " + std::string{ T::ScriptName });
+		addCustomFunc<helper::BindValue<T, int, X>>(getName(get), "Get int field of " + prefix);
 	}
 
 	template<typename P, P* (T::*X)(), const P* (T::*Y)() const>
 	void addPair(const std::string& get)
 	{
-		add<P, X>(get);
-		add<const P, Y>(get);
+		add<X>(get);
+		add<Y>(get);
+	}
+	template<typename P, void (*X)(T*, P*&), void (*Y)(const T*, const P*&)>
+	void addPair(const std::string& get)
+	{
+		add<X>(get);
+		add<Y>(get);
 	}
 
 	template<typename P, const P* (T::*Y)() const>
 	void addRules(const std::string& get)
 	{
-		add<const P, Y>(get);
+		add<Y>(get);
 	}
 
-	#define MACRO_COPY_HELP_FUNC(Name, ...) \
-		template<__VA_ARGS__> \
-		void add(const std::string& func) \
-		{ \
-			addCustomFunc<helper::BindFunc<decltype(Name), Name>>(getName(func));\
-		}
-
-	MACRO_COPY_HELP_FUNC(X, bool (T::*X)() const)
-
-	MACRO_COPY_HELP_FUNC(X, int (T::*X)() const)
-	MACRO_COPY_HELP_FUNC(X, int (T::*X)())
-	MACRO_COPY_HELP_FUNC(X, int (T::*X)(int) const)
-
-	MACRO_COPY_HELP_FUNC(X, void (T::*X)(int))
-	MACRO_COPY_HELP_FUNC(X, void (*X)(T*, int))
-	MACRO_COPY_HELP_FUNC(X, void (*X)(T*, int&))
-	MACRO_COPY_HELP_FUNC(X, void (*X)(T*, int&, int))
-	MACRO_COPY_HELP_FUNC(X, void (*X)(T*, int&, int, int))
-
-	MACRO_COPY_HELP_FUNC(X, void (*X)(const T*, int))
-	MACRO_COPY_HELP_FUNC(X, void (*X)(const T*, int&))
-	MACRO_COPY_HELP_FUNC(X, void (*X)(const T*, int&, int))
-	MACRO_COPY_HELP_FUNC(X, void (*X)(const T*, int&, int, int))
-
-	MACRO_COPY_HELP_FUNC(X, typename P, P* (T::*X)())
-	MACRO_COPY_HELP_FUNC(X, typename P, P* (T::*X)() const)
-
-	#undef MACRO_COPY_HELP_FUNC
+	template<auto X>
+	void add(const std::string& func, const std::string& description = BindBase::functionWithoutDescription)
+	{
+		addCustomFunc<helper::BindFunc<MACRO_CLANG_AUTO_HACK(X)>>(getName(func), description);
+	}
+	template<typename TX, TX X>
+	void add(const std::string& func, const std::string& description = BindBase::functionWithoutDescription)
+	{
+		addCustomFunc<helper::BindFunc<MACRO_CLANG_AUTO_HACK(X)>>(getName(func), description);
+	}
 };
 
 } //namespace OpenXcom
-
-#endif	/* OPENXCOM_SCRIPTBIND_H */
-

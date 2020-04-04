@@ -19,9 +19,11 @@
 #include <assert.h>
 #include "Unit.h"
 #include "RuleStatBonus.h"
+#include "RuleSkill.h"
 #include "../Engine/RNG.h"
 #include "../Engine/ScriptBind.h"
 #include "../Savegame/BattleUnit.h"
+#include "../Savegame/BattleItem.h"
 #include "../fmath.h"
 
 namespace OpenXcom
@@ -80,6 +82,11 @@ float curretHealth(const BattleUnit *unit)
 	return unit->getHealth();
 }
 
+float curretMana(const BattleUnit* unit)
+{
+	return unit->getMana();
+}
+
 float curretEnergy(const BattleUnit *unit)
 {
 	return unit->getEnergy();
@@ -104,6 +111,11 @@ float normalizedTimeUnits(const BattleUnit *unit)
 float normalizedHealth(const BattleUnit *unit)
 {
 	return 1.0f * unit->getHealth() / unit->getBaseStats()->health;
+}
+
+float normalizedMana(const BattleUnit* unit)
+{
+	return 1.0f * unit->getMana() / unit->getBaseStats()->mana;
 }
 
 float normalizedEnergy(const BattleUnit *unit)
@@ -232,6 +244,7 @@ BonusStatData statDataMap[] =
 	{ "bravery", create1<&UnitStats::bravery>() },
 	{ "firing", create1<&UnitStats::firing>() },
 	{ "health", create1<&UnitStats::health>() },
+	{ "mana", create1<&UnitStats::mana>() },
 	{ "tu", create1<&UnitStats::tu>() },
 	{ "reactions", create1<&UnitStats::reactions>() },
 	{ "stamina", create1<&UnitStats::stamina>() },
@@ -244,12 +257,14 @@ BonusStatData statDataMap[] =
 	{ "fatalWounds", create<&currentFatalWounds>() },
 
 	{ "healthCurrent", create<&curretHealth>() },
+	{ "manaCurrent", create<&curretMana>() },
 	{ "tuCurrent", create<&curretTimeUnits>() },
 	{ "energyCurrent", create<&curretEnergy>() },
 	{ "moraleCurrent", create<&curretMorale>() },
 	{ "stunCurrent", create<&curretStun>() },
 
 	{ "healthNormalized", create<&normalizedHealth>() },
+	{ "manaNormalized", create<&normalizedMana>() },
 	{ "tuNormalized", create<&normalizedTimeUnits>() },
 	{ "energyNormalized", create<&normalizedEnergy>() },
 	{ "moraleNormalized", create<&normalizedMorale>() },
@@ -321,25 +336,36 @@ void RuleStatBonus::load(const std::string& parentName, const YAML::Node& node, 
 	{
 		auto script = std::string{ };
 		script.reserve(1024);
-		for (const auto& p : _bonusOrig)
+
+		if (!_bonusOrig.empty())
 		{
-			script += "unit.";
-			script += p.first;
-			script += statNamePostfix;
-			script += " bonus";
-			for (size_t j = 0; j < statDataFuncSize; ++j)
+			//scale up for rounding
+			script += "mul bonus 1000;\n";
+
+			for (const auto& p : _bonusOrig)
 			{
-				if (j < p.second.size())
+				script += "unit.";
+				script += p.first;
+				script += statNamePostfix;
+				script += " bonus";
+				for (size_t j = 0; j < statDataFuncSize; ++j)
 				{
-					script += " ";
-					script += std::to_string((int)(p.second[j] * statMultiper));
+					if (j < p.second.size())
+					{
+						script += " ";
+						script += std::to_string((int)(p.second[j] * statMultiper * 1000));
+					}
+					else
+					{
+						script += " 0";
+					}
 				}
-				else
-				{
-					script += " 0";
-				}
+				script += ";\n";
 			}
-			script += ";\n";
+
+			//rounding to the nearest
+			script += "if ge bonus 0; add bonus 500; else; sub bonus 500; end;\n";
+			script += "div bonus 1000;\n";
 		}
 		script += "return bonus;";
 		_container.load(parentName, script, parser);
@@ -491,14 +517,28 @@ void RuleStatBonus::setStunRecovery()
 }
 
 /**
+ * Calculate bonus based on attack unit and weapons.
+ */
+int RuleStatBonus::getBonus(BattleActionAttack::ReadOnly attack, int externalBonuses) const
+{
+	assert(!_refresh && "RuleStatBonus not loaded correctly");
+
+	ModScript::BonusStatsCommon::Output arg{ externalBonuses };
+	ModScript::BonusStatsCommon::Worker work{ attack.attacker, externalBonuses, attack.weapon_item, attack.damage_item, attack.type, attack.skill_rules };
+	work.execute(_container, arg);
+
+	return arg.getFirst();
+}
+
+/**
  * Calculate bonus based on unit stats.
  */
-int RuleStatBonus::getBonus(const BattleUnit* unit) const
+int RuleStatBonus::getBonus(const BattleUnit* unit, int externalBonuses) const
 {
-	assert(!_refresh && "RuleStatBonus not loaded correcly");
+	assert(!_refresh && "RuleStatBonus not loaded correctly");
 
-	ModScript::BonusStatsCommon::Output arg{ 0 };
-	ModScript::BonusStatsCommon::Worker work{ unit };
+	ModScript::BonusStatsCommon::Output arg{ externalBonuses };
+	ModScript::BonusStatsCommon::Worker work{ unit, externalBonuses, nullptr, nullptr, BA_NONE, nullptr };
 	work.execute(_container, arg);
 
 	return arg.getFirst();
@@ -508,7 +548,9 @@ int RuleStatBonus::getBonus(const BattleUnit* unit) const
 //					Script binding
 ////////////////////////////////////////////////////////////
 
-ModScript::BonusStatsBaseParser::BonusStatsBaseParser(ScriptGlobal* shared, const std::string& name, Mod* mod) : ScriptParserEvents{ shared, name, "bonus", "unit" }
+ModScript::BonusStatsBaseParser::BonusStatsBaseParser(ScriptGlobal* shared, const std::string& name, Mod* mod) : ScriptParserEvents{ shared, name,
+	"bonus",
+	"unit", "external_bonuses", "weapon", "ammo", "battle_action", "skill" }
 {
 	Bind<BattleUnit> bu = { this };
 

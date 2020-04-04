@@ -25,6 +25,7 @@
 #include "../Engine/Exception.h"
 #include "../Engine/Language.h"
 #include "../Engine/RNG.h"
+#include "../Engine/ScriptBind.h"
 #include "../Mod/Mod.h"
 #include "../Mod/RuleUfo.h"
 #include "../Mod/UfoTrajectory.h"
@@ -100,8 +101,11 @@ Ufo::~Ufo()
 /**
  * Match AlienMission based on the unique ID.
  */
-class matchMissionID: public std::unary_function<const AlienMission *, bool>
+class matchMissionID
 {
+	typedef const AlienMission* argument_type;
+	typedef bool result_type;
+
 public:
 	/// Store ID for later comparisons.
 	matchMissionID(int id) : _id(id) { /* Empty by design. */ }
@@ -420,6 +424,23 @@ std::string Ufo::getMarkerName() const
 }
 
 /**
+ * Returns the marker ID on the globe for the UFO.
+ * @return Marker ID.
+ */
+int Ufo::getMarkerId() const
+{
+	switch (_status)
+	{
+	case LANDED:
+		return _landId;
+	case CRASHED:
+		return _crashId;
+	default:
+		return _id;
+	}
+}
+
+/**
  * Returns the globe marker for the UFO.
  * @return Marker sprite, -1 if none.
  */
@@ -520,7 +541,7 @@ void Ufo::setDetected(bool detected)
 
 /**
  * Returns the amount of remaining seconds the UFO has left on the ground.
- * After this many seconds thet UFO will take off, if landed, or disappear, if
+ * After this many seconds the UFO will take off, if landed, or disappear, if
  * crashed.
  * @return Amount of seconds.
  */
@@ -531,7 +552,7 @@ size_t Ufo::getSecondsRemaining() const
 
 /**
  * Changes the amount of remaining seconds the UFO has left on the ground.
- * After this many seconds thet UFO will take off, if landed, or disappear, if
+ * After this many seconds the UFO will take off, if landed, or disappear, if
  * crashed.
  * @param seconds Amount of seconds.
  */
@@ -1236,6 +1257,115 @@ bool Ufo::insideRadarRange(Target *target) const
 
 	double range = Nautical(_stats.radarRange);
 	return (getDistance(target) <= range);
+}
+
+////////////////////////////////////////////////////////////
+//					Script binding
+////////////////////////////////////////////////////////////
+
+namespace
+{
+
+void getDamageMaxScript(const Ufo *u, int &ret)
+{
+	if (u)
+	{
+		ret = u->getCraftStats().damageMax;
+		return;
+	}
+	ret = 0;
+}
+
+void getStatusScript(const Ufo *u, int &ret)
+{
+	if (u)
+	{
+		ret = (int)u->getStatus();
+		return;
+	}
+	ret = 0;
+}
+
+std::string debugDisplayScript(const Ufo* u)
+{
+	if (u)
+	{
+		std::string s;
+		s += Ufo::ScriptName;
+		s += "(type: \"";
+		s += u->getRules()->getType();
+		s += "\" id: ";
+		s += std::to_string(u->getId());
+		s += "\")";
+		return s;
+	}
+	else
+	{
+		return "null";
+	}
+}
+
+} // namespace
+
+
+/**
+ * Register Ufo in script parser.
+ * @param parser Script parser.
+ */
+void Ufo::ScriptRegister(ScriptParserBase* parser)
+{
+	parser->registerPointerType<RuleUfo>();
+
+	Bind<Ufo> u = { parser };
+
+	u.add<&Ufo::getAltitudeInt>("getAltitude");
+	u.add<&Ufo::getId>("getId");
+	u.add<&Ufo::getRules>("getRules");
+	u.add<&getStatusScript>("getStatus");
+	u.add<&Ufo::getVisibility>("getVisibility");
+
+	u.add<&Ufo::getDamage>("getDamage");
+	u.add<&getDamageMaxScript>("getDamageMax");
+
+	u.add<&Ufo::getDetected>("getDetected");
+	u.add<&Ufo::getHyperDetected>("getHyperDetected");
+
+	u.addRules<RuleUfo, &Ufo::getRules>("getRuleUfo");
+
+	RuleCraftStats::addGetStatsScript<&Ufo::_stats>(u, "Stats.");
+
+	u.addDebugDisplay<&debugDisplayScript>();
+
+	u.addCustomConst("UFO_FLYING", FLYING);
+	u.addCustomConst("UFO_LANDED", LANDED);
+	u.addCustomConst("UFO_CRASHED", CRASHED);
+	u.addCustomConst("UFO_DESTROYED", DESTROYED);
+
+	u.addCustomConst("DETECTION_NONE", DETECTION_NONE);
+	u.addCustomConst("DETECTION_RADAR", DETECTION_RADAR);
+	u.addCustomConst("DETECTION_HYPERWAVE", DETECTION_HYPERWAVE);
+}
+
+
+
+ModScript::DetectUfoFromBaseParser::DetectUfoFromBaseParser(ScriptGlobal* shared, const std::string& name, Mod* mod) : ScriptParserEvents{ shared, name,
+	"detection_type",
+	"detection_chance",
+	"ufo", "distance", "already_tracked", "radar_total_strength", "radar_max_distance", "hyperwave_total_strength", "hyperwave_max_distance", }
+{
+	BindBase b { this };
+
+	b.addCustomPtr<const Mod>("rules", mod);
+}
+
+ModScript::DetectUfoFromCraftParser::DetectUfoFromCraftParser(ScriptGlobal* shared, const std::string& name, Mod* mod) : ScriptParserEvents{ shared, name,
+	"detection_type",
+	"detection_chance",
+	"ufo", "distance", "already_tracked", "radar_total_strength", "radar_max_distance", }
+{
+	BindBase b { this };
+
+	b.addCustomPtr<const Mod>("rules", mod);
 }
 
 }

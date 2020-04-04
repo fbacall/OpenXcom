@@ -1,3 +1,4 @@
+#pragma once
 /*
  * Copyright 2010-2015 OpenXcom Developers.
  *
@@ -16,9 +17,6 @@
  * You should have received a copy of the GNU General Public License
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef OPENXCOM_SCRIPT_H
-#define	OPENXCOM_SCRIPT_H
-
 #include <map>
 #include <limits>
 #include <vector>
@@ -54,6 +52,10 @@ template<typename, typename...> class ScriptWorker;
 template<typename, typename> struct ScriptTag;
 template<typename, typename> class ScriptValues;
 
+enum RegEnum : Uint8;
+enum RetEnum : Uint8;
+enum class ProgPos : size_t;
+
 //for ScriptBind.h
 struct BindBase;
 template<typename T> struct Bind;
@@ -75,16 +77,42 @@ struct ArgName
 
 }
 
-constexpr size_t ScriptMaxOut = 8;
+constexpr size_t ScriptMaxOut = 9;
 constexpr size_t ScriptMaxArg = 16;
 constexpr size_t ScriptMaxReg = 64*sizeof(void*);
 
 ////////////////////////////////////////////////////////////
-//					enum definitions
+//					script base types
 ////////////////////////////////////////////////////////////
 
 /**
- * Script execution cunter.
+ * Script null type, alias to std nullptr.
+ */
+using ScriptNull = std::nullptr_t;
+
+/**
+ * Script numeric type, alias to int.
+ */
+using ScriptInt = int;
+
+/**
+ * Script const text, always zero terminated.
+ */
+struct ScriptText
+{
+	const char* ptr;
+
+	operator std::string()
+	{
+		return ptr ? ptr : "";
+	}
+};
+
+
+using ScriptFunc = RetEnum (*)(ScriptWorkerBase&, const Uint8*, ProgPos&);
+
+/**
+ * Script execution counter.
  */
 enum class ProgPos : size_t
 {
@@ -109,6 +137,10 @@ inline ProgPos operator++(ProgPos& pos, int)
 	return old;
 }
 
+////////////////////////////////////////////////////////////
+//					enum definitions
+////////////////////////////////////////////////////////////
+
 /**
  * Base type for Arg enum.
  */
@@ -121,9 +153,9 @@ enum ArgSpecEnum : ArgEnumBase
 {
 	ArgSpecNone = 0x0,
 	ArgSpecReg = 0x1,
-	ArgSpecVar = 0x3,
+	ArgSpecVar = 0x2 + ArgSpecReg,
 	ArgSpecPtr = 0x4,
-	ArgSpecPtrE = 0xC,
+	ArgSpecPtrE = 0x8 + ArgSpecPtr,
 	ArgSpecSize = 0x10,
 };
 constexpr ArgSpecEnum operator|(ArgSpecEnum a, ArgSpecEnum b)
@@ -149,11 +181,13 @@ enum ArgEnum : ArgEnumBase
 	ArgNull = ArgSpecSize * 1,
 	ArgInt = ArgSpecSize * 2,
 	ArgLabel = ArgSpecSize * 3,
-	ArgMax = ArgSpecSize * 4,
+	ArgText = ArgSpecSize * 4,
+
+	ArgMax = ArgSpecSize * 5,
 };
 
 /**
- * Next avaiable value for arg type.
+ * Next available value for arg type.
  */
 constexpr ArgEnum ArgNext(ArgEnum arg)
 {
@@ -182,35 +216,35 @@ constexpr ArgEnum ArgSpecRemove(ArgEnum arg, ArgSpecEnum spec)
 	return ArgBase(arg) != ArgInvalid ? static_cast<ArgEnum>(static_cast<ArgEnumBase>(arg) & ~static_cast<ArgEnumBase>(spec)) : arg;
 }
 /**
- * Test if argumet type is register (readonly or writeable).
+ * Test if argument type is register (readonly or writeable).
  */
 constexpr bool ArgIsReg(ArgEnum arg)
 {
 	return (static_cast<ArgEnumBase>(arg) & static_cast<ArgEnumBase>(ArgSpecReg)) == static_cast<ArgEnumBase>(ArgSpecReg);
 }
 /**
- * Test if argumet type is variable (writeable register).
+ * Test if argument type is variable (writeable register).
  */
 constexpr bool ArgIsVar(ArgEnum arg)
 {
 	return (static_cast<ArgEnumBase>(arg) & static_cast<ArgEnumBase>(ArgSpecVar)) == static_cast<ArgEnumBase>(ArgSpecVar);
 }
 /**
- * Test if argumet type is pointer.
+ * Test if argument type is pointer.
  */
 constexpr bool ArgIsPtr(ArgEnum arg)
 {
 	return (static_cast<ArgEnumBase>(arg) & static_cast<ArgEnumBase>(ArgSpecPtr)) == static_cast<ArgEnumBase>(ArgSpecPtr);
 }
 /**
- * Test if argumet type is editable pointer.
+ * Test if argument type is editable pointer.
  */
 constexpr bool ArgIsPtrE(ArgEnum arg)
 {
 	return (static_cast<ArgEnumBase>(arg) & static_cast<ArgEnumBase>(ArgSpecPtrE)) == static_cast<ArgEnumBase>(ArgSpecPtrE);
 }
 /**
- * Compatibility betwean operation argument type and variable type. Greater numbers mean bigger comatibility.
+ * Compatibility between operation argument type and variable type. Greater numbers mean bigger compatibility.
  * @param argType Type of operation argument.
  * @param varType Type of variable/value we try pass to operation.
  * @return Zero if incompatible, 255 if both types are same.
@@ -228,7 +262,49 @@ constexpr int ArgCompatible(ArgEnum argType, ArgEnum varType, size_t overloadSiz
 }
 
 /**
- * Avaiable regs.
+ * Function returning next unique value for ArgEnum.
+ */
+inline ArgEnum ArgNextUniqueValue()
+{
+	static ArgEnum curr = ArgMax;
+	ArgEnum old = curr;
+	curr = ArgNext(curr);
+	return old;
+}
+
+/**
+ * Function matching some Type to ArgEnum.
+ */
+template<typename T>
+inline ArgEnum ArgRegisteType()
+{
+	static_assert(std::is_same<T, std::remove_pointer_t<std::decay_t<T>>>::value, "Only simple types are allowed");
+
+	if (std::is_same<T, ScriptInt>::value)
+	{
+		return ArgInt;
+	}
+	else if (std::is_same<T, ScriptNull>::value)
+	{
+		return ArgNull;
+	}
+	else if (std::is_same<T, ScriptText>::value)
+	{
+		return ArgText;
+	}
+	else if (std::is_same<T, ProgPos>::value)
+	{
+		return ArgLabel;
+	}
+	else
+	{
+		static ArgEnum curr = ArgNextUniqueValue();
+		return curr;
+	}
+}
+
+/**
+ * Available regs.
  */
 enum RegEnum : Uint8
 {
@@ -263,13 +339,13 @@ struct TypeInfo
 	{
 		return ((prev + alignment - 1) & ~(alignment - 1));
 	}
-	/// get total space used by this type with considing alignment
+	/// get total space used by this type with considering alignment
 	constexpr size_t needRegSpace(size_t prev) const
 	{
 		return nextRegPos(prev) + size;
 	}
 
-	/// defualt value for pointers
+	/// default value for pointers
 	constexpr static TypeInfo getPtrTypeInfo()
 	{
 		return TypeInfo
@@ -283,8 +359,6 @@ struct TypeInfo
 ////////////////////////////////////////////////////////////
 //				containers definitions
 ////////////////////////////////////////////////////////////
-
-using FuncCommon = RetEnum (*)(ScriptWorkerBase&, const Uint8*, ProgPos&);
 
 /**
  * Common base of script execution.
@@ -349,7 +423,7 @@ class ScriptContainerEventsBase
 {
 	friend class ScriptParserEventsBase;
 	ScriptContainerBase _current;
-	const ScriptContainerBase* _events;
+	const ScriptContainerBase* _events = nullptr;
 
 public:
 	/// Test if is any script there.
@@ -432,11 +506,17 @@ struct TypeInfoImpl
 	static constexpr bool isPtr = std::is_pointer<t1>::value;
 	static constexpr bool isEditable = isPtr && !std::is_const<t2>::value;
 
-	/// meta data of destiantion type (without pointer), invaild if type is not POD
+	enum
+	{
+		metaDestSize = std::is_pod<t3>::value ? sizeof(t3) : 0,
+		metaDestAlign = std::is_pod<t3>::value ? alignof(t3) : 0
+	};
+
+	/// meta data of destination type (without pointer), invalid if type is not POD
 	static constexpr TypeInfo metaDest =
 	{
-		std::is_pod<t3>::value ? sizeof(t3) : 0,
-		std::is_pod<t3>::value ? alignof(t3) : 0,
+		metaDestSize,
+		metaDestAlign,
 	};
 	/// meta data of base type (with pointer if it is)
 	static constexpr TypeInfo metaBase =
@@ -445,8 +525,8 @@ struct TypeInfoImpl
 		alignof(t1),
 	};
 
-	static_assert(metaDest.size || isPtr, "Type need to be POD to be used as reg or const value.");
-	static_assert((metaBase.alignment & (metaBase.alignment - 1)) == 0, "Type alignment is not power of two");
+	static_assert(+metaDestSize || isPtr, "Type need to be POD to be used as reg or const value.");
+	static_assert((alignof(t1) & (alignof(t1) - 1)) == 0, "Type alignment is not power of two");
 };
 
 template<typename T>
@@ -463,7 +543,7 @@ template<int size>
 using ScriptRawMemory = typename std::aligned_storage<size, alignof(void*)>::type;
 
 /**
- * Script output and input aguments.
+ * Script output and input arguments.
  */
 template<typename... OutputArgs>
 struct ScriptOutputArgs
@@ -491,7 +571,7 @@ struct ScriptOutputArgs
 };
 
 /**
- * Specialization of script output and input aguments.
+ * Specialization of script output and input arguments.
  */
 template<>
 struct ScriptOutputArgs<>
@@ -506,7 +586,7 @@ struct ScriptOutputArgs<>
 };
 
 /**
- * Class execute scripts and strore its data.
+ * Class execute scripts and store its data.
  */
 class ScriptWorkerBase
 {
@@ -552,10 +632,7 @@ class ScriptWorkerBase
 	template<size_t BaseOffset, template<typename> class Filter, typename... Args, typename T, int... I>
 	void forRegImpl(T&& arg, helper::ListTag<I...>)
 	{
-		(void)helper::DummySeq
-		{
-			(forRegImplLoop<BaseOffset, I, Args...>(Filter<Args>{}, std::forward<T>(arg)), 0)...,
-		};
+		(forRegImplLoop<BaseOffset, I, Args...>(Filter<Args>{}, std::forward<T>(arg)), ...);
 	}
 
 	template<size_t BaseOffset, template<typename> class Filter, typename... Args, typename T>
@@ -758,9 +835,9 @@ public:
 		}
 	}
 
-	/// Programmable bliting using script.
+	/// Programmable blitting using script.
 	void executeBlit(Surface* src, Surface* dest, int x, int y, int shade);
-	/// Programmable bliting using script.
+	/// Programmable blitting using script.
 	void executeBlit(Surface* src, Surface* dest, int x, int y, int shade, GraphSubset mask);
 
 	/// Clear all worker data.
@@ -784,13 +861,13 @@ class ScriptRange
 protected:
 	using ptr = const T*;
 
-	/// Pointer pointing place of first elemet.
+	/// Pointer pointing place of first element.
 	ptr _begin;
-	/// pointer pointing place past of last elemet.
+	/// pointer pointing place past of last element.
 	ptr _end;
 
 public:
-	/// Defualt constructor.
+	/// Default constructor.
 	ScriptRange() : _begin{ nullptr }, _end{ nullptr }
 	{
 
@@ -801,7 +878,7 @@ public:
 
 	}
 
-	/// Begining of string range.
+	/// Beginning of string range.
 	ptr begin() const
 	{
 		return _begin;
@@ -846,7 +923,7 @@ public:
 
 	}
 
-	/// Find first orrucace of character in string range.
+	/// Find first occurrence of character in string range.
 	size_t find(char c) const
 	{
 		for (auto &curr : *this)
@@ -899,7 +976,7 @@ public:
 
 		if (size_a == size_b)
 		{
-			//check for GCC warnings, it thinks that we try use extrime long strings there...
+			//check for GCC warnings, it thinks that we try use extremely long strings there...
 			assert(size_a < SIZE_MAX/2);
 
 			return memcmp(a._begin, b._begin, size_a);
@@ -918,7 +995,7 @@ public:
 	{
 		return compare(*this, s) == 0;
 	}
-	/// Notequal operator.
+	/// Not-equal operator.
 	bool operator!=(const ScriptRef& s) const
 	{
 		return compare(*this, s) != 0;
@@ -973,6 +1050,15 @@ struct ScriptValueData
 	/// Get current stored value.
 	template<typename T>
 	inline const T& getValue() const;
+
+	bool operator==(const ScriptValueData& other) const
+	{
+		return type == other.type && memcmp(&data, &other.data, size) == 0;
+	}
+	bool operator!=(const ScriptValueData& other) const
+	{
+		return !(*this == other);
+	}
 };
 
 /**
@@ -991,7 +1077,7 @@ struct ScriptRefData
 	/// Constructor.
 	ScriptRefData(ScriptRef n, ArgEnum t, ScriptValueData v) : name{ n }, type{ t }, value{ v } {  }
 
-	/// Get true if this vaild reference.
+	/// Get true if this valid reference.
 	explicit operator bool() const
 	{
 		return type != ArgInvalid;
@@ -1008,7 +1094,7 @@ struct ScriptRefData
 	{
 		return value.getValue<T>();
 	}
-	/// Get current stored value if have that type or defulat value otherwise.
+	/// Get current stored value if have that type or default value otherwise.
 	template<typename T>
 	const T& getValueOrDefulat(const T& def) const
 	{
@@ -1017,12 +1103,12 @@ struct ScriptRefData
 };
 
 /**
- * Struct storing avaliable operation to scripts.
+ * Struct storing available operation to scripts.
  */
 struct ScriptProcData
 {
 	using argFunc = int (*)(ParserWriter& ph, const ScriptRefData* begin, const ScriptRefData* end);
-	using getFunc = FuncCommon (*)(int version);
+	using getFunc = ScriptFunc (*)(int version);
 	using parserFunc = bool (*)(const ScriptProcData& spd, ParserWriter& ph, const ScriptRefData* begin, const ScriptRefData* end);
 	using overloadFunc = int (*)(const ScriptProcData& spd, const ScriptRefData* begin, const ScriptRefData* end);
 
@@ -1097,35 +1183,6 @@ protected:
 		//nothing to do for rest
 	}
 
-	static ArgEnum registeTypeImplNextValue()
-	{
-		static ArgEnum curr = ArgMax;
-		ArgEnum old = curr;
-		curr = ArgNext(curr);
-		return old;
-	}
-	template<typename T>
-	static ArgEnum registeTypeImpl()
-	{
-		if (std::is_same<T, int>::value)
-		{
-			return ArgInt;
-		}
-		else if (std::is_same<T, std::nullptr_t>::value)
-		{
-			return ArgNull;
-		}
-		else if (std::is_same<T, ProgPos>::value)
-		{
-			return ArgLabel;
-		}
-		else
-		{
-			static ArgEnum curr = registeTypeImplNextValue();
-			return curr;
-		}
-	}
-
 	/// Default constructor.
 	ScriptParserBase(ScriptGlobal* shared, const std::string& name);
 	/// Destructor.
@@ -1134,10 +1191,10 @@ protected:
 	/// Common typeless part of parsing string.
 	bool parseBase(ScriptContainerBase& scr, const std::string& parentName, const std::string& srcCode) const;
 
-	/// Prase node and return new script.
+	/// Parse node and return new script.
 	void parseNode(ScriptContainerBase& container, const std::string& parentName, const YAML::Node& node) const;
 
-	/// Prase string and return new script.
+	/// Parse string and return new script.
 	void parseCode(ScriptContainerBase& container, const std::string& parentName, const std::string& srcCode) const;
 
 	/// Test if name is free.
@@ -1147,15 +1204,15 @@ protected:
 
 	/// Add name for custom parameter.
 	void addScriptReg(const std::string& s, ArgEnum type, bool writableReg, bool outputReg);
-	/// Add parsing fuction.
+	/// Add parsing function.
 	void addParserBase(const std::string& s, const std::string& description, ScriptProcData::overloadFunc overload, ScriptRange<ScriptRange<ArgEnum>> overloadArg, ScriptProcData::parserFunc parser, ScriptProcData::argFunc parserArg, ScriptProcData::getFunc parserGet);
-	/// Add new type impl.
+	/// Add new type implementation.
 	void addTypeBase(const std::string& s, ArgEnum type, TypeInfo meta);
-	/// Test if type was added impl.
+	/// Test if type was added implementation.
 	bool haveTypeBase(ArgEnum type);
-	/// Set defulat script for type.
+	/// Set default script for type.
 	void setDefault(const std::string& s) { _defaultScript = s; }
-	/// Set mode where return donot accept any value.
+	/// Set mode where return does not accept any value.
 	void setEmptyReturn() { _emptyReturn = true; }
 
 public:
@@ -1172,7 +1229,7 @@ public:
 		if (info::isPtr) spec = spec | ArgSpecPtr;
 		if (info::isEditable) spec = spec | ArgSpecPtrE;
 
-		return ArgSpecAdd(registeTypeImpl<t3>(), spec);
+		return ArgSpecAdd(ArgRegisteType<t3>(), spec);
 	}
 	/// Add const value.
 	void addConst(const std::string& s, ScriptValueData i);
@@ -1197,9 +1254,10 @@ public:
 		using info = helper::TypeInfoImpl<T>;
 		using t3 = typename info::t3;
 
-		addTypeBase(s, registeTypeImpl<t3>(), info::metaDest);
+		addTypeBase(s, ArgRegisteType<t3>(), info::metaDest);
 	}
-	/// Regised type in parser.
+
+	/// Register pointer type in parser.
 	template<typename P>
 	void registerPointerType()
 	{
@@ -1209,21 +1267,39 @@ public:
 			P::ScriptRegister(this);
 		}
 	}
+	/// Register pointer type with name in parser but without any automatic registrations.
+	template<typename P>
+	void registerRawPointerType(const std::string& s)
+	{
+		if (!haveType<P*>())
+		{
+			addType<P*>(s);
+		}
+	}
+	/// Register value type with name in parser but without any automatic registrations.
+	template<typename P>
+	void registerRawValueType(const std::string& s)
+	{
+		if (!haveType<P>())
+		{
+			addType<P>(s);
+		}
+	}
 
 	/// Load global data from YAML.
 	virtual void load(const YAML::Node& node);
 
 	/// Show all script informations.
-	void logScriptMetadata(bool haveEvents) const;
+	void logScriptMetadata(bool haveEvents, const std::string& groupName) const;
 
 	/// Get name of script.
 	const std::string& getName() const { return _name; }
-	/// Get defulat script.
+	/// Get default script.
 	const std::string& getDefault() const { return _defaultScript; }
 
-	/// Get number of param.
+	/// Get number of parameters.
 	Uint8 getParamSize() const { return _regOutSize; }
-	/// Get param data.
+	/// Get parameter data.
 	const ScriptRefData* getParamData(Uint8 i) const { return getRef(_regOutName[i]); }
 
 	/// Get name of type.
@@ -1242,7 +1318,7 @@ public:
 	ScriptGlobal* getGlobal() { return _shared; }
 	/// Get script shared data.
 	const ScriptGlobal* getGlobal() const { return _shared; }
-	/// Get true if retun do not accept any argument.
+	/// Get true if return does not accept any arguments.
 	bool haveEmptyReturn() const { return _emptyReturn; }
 };
 
@@ -1364,9 +1440,9 @@ class ScriptParserEventsBase : public ScriptParserBase
 	std::vector<EventData> _eventsData;
 
 protected:
-	/// Prase node and return new script.
+	/// Parse node and return new script.
 	void parseNode(ScriptContainerEventsBase& container, const std::string& type, const YAML::Node& node) const;
-	/// Prase string and return new script.
+	/// Parse string and return new script.
 	void parseCode(ScriptContainerEventsBase& container, const std::string& type, const std::string& srcCode) const;
 
 public:
@@ -1377,7 +1453,7 @@ public:
 	virtual void load(const YAML::Node& node) override;
 	/// Get pointer to events.
 	const ScriptContainerBase* getEvents() const;
-	/// Relese event data.
+	/// Release event data.
 	std::vector<ScriptContainerBase> releseEvents();
 };
 
@@ -1407,7 +1483,7 @@ public:
 	using Worker = ScriptWorker<Output, Args...>;
 	friend Container;
 
-	/// Constructor.
+	// Constructor.
 	ScriptParserEvents(ScriptGlobal* shared, const std::string& name, helper::ArgName<OutputArgs>... argOutputNames, helper::ArgName<Args>... argNames) : ScriptParserEventsBase(shared, name)
 	{
 		addRegImpl(true, argOutputNames...);
@@ -1442,7 +1518,7 @@ struct ScriptTag
 	{
 		return index == t.index;
 	}
-	/// Notequal operator.
+	/// Not-equal operator.
 	constexpr bool operator!=(ScriptTag t) const
 	{
 		return !(*this == t);
@@ -1454,7 +1530,7 @@ struct ScriptTag
 	static constexpr bool isValid(size_t i) { return i && i <= limit(); }
 	/// Fake constructor.
 	static constexpr ScriptTag make(size_t i) { return { static_cast<I>(i) }; }
-	/// Max supprted value.
+	/// Max supported value.
 	static constexpr size_t limit() { return static_cast<size_t>(std::numeric_limits<I>::max()); }
 	/// Null value.
 	static constexpr ScriptTag getNullTag() { return make(0); }
@@ -1541,9 +1617,9 @@ public:
 	virtual ~ScriptGlobal();
 
 	/// Store parser.
-	void pushParser(ScriptParserBase* parser);
+	void pushParser(const std::string& groupName, ScriptParserBase* parser);
 	/// Store parser.
-	void pushParser(ScriptParserEventsBase* parser);
+	void pushParser(const std::string& groupName, ScriptParserEventsBase* parser);
 
 	/// Add new const value.
 	void addConst(const std::string& name, ScriptValueData i);
@@ -1595,6 +1671,8 @@ public:
 		}
 	}
 
+	/// Initialize shaded globals like types.
+	virtual void initParserGlobals(ScriptParserBase* parser) { }
 	/// Prepare for loading data.
 	virtual void beginLoad();
 	/// Finishing loading data.
@@ -1605,11 +1683,11 @@ public:
 };
 
 /**
- * Colection of values for script usage.
+ * Collection of values for script usage.
  */
 class ScriptValuesBase
 {
-	/// Vector with all avaiable values for script.
+	/// Vector with all available values for script.
 	std::vector<int> values;
 
 protected:
@@ -1626,13 +1704,14 @@ protected:
 };
 
 /**
- * Strong typed colection of values for srcipt.
+ * Strong typed collection of values for script.
  */
 template<typename T, typename I = Uint8>
 class ScriptValues : ScriptValuesBase
 {
 public:
 	using Tag = ScriptTag<T, I>;
+	using Parent = T;
 
 	/// Load values from yaml file.
 	void load(const YAML::Node &node, const ScriptGlobal* shared)
@@ -1642,7 +1721,7 @@ public:
 	/// Save values to yaml file.
 	void save(YAML::Node &node, const ScriptGlobal* shared) const
 	{
-		saveBase(node, shared, Tag::type());;
+		saveBase(node, shared, Tag::type());
 	}
 
 	/// Get value.
@@ -1684,25 +1763,22 @@ public:
 	/// Load scripts.
 	void load(const std::string& type, const YAML::Node& node, const Parent& parsers)
 	{
-		(void)helper::DummySeq
-		{
-			(get<Parsers>().load(type, node, parsers.template get<Parsers>()), 0)...,
-		};
+		(get<Parsers>().load(type, node, parsers.template get<Parsers>()), ...);
 	}
 };
 
 template<typename Parser, char... NameChars>
 class ScriptGroupNamedParser : public Parser
 {
-    template<typename... C>
-    static constexpr unsigned length(unsigned curr, char head, C... tail)
-    {
-        return head ? length(curr + 1, tail...) : curr;
-    }
-    static constexpr unsigned length(unsigned curr, char head)
-    {
-        return head ? throw "Script name to long!" : curr;
-    }
+	template<typename... C>
+	static constexpr unsigned length(unsigned curr, char head, C... tail)
+	{
+		return head ? length(curr + 1, tail...) : curr;
+	}
+	static constexpr unsigned length(unsigned curr, char head)
+	{
+		return head ? throw "Script name too long!" : curr;
+	}
 
 	static constexpr unsigned nameLenght = length(0, NameChars...);
 
@@ -1729,12 +1805,11 @@ public:
 	using Container = ScriptGroupContainer<ScriptGroup, Parsers...>;
 
 	/// Constructor.
-	ScriptGroup(ScriptGlobal* shared, Master* master) : Parsers{ shared, master, }...
+	ScriptGroup(ScriptGlobal* shared, Master* master, const std::string& groupName) : Parsers{ shared, master, }...
 	{
-		(void)helper::DummySeq
-		{
-			(shared->pushParser(&get<Parsers>()), 0)...,
-		};
+		(void)master;
+		(void)groupName;
+		(shared->pushParser(groupName, &get<Parsers>()), ...);
 	}
 
 	/// Get parser by type.
@@ -1753,23 +1828,20 @@ public:
 };
 
 #define MACRO_GET_STRING_1(str, i) \
-    (sizeof(str) > (i) ? str[(i)] : 0)
+	(sizeof(str) > (i) ? str[(i)] : 0)
 
 #define MACRO_GET_STRING_4(str, i) \
-    MACRO_GET_STRING_1(str, i+0),  \
-    MACRO_GET_STRING_1(str, i+1),  \
-    MACRO_GET_STRING_1(str, i+2),  \
-    MACRO_GET_STRING_1(str, i+3)
+	MACRO_GET_STRING_1(str, i+0),  \
+	MACRO_GET_STRING_1(str, i+1),  \
+	MACRO_GET_STRING_1(str, i+2),  \
+	MACRO_GET_STRING_1(str, i+3)
 
 #define MACRO_GET_STRING_16(str, i) \
-    MACRO_GET_STRING_4(str, i+0),   \
-    MACRO_GET_STRING_4(str, i+4),   \
-    MACRO_GET_STRING_4(str, i+8),   \
-    MACRO_GET_STRING_4(str, i+12)
+	MACRO_GET_STRING_4(str, i+0),   \
+	MACRO_GET_STRING_4(str, i+4),   \
+	MACRO_GET_STRING_4(str, i+8),   \
+	MACRO_GET_STRING_4(str, i+12)
 
 #define MACRO_NAMED_SCRIPT(nameString, type) ScriptGroupNamedParser<type, MACRO_GET_STRING_16(nameString, 0), MACRO_GET_STRING_16(nameString, 16), MACRO_GET_STRING_16(nameString, 32)>
 
 } //namespace OpenXcom
-
-#endif	/* OPENXCOM_SCRIPT_H */
-

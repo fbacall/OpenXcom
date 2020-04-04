@@ -8,7 +8,7 @@ OPT int displayWidth, displayHeight, maxFrameSkip, baseXResolution, baseYResolut
 OPT bool fullscreen, asyncBlit, playIntro, useScaleFilter, useHQXFilter, useXBRZFilter, useOpenGL, checkOpenGLErrors, vSyncForOpenGL, useOpenGLSmoothing,
 	autosave, allowResize, borderless, debug, debugUi, fpsCounter, newSeedOnLoad, keepAspectRatio, nonSquarePixelRatio,
 	cursorInBlackBandsInFullscreen, cursorInBlackBandsInWindow, cursorInBlackBandsInBorderlessWindow, maximizeInfoScreens, musicAlwaysLoop, StereoSound, verboseLogging, soldierDiaries, touchEnabled,
-	rootWindowedMode, lazyLoadResources, listVFSContents, embeddedOnly;
+	rootWindowedMode, rawScreenShots, lazyLoadResources, backgroundMute, listVFSContents, embeddedOnly;
 OPT std::string language, useOpenGLShader;
 OPT KeyboardType keyboardMode;
 OPT SaveSort saveOrder;
@@ -45,11 +45,19 @@ OPT SDLKey keyGeoUfoTracker, keyGeoTechTreeViewer, keyGeoGlobalResearch, keyGeoG
 	keyGraphsZoomIn, keyGraphsZoomOut,
 	keyToggleQuickSearch,
 	keyCraftLoadoutSave, keyCraftLoadoutLoad,
-	keyMarkAllAsSeen, keySelectAll, keyDeselectAll, keyResetAll,
+	keyMarkAllAsSeen,
+	keySellAll, keySellAllButOne,
+	keyRemoveSoldiersFromCraft, keyRemoveSoldiersFromAllCrafts,
+	keyRemoveEquipmentFromCraft,
+	keyRemoveArmorFromCraft, keyRemoveArmorFromAllCrafts,
+	keyRemoveSoldiersFromTraining,
 	keyInventoryArmor, keyInventoryAvatar, keyInventorySave, keyInventoryLoad,
 	keyBattleUseSpecial,
 	keyBattleActionItem1, keyBattleActionItem2, keyBattleActionItem3, keyBattleActionItem4, keyBattleActionItem5,
 	keyNightVisionToggle, keyNightVisionHold, keySelectMusicTrack;
+OPT SDLKey keyBasescapeBuildNewBase, keyBasescapeBaseInfo, keyBasescapeSoldiers, keyBasescapeCrafts,
+	keyBasescapeFacilities, keyBasescapeResearch, keyBasescapeManufacture, keyBasescapeTransfer,
+	keyBasescapePurchase, keyBasescapeSell;
 
 // Basescape keys
 OPT SDLKey keyBasescapeBuildNewBase, keyBasescapeBaseInfo, keyBasescapeSoldiers, keyBasescapeCrafts,
@@ -58,11 +66,18 @@ OPT SDLKey keyBasescapeBuildNewBase, keyBasescapeBaseInfo, keyBasescapeSoldiers,
 
 // Extra options (OXCE)
 OPT int oxceStartUpTextMode;
+OPT bool oxceUpdateCheck;
+
 OPT bool oxceUfoLandingAlert;
 OPT int oxceWoundedDefendBaseIf;
 OPT bool oxcePlayBriefingMusicDuringEquipment;
 OPT int oxceNightVisionColor;
 OPT bool oxceAutoSell;
+OPT int oxceAutoNightVisionThreshold;
+OPT bool oxceRememberDisabledCraftWeapons;
+OPT bool oxceHighlightNewTopicsHidden;
+OPT bool oxceEnableUnitResponseSounds;
+OPT std::string password;
 
 // Flags and other stuff that don't need OptionInfo's.
 OPT bool mute, reload, newOpenGL, newScaleFilter, newHQXFilter, newXBRZFilter, newRootWindowedMode, newFullscreen, newAllowResize, newBorderless;

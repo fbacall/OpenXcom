@@ -26,6 +26,7 @@ namespace OpenXcom
 {
 
 class Mod;
+class RuleCommendations;
 struct BattleUnitKills;
 
 /**
@@ -37,17 +38,23 @@ private:
 	std::string  _type, _noun;
 	int  _decorationLevel;
 	bool _isNew;
+	RuleCommendations *_rule = nullptr;
+
 public:
 	/// Creates a new commendation and loads its contents from YAML.
-	SoldierCommendations(const YAML::Node& node);
+	SoldierCommendations(const YAML::Node& node, const Mod* mod);
 	/// Creates a commendation of the specified type.
-	SoldierCommendations(std::string commendationName, std::string noun = "noNoun");
+	SoldierCommendations(std::string commendationName, std::string noun, const Mod* mod);
 	/// Cleans up the commendation.
 	~SoldierCommendations();
 	/// Loads the commendation information from YAML.
 	void load(const YAML::Node& node);
 	/// Saves the commendation information to YAML.
 	YAML::Node save() const;
+
+	/// Get commendation rule config.
+	RuleCommendations* getRule() { return _rule; }
+
 	/// Get commendation name.
 	std::string getType() const;
 	/// Get commendation noun.
@@ -80,11 +87,10 @@ private:
 		_martyrKillsTotal, _postMortemKills, _slaveKillsTotal, _bestSoldier, _revivedSoldierTotal, _revivedHostileTotal, _revivedNeutralTotal;
 	bool _globeTrotter;
 	void manageModularCommendations(std::map<std::string, int> &nextCommendationLevel, std::map<std::string, int> &modularCommendations, std::pair<std::string, int> statTotal, int criteria);
-	void awardCommendation(const std::string& type, const std::string& noun = "noNoun");
 public:
 	/// Construct a diary.
 	SoldierDiary();
-	/// Deconstruct a diary.
+	/// Cleans up a diary.
 	~SoldierDiary();
 	/// Load a diary.
 	void load(const YAML::Node& node, const Mod *mod);
@@ -116,7 +122,7 @@ public:
 	int getWinTotal(std::vector<MissionStatistics*>*) const;
 	/// Get the total number of stuns.
 	int getStunTotal() const;
-	/// Get the total number of psi panicks.
+	/// Get the total number of psi panics.
 	int getPanickTotal() const;
 	/// Get the total number of psi mind controls.
 	int getControlTotal() const;
@@ -135,12 +141,12 @@ public:
 	/// Get the kill list.
 	std::vector<BattleUnitKills*> &getKills();
 	/// Award special commendation to the original 8 soldiers.
-	void awardOriginalEightCommendation();
-	/// Award post-humous best-of rank commendation.
+	void awardOriginalEightCommendation(const Mod* mod);
+	/// Award posthumous best-of rank commendation.
 	void awardBestOfRank(int score);
-	/// Award post-humous best overall commendation.
+	/// Award posthumous best overall commendation.
 	void awardBestOverall(int score);
-	/// Award post-humous kills commendation.
+	/// Award posthumous kills commendation.
 	void awardPostMortemKill(int kills);
 	/// Get the total number of shots fired.
 	int getShotsFiredTotal() const;
@@ -155,9 +161,9 @@ public:
 	/// Get the total number of terror missions.
 	int getTerrorMissionTotal(std::vector<MissionStatistics*>*) const;
 	/// Get the total number of night missions.
-	int getNightMissionTotal(std::vector<MissionStatistics*>*) const;
+	int getNightMissionTotal(std::vector<MissionStatistics*>*, const Mod* mod) const;
 	/// Get the total number of night terror missions.
-	int getNightTerrorMissionTotal(std::vector<MissionStatistics*>*) const;
+	int getNightTerrorMissionTotal(std::vector<MissionStatistics*>*, const Mod* mod) const;
 	/// Get the total number of base defense missions.
 	int getBaseDefenseMissionTotal(std::vector<MissionStatistics*>*) const;
 	/// Get the total number of alien base assaults.

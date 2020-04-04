@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "SurfaceSet.h"
+#include <climits>
 #include "Surface.h"
 #include "Exception.h"
 #include "FileMap.h"
@@ -29,7 +30,7 @@ namespace OpenXcom
  * @param width Frame width in pixels.
  * @param height Frame height in pixels.
  */
-SurfaceSet::SurfaceSet(int width, int height) : _width(width), _height(height), _offset()
+SurfaceSet::SurfaceSet(int width, int height) : _width(width), _height(height), _sharedFrames(INT_MAX)
 {
 
 }
@@ -42,7 +43,7 @@ SurfaceSet::SurfaceSet(const SurfaceSet& other)
 {
 	_width = other._width;
 	_height = other._height;
-	_offset = other._offset;
+	_sharedFrames = other._sharedFrames;
 
 	_frames.resize(other._frames.size());
 	for (size_t i = 0; i < _frames.size(); ++i)
@@ -70,7 +71,6 @@ SurfaceSet::~SurfaceSet()
  */
 void SurfaceSet::loadPck(const std::string &pck, const std::string &tab)
 {
-	_offset = 0;
 	_frames.clear();
 
 	int nframes = 0;
@@ -206,7 +206,6 @@ void SurfaceSet::loadDat(const std::string &filename)
  */
 Surface *SurfaceSet::getFrame(int i)
 {
-	i += _offset;
 	if ((size_t)i < _frames.size())
 	{
 		if (_frames[i])
@@ -224,23 +223,14 @@ Surface *SurfaceSet::getFrame(int i)
  */
 Surface *SurfaceSet::addFrame(int i)
 {
-	i += _offset;
-	if (i >= 0)
+	assert(i >= 0 && "Negative indexes are not supported in SurfaceSet");
+	if ((size_t)i < _frames.size())
 	{
-		if ((size_t)i < _frames.size())
-		{
-			//nothing
-		}
-		else
-		{
-			_frames.resize(i + 1);
-		}
+		//nothing
 	}
 	else
 	{
-		_offset -= i;
-		_frames.insert(_frames.begin(), (size_t)-i, {});
-		i = 0;
+		_frames.resize(i + 1);
 	}
 	_frames[i] = Surface(_width, _height);
 	return &_frames[i];
@@ -262,6 +252,29 @@ int SurfaceSet::getWidth() const
 int SurfaceSet::getHeight() const
 {
 	return _height;
+}
+
+/**
+ * Set number of shared frame indexes that are accessible for all mods.
+ */
+void SurfaceSet::setMaxSharedFrames(int i)
+{
+	if (i >= 0)
+	{
+		_sharedFrames = i;
+	}
+	else
+	{
+		_sharedFrames = 0;
+	}
+}
+
+/**
+ * Gets number of shared frame indexes that are accessible for all mods.
+ */
+int SurfaceSet::getMaxSharedFrames() const
+{
+	return _sharedFrames;
 }
 
 /**

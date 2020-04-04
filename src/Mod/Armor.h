@@ -51,6 +51,7 @@ public:
 	static const std::string NONE;
 private:
 	std::string _type, _spriteSheet, _spriteInv, _corpseGeo, _storeItem, _specWeapon;
+	std::string _requires;
 	std::string _layersDefaultPrefix;
 	std::map<int, std::string> _layersSpecificPrefix;
 	std::map<std::string, std::vector<std::string> > _layersDefinition;
@@ -60,6 +61,11 @@ private:
 	bool _drawBubbles;
 	MovementType _movementType;
 	int _moveSound;
+	std::vector<int> _deathSoundMale, _deathSoundFemale;
+	std::vector<int> _selectUnitSoundMale, _selectUnitSoundFemale;
+	std::vector<int> _startMovingSoundMale, _startMovingSoundFemale;
+	std::vector<int> _selectWeaponSoundMale, _selectWeaponSoundFemale;
+	std::vector<int> _annoyedSoundMale, _annoyedSoundFemale;
 	int _size, _weight, _visibilityAtDark, _visibilityAtDay, _personalLight;
 	int _camouflageAtDay, _camouflageAtDark, _antiCamouflageAtDay, _antiCamouflageAtDark, _heatVision, _psiVision;
 	float _damageModifier[DAMAGE_TYPES];
@@ -74,7 +80,7 @@ private:
 	Sint8 _ignoresMeleeThreat, _createsMeleeThreat;
 	float _overKill, _meleeDodgeBackPenalty;
 	RuleStatBonus _psiDefence, _meleeDodge;
-	RuleStatBonus _timeRecovery, _energyRecovery, _moraleRecovery, _healthRecovery, _stunRecovery;
+	RuleStatBonus _timeRecovery, _energyRecovery, _moraleRecovery, _healthRecovery, _stunRecovery, _manaRecovery;
 	ModScript::BattleUnitScripts::Container _battleUnitScripts;
 
 	std::vector<std::string> _units;
@@ -116,6 +122,8 @@ public:
 	std::string getStoreItem() const;
 	/// Gets the special weapon type.
 	std::string getSpecialWeapon() const;
+	/// Gets the research required to be able to equip this armor.
+	const std::string &getRequiredResearch() const;
 
 	/// Gets the default prefix for layered armor sprite names.
 	const std::string &getLayersDefaultPrefix() const { return _layersDefaultPrefix; }
@@ -132,9 +140,29 @@ public:
 	MovementType getMovementType() const;
 	/// Gets the move sound id. Overrides default/unit's move sound. To be used in BattleUnit constructors only too!
 	int getMoveSound() const;
+	/// Gets the male death sounds.
+	const std::vector<int> &getMaleDeathSounds() const { return _deathSoundMale; }
+	/// Gets the female death sounds.
+	const std::vector<int> &getFemaleDeathSounds() const { return _deathSoundFemale; }
+	/// Gets the male "select unit" sounds.
+	const std::vector<int> &getMaleSelectUnitSounds() const { return _selectUnitSoundMale; }
+	/// Gets the female "select unit" sounds.
+	const std::vector<int> &getFemaleSelectUnitSounds() const { return _selectUnitSoundFemale; }
+	/// Gets the male "start moving" sounds.
+	const std::vector<int> &getMaleStartMovingSounds() const { return _startMovingSoundMale; }
+	/// Gets the female "start moving" sounds.
+	const std::vector<int> &getFemaleStartMovingSounds() const { return _startMovingSoundFemale; }
+	/// Gets the male "select weapon" sounds.
+	const std::vector<int> &getMaleSelectWeaponSounds() const { return _selectWeaponSoundMale; }
+	/// Gets the female "select weapon" sounds.
+	const std::vector<int> &getFemaleSelectWeaponSounds() const { return _selectWeaponSoundFemale; }
+	/// Gets the male "annoyed" sounds.
+	const std::vector<int> &getMaleAnnoyedSounds() const { return _annoyedSoundMale; }
+	/// Gets the female "annoyed" sounds.
+	const std::vector<int> &getFemaleAnnoyedSounds() const { return _annoyedSoundFemale; }
 	/// Gets whether this is a normal or big unit.
 	int getSize() const;
-	/// Gets how big space armor ocupy in craft.
+	/// Gets how much space the armor occupies in a craft.
 	int getTotalSize() const;
 	/// Gets damage modifier.
 	float getDamageModifier(ItemDamageType dt) const;
@@ -153,19 +181,22 @@ public:
 	float getMeleeDodgeBackPenalty() const;
 
 	/// Gets unit TU recovery.
-	int getTimeRecovery(const BattleUnit* unit) const;
+	int getTimeRecovery(const BattleUnit* unit, int externalBonuses) const;
 	const RuleStatBonus *getTimeRecoveryRaw() const { return &_timeRecovery; }
 	/// Gets unit Energy recovery.
-	int getEnergyRecovery(const BattleUnit* unit) const;
+	int getEnergyRecovery(const BattleUnit* unit, int externalBonuses) const;
 	const RuleStatBonus *getEnergyRecoveryRaw() const { return &_energyRecovery; }
 	/// Gets unit Morale recovery.
-	int getMoraleRecovery(const BattleUnit* unit) const;
+	int getMoraleRecovery(const BattleUnit* unit, int externalBonuses) const;
 	const RuleStatBonus *getMoraleRecoveryRaw() const { return &_moraleRecovery; }
 	/// Gets unit Health recovery.
-	int getHealthRecovery(const BattleUnit* unit) const;
+	int getHealthRecovery(const BattleUnit* unit, int externalBonuses) const;
 	const RuleStatBonus *getHealthRecoveryRaw() const { return &_healthRecovery; }
+	/// Gets unit Mana recovery.
+	int getManaRecovery(const BattleUnit* unit, int externalBonuses) const;
+	const RuleStatBonus* getManaRecoveryRaw() const { return &_manaRecovery; }
 	/// Gets unit Stun recovery.
-	int getStunRegeneration(const BattleUnit* unit) const;
+	int getStunRegeneration(const BattleUnit* unit, int externalBonuses) const;
 	const RuleStatBonus *getStunRegenerationRaw() const { return &_stunRecovery; }
 
 	/// Gets the armor's weight.
@@ -178,7 +209,7 @@ public:
 	bool getCanHoldWeapon() const;
 	/// Checks if this armor ignores gender (power suit/flying suit).
 	ForcedTorso getForcedTorso() const;
-	/// Gets buildin weapons of armor.
+	/// Gets built-in weapons of armor.
 	const std::vector<std::string> &getBuiltInWeapons() const;
 	/// Gets max view distance at dark in BattleScape.
 	int getVisibilityAtDark() const;
@@ -196,7 +227,7 @@ public:
 	int getHeatVision() const;
 	/// Gets info about psi vision.
 	int getPsiVision() const;
-	/// Gets personal ligth radius;
+	/// Gets personal light radius;
 	int getPersonalLight() const;
 	/// Gets how armor react to fear.
 	bool getFearImmune(bool def = false) const;
@@ -210,7 +241,7 @@ public:
 	bool getIgnoresMeleeThreat(bool def = false) const;
 	/// Gets whether or not this unit is a close quarters threat.
 	bool getCreatesMeleeThreat(bool def = true) const;
-	/// Gets how much negative hp is require to gib unit.
+	/// Gets how much damage (over the maximum HP) is needed to vaporize/disintegrate a unit.
 	float getOverKill() const;
 	/// Get face base color
 	int getFaceColorGroup() const;

@@ -18,6 +18,7 @@
  */
 #include <algorithm>
 #include "RuleManufacture.h"
+#include "RuleManufactureShortcut.h"
 #include "RuleResearch.h"
 #include "RuleCraft.h"
 #include "RuleItem.h"
@@ -39,11 +40,11 @@ RuleManufacture::RuleManufacture(const std::string &name) : _name(name), _space(
  * @param node YAML node.
  * @param listOrder The list weight for this manufacture.
  */
-void RuleManufacture::load(const YAML::Node &node, int listOrder)
+void RuleManufacture::load(const YAML::Node &node, Mod* mod, int listOrder)
 {
 	if (const YAML::Node &parent = node["refNode"])
 	{
-		load(parent, listOrder);
+		load(parent, mod, listOrder);
 	}
 	bool same = (1 == _producedItemsNames.size() && _name == _producedItemsNames.begin()->first);
 	_name = node["name"].as<std::string>(_name);
@@ -55,7 +56,7 @@ void RuleManufacture::load(const YAML::Node &node, int listOrder)
 	}
 	_category = node["category"].as<std::string>(_category);
 	_requiresName = node["requires"].as< std::vector<std::string> >(_requiresName);
-	_requiresBaseFunc = node["requiresBaseFunc"].as< std::vector<std::string> >(_requiresBaseFunc);
+	mod->loadBaseFunction(_name, _requiresBaseFunc, node["requiresBaseFunc"]);
 	_space = node["space"].as<int>(_space);
 	_time = node["time"].as<int>(_time);
 	_cost = node["cost"].as<int>(_cost);
@@ -70,7 +71,6 @@ void RuleManufacture::load(const YAML::Node &node, int listOrder)
 	{
 		_listOrder = listOrder;
 	}
-	std::sort(_requiresBaseFunc.begin(), _requiresBaseFunc.end());
 }
 
 /**
@@ -78,6 +78,11 @@ void RuleManufacture::load(const YAML::Node &node, int listOrder)
  */
 void RuleManufacture::afterLoad(const Mod* mod)
 {
+	if (_time <= 0)
+	{
+		throw Exception("Manufacturing time must be greater than zero.");
+	}
+
 	_requires = mod->getResearch(_requiresName);
 	if (_category == "STR_CRAFT")
 	{
@@ -116,7 +121,7 @@ void RuleManufacture::afterLoad(const Mod* mod)
 		}
 		else
 		{
-			throw Exception("Unknow required item '" + i.first + "'");
+			throw Exception("Unknown required item '" + i.first + "'");
 		}
 	}
 
@@ -131,10 +136,75 @@ void RuleManufacture::afterLoad(const Mod* mod)
 	}
 
 	//remove not needed data
-	Collections::deleteAll(_requiresName);
-	Collections::deleteAll(_producedItemsNames);
-	Collections::deleteAll(_requiredItemsNames);
-	Collections::deleteAll(_randomProducedItemsNames);
+	Collections::removeAll(_requiresName);
+	Collections::removeAll(_producedItemsNames);
+	Collections::removeAll(_requiredItemsNames);
+	Collections::removeAll(_randomProducedItemsNames);
+}
+
+/**
+ * Change the name and break down the sub-projects into simpler components.
+ */
+void RuleManufacture::breakDown(const Mod* mod, const RuleManufactureShortcut* recipe)
+{
+	// 0. rename
+	_name = recipe->getName();
+
+	// 1. init temp variables
+	std::map<const RuleItem*, int> tempRequiredItems = _requiredItems;
+	std::map<const RuleResearch*, bool> tempRequires;
+	for (auto& r : _requires)
+		tempRequires[r] = true;
+	auto tempRequiresBaseFunc = _requiresBaseFunc;
+
+	// 2. break down iteratively
+	bool doneSomething = false;
+	do
+	{
+		doneSomething = false;
+		for (auto& projectName : recipe->getBreakDownItems())
+		{
+			RuleItem* itemRule = mod->getItem(projectName, true);
+			RuleManufacture* projectRule = mod->getManufacture(projectName, true);
+			int count = tempRequiredItems[itemRule];
+			if (count > 0)
+			{
+				tempRequiredItems[itemRule] = 0;
+				doneSomething = true;
+
+				_space = std::max(_space, projectRule->getRequiredSpace());
+				_time += count * projectRule->getManufactureTime();
+				_cost += count * projectRule->getManufactureCost();
+
+				for (auto& ri : projectRule->getRequiredItems())
+					tempRequiredItems[ri.first] += count * ri.second;
+				for (auto& r : projectRule->getRequirements())
+					tempRequires[r] = true;
+
+				tempRequiresBaseFunc |= projectRule->getRequireBaseFunc();
+			}
+		}
+	}
+	while (doneSomething);
+
+	// 3. update
+	{
+		_requiredItems.clear();
+		for (auto& item : tempRequiredItems)
+			if (item.second > 0)
+				_requiredItems[item.first] = item.second;
+	}
+	if (recipe->getBreakDownRequires())
+	{
+		_requires.clear();
+		for (auto& item : tempRequires)
+			if (item.second)
+				_requires.push_back(item.first);
+	}
+	if (recipe->getBreakDownRequiresBaseFunc())
+	{
+		_requiresBaseFunc = tempRequiresBaseFunc;
+	}
 }
 
 /**
@@ -163,16 +233,6 @@ const std::string &RuleManufacture::getCategory() const
 const std::vector<const RuleResearch*> &RuleManufacture::getRequirements() const
 {
 	return _requires;
-}
-
-/**
- * Gets the list of base functions required to
- * manufacture this object.
- * @return A list of functions IDs.
- */
-const std::vector<std::string> &RuleManufacture::getRequireBaseFunc() const
-{
-	return _requiresBaseFunc;
 }
 
 /**

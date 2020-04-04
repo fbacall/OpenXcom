@@ -69,6 +69,7 @@ private:
 	int _weaponNum;
 	int _pilotAccuracyBonus, _pilotDodgeBonus, _pilotApproachSpeedModifier, _craftAccelerationBonus;
 	bool _firedAtLeastOnce, _experienceAwarded;
+	bool _delayedRecolorDone;
 	// craft min/max, radar min/max, damage min/max, shield min/max
 	int _colors[13];
 	// Ends the dogfight.
@@ -158,7 +159,7 @@ public:
 	bool getWaitForPoly() const;
 	/// Waits until the UFO reaches the right altitude.
 	void setWaitForAltitude(bool wait);
-	/// Waits until the UFO reaches the right altutude.
+	/// Waits until the UFO reaches the right altitude.
 	bool getWaitForAltitude() const;
 	/// Award experience to the pilots.
 	void awardExperienceToPilots();

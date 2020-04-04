@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "AlienDeployment.h"
+#include "../Engine/RNG.h"
 #include "../fmath.h"
 
 namespace YAML
@@ -53,6 +54,7 @@ namespace YAML
 			node["extraQty"] = rhs.extraQty;
 			node["percentageOutsideUfo"] = rhs.percentageOutsideUfo;
 			node["itemSets"] = rhs.itemSets;
+			node["extraRandomItems"] = rhs.extraRandomItems;
 			return node;
 		}
 
@@ -68,6 +70,7 @@ namespace YAML
 			rhs.extraQty = node["extraQty"].as<int>(0); // give this a default, as it's not 100% needed, unlike the others.
 			rhs.percentageOutsideUfo = node["percentageOutsideUfo"].as<int>(rhs.percentageOutsideUfo);
 			rhs.itemSets = node["itemSets"].as< std::vector<OpenXcom::ItemSet> >(rhs.itemSets);
+			rhs.extraRandomItems = node["extraRandomItems"].as< std::vector<OpenXcom::ItemSet> >(rhs.extraRandomItems);
 			return true;
 		}
 	};
@@ -114,9 +117,14 @@ namespace OpenXcom
  * type of deployment data.
  * @param type String defining the type.
  */
-AlienDeployment::AlienDeployment(const std::string &type) : _type(type), _bughuntMinTurn(0), _width(0), _length(0), _height(0), _civilians(0), _shade(-1), _minShade(-1), _maxShade(-1), _finalDestination(false), _isAlienBase(false), _alert("STR_ALIENS_TERRORISE"),
-	_alertBackground("BACK03.SCR"), _alertDescription(""), _alertSound(-1), _markerName("STR_TERROR_SITE"), _markerIcon(-1), _durationMin(0), _durationMax(0), _minDepth(0), _maxDepth(0), _genMissionFrequency(0), _genMissionLimit(1000),
-	_objectiveType(-1), _objectivesRequired(0), _objectiveCompleteScore(0), _objectiveFailedScore(0), _despawnPenalty(0), _points(0), _turnLimit(0), _cheatTurn(20), _chronoTrigger(FORCE_LOSE), _keepCraftAfterFailedMission(false), _escapeType(ESCAPE_NONE),
+AlienDeployment::AlienDeployment(const std::string &type) :
+	_type(type), _bughuntMinTurn(0), _width(0), _length(0), _height(0), _civilians(0), _civilianSpawnNodeRank(0),
+	_shade(-1), _minShade(-1), _maxShade(-1), _finalDestination(false), _isAlienBase(false), _isHidden(false),
+	_alert("STR_ALIENS_TERRORISE"), _alertBackground("BACK03.SCR"), _alertDescription(""), _alertSound(-1),
+	_markerName("STR_TERROR_SITE"), _markerIcon(-1), _durationMin(0), _durationMax(0), _minDepth(0), _maxDepth(0),
+	_genMissionFrequency(0), _genMissionLimit(1000),
+	_objectiveType(-1), _objectivesRequired(0), _objectiveCompleteScore(0), _objectiveFailedScore(0), _despawnPenalty(0), _abortPenalty(0), _points(0),
+	_turnLimit(0), _cheatTurn(20), _chronoTrigger(FORCE_LOSE), _keepCraftAfterFailedMission(false), _allowObjectiveRecovery(false), _escapeType(ESCAPE_NONE),
 	_baseDetectionRange(0), _baseDetectionChance(100), _huntMissionMaxFrequency(60)
 {
 }
@@ -148,6 +156,8 @@ void AlienDeployment::load(const YAML::Node &node, Mod *mod)
 		load(parent, mod);
 	}
 	_type = node["type"].as<std::string>(_type);
+	_customUfo = node["customUfo"].as<std::string>(_customUfo);
+	_enviroEffects = node["enviroEffects"].as<std::string>(_enviroEffects);
 	_startingCondition = node["startingCondition"].as<std::string>(_startingCondition);
 	_unlockedResearch = node["unlockedResearch"].as<std::string>(_unlockedResearch);
 	_missionBountyItem = node["missionBountyItem"].as<std::string>(_missionBountyItem);
@@ -157,6 +167,7 @@ void AlienDeployment::load(const YAML::Node &node, Mod *mod)
 	_length = node["length"].as<int>(_length);
 	_height = node["height"].as<int>(_height);
 	_civilians = node["civilians"].as<int>(_civilians);
+	_civilianSpawnNodeRank = node["civilianSpawnNodeRank"].as<int>(_civilianSpawnNodeRank);
 	_civiliansByType = node["civiliansByType"].as<std::map<std::string, int> >(_civiliansByType);
 	_terrains = node["terrains"].as<std::vector<std::string> >(_terrains);
 	_shade = node["shade"].as<int>(_shade);
@@ -164,6 +175,7 @@ void AlienDeployment::load(const YAML::Node &node, Mod *mod)
 	_maxShade = node["maxShade"].as<int>(_maxShade);
 	_nextStage = node["nextStage"].as<std::string>(_nextStage);
 	_race = node["race"].as<std::string>(_race);
+	_randomRaces = node["randomRace"].as<std::vector<std::string> >(_randomRaces);
 	_finalDestination = node["finalDestination"].as<bool>(_finalDestination);
 	_winCutscene = node["winCutscene"].as<std::string>(_winCutscene);
 	_loseCutscene = node["loseCutscene"].as<std::string>(_loseCutscene);
@@ -172,10 +184,7 @@ void AlienDeployment::load(const YAML::Node &node, Mod *mod)
 	_alert = node["alert"].as<std::string>(_alert);
 	_alertBackground = node["alertBackground"].as<std::string>(_alertBackground);
 	_alertDescription = node["alertDescription"].as<std::string>(_alertDescription);
-	if (node["alertSound"])
-	{
-		_alertSound = mod->getSoundOffset(node["alertSound"].as<int>(_alertSound), "GEO.CAT");
-	}
+	mod->loadSoundOffset(_type, _alertSound, node["alertSound"], "GEO.CAT");
 	_briefingData = node["briefing"].as<BriefingData>(_briefingData);
 	_markerName = node["markerName"].as<std::string>(_markerName);
 	if (node["markerIcon"])
@@ -208,12 +217,15 @@ void AlienDeployment::load(const YAML::Node &node, Mod *mod)
 		_objectiveFailedScore = node["objectiveFailed"][1].as<int>(_objectiveFailedScore);
 	}
 	_despawnPenalty = node["despawnPenalty"].as<int>(_despawnPenalty);
+	_abortPenalty = node["abortPenalty"].as<int>(_abortPenalty);
 	_points = node["points"].as<int>(_points);
 	_cheatTurn = node["cheatTurn"].as<int>(_cheatTurn);
 	_turnLimit = node["turnLimit"].as<int>(_turnLimit);
 	_chronoTrigger = ChronoTrigger(node["chronoTrigger"].as<int>(_chronoTrigger));
 	_isAlienBase = node["alienBase"].as<bool>(_isAlienBase);
+	_isHidden = node["isHidden"].as<bool>(_isHidden);
 	_keepCraftAfterFailedMission = node["keepCraftAfterFailedMission"].as<bool>(_keepCraftAfterFailedMission);
+	_allowObjectiveRecovery = node["allowObjectiveRecovery"].as<bool>(_allowObjectiveRecovery);
 	_escapeType = EscapeType(node["escapeType"].as<int>(_escapeType));
 	if (node["genMission"])
 	{
@@ -222,6 +234,7 @@ void AlienDeployment::load(const YAML::Node &node, Mod *mod)
 	_genMissionFrequency = node["genMissionFreq"].as<int>(_genMissionFrequency);
 	_genMissionLimit = node["genMissionLimit"].as<int>(_genMissionLimit);
 
+	_baseSelfDestructCode = node["baseSelfDestructCode"].as<std::string>(_baseSelfDestructCode);
 	_baseDetectionRange = node["baseDetectionRange"].as<int>(_baseDetectionRange);
 	_baseDetectionChance = node["baseDetectionChance"].as<int>(_baseDetectionChance);
 	_huntMissionMaxFrequency = node["huntMissionMaxFrequency"].as<int>(_huntMissionMaxFrequency);
@@ -256,10 +269,19 @@ std::string AlienDeployment::getType() const
 }
 
 /**
-* Returns the starting condition name for this mission.
-* @return String ID for starting condition.
-*/
-std::string AlienDeployment::getStartingCondition() const
+ * Returns the enviro effects name for this mission.
+ * @return String ID for the enviro effects.
+ */
+const std::string& AlienDeployment::getEnviroEffects() const
+{
+	return _enviroEffects;
+}
+
+/**
+ * Returns the starting condition name for this mission.
+ * @return String ID for starting condition.
+ */
+const std::string& AlienDeployment::getStartingCondition() const
 {
 	return _startingCondition;
 }
@@ -382,6 +404,10 @@ std::string AlienDeployment::getNextStage() const
  */
 std::string AlienDeployment::getRace() const
 {
+	if (!_randomRaces.empty())
+	{
+		return _randomRaces[RNG::generate(0, _randomRaces.size() - 1)];
+	}
 	return _race;
 }
 
@@ -539,7 +565,7 @@ int AlienDeployment::getMaxDepth() const
 }
 
 /**
- * Gets the target type for this mission (ie: alien control consoles and synonium devices).
+ * Gets the target type for this mission (ie: alien control consoles and synomium devices).
  * @return the target type for this mission.
  */
 int AlienDeployment::getObjectiveType() const
@@ -642,7 +668,7 @@ bool AlienDeployment::isAlienBase() const
 	return _isAlienBase;
 }
 
-std::string AlienDeployment::getGenMissionType() const
+std::string AlienDeployment::chooseGenMissionType() const
 {
 	return _genMission.choose();
 }
@@ -662,6 +688,11 @@ bool AlienDeployment::keepCraftAfterFailedMission() const
 	return _keepCraftAfterFailedMission;
 }
 
+bool AlienDeployment::allowObjectiveRecovery() const
+{
+	return _allowObjectiveRecovery;
+}
+
 EscapeType AlienDeployment::getEscapeType() const
 {
 	return _escapeType;
@@ -679,6 +710,15 @@ std::string AlienDeployment::generateHuntMission(const size_t monthsPassed) cons
 	while (monthsPassed < rw->first)
 		++rw;
 	return rw->second->choose();
+}
+
+/**
+ * Returns the Alien Base self destruct code.
+ * @return String ID of the corresponding research topic.
+ */
+const std::string& AlienDeployment::getBaseSelfDestructCode() const
+{
+	return _baseSelfDestructCode;
 }
 
 /**

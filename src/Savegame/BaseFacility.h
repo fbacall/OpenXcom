@@ -18,6 +18,8 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <yaml-cpp/yaml.h>
+#include <SDL_stdinc.h>
+#include "../Mod/RuleBaseFacility.h"
 
 namespace OpenXcom
 {
@@ -36,7 +38,7 @@ class Craft;
 class BaseFacility
 {
 private:
-	RuleBaseFacility *_rules;
+	const RuleBaseFacility *_rules;
 	Base *_base;
 	int _x, _y, _buildTime;
 	bool _disabled;
@@ -44,7 +46,7 @@ private:
 	bool _hadPreviousFacility;
 public:
 	/// Creates a base facility of the specified type.
-	BaseFacility(RuleBaseFacility *rules, Base *base);
+	BaseFacility(const RuleBaseFacility *rules, Base *base);
 	/// Cleans up the base facility.
 	~BaseFacility();
 	/// Loads the base facility from YAML.
@@ -52,7 +54,7 @@ public:
 	/// Saves the base facility to YAML.
 	YAML::Node save() const;
 	/// Gets the facility's ruleset.
-	RuleBaseFacility *getRules() const;
+	const RuleBaseFacility *getRules() const;
 	/// Gets the facility's X position.
 	int getX() const;
 	/// Sets the facility's X position.
@@ -61,6 +63,8 @@ public:
 	int getY() const;
 	/// Sets the facility's Y position.
 	void setY(int y);
+	/// Get placement of facility in base.
+	BaseAreaSubset getPlacement() const;
 	/// Gets the facility's construction time.
 	int getBuildTime() const;
 	/// Sets the facility's construction time.

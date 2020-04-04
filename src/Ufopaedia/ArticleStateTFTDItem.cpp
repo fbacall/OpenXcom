@@ -70,13 +70,13 @@ namespace OpenXcom
 			_lstInfo = new TextList(140, 55, 8, 170);
 			add(_lstInfo);
 
-			_lstInfo->setColor(_listColor2); // color for %-data!
+			_lstInfo->setColor(_listColor2); // color for % data!
 			_lstInfo->setColumns(3, 70, 40, 30);
 
 
 			auto addAttack = [&](int& row, const std::string& name, const RuleItemUseCost& cost, const RuleItemUseCost& flat, const RuleItemAction *config)
 			{
-				if (row < 2 && cost.Time > 0 && config->ammoSlot == ammoSlot)
+				if (row < 3 && cost.Time > 0 && config->ammoSlot == ammoSlot)
 				{
 					std::string tu = Unicode::formatPercentage(cost.Time);
 					if (flat.Time)

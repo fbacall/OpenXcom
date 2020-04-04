@@ -86,7 +86,7 @@ ListLoadOriginalState::ListLoadOriginalState(OptionsOrigin origin) : _origin(ori
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK01.SCR"));
+	setWindowBackground(_window, "saveMenus");
 
 	_btnNew->setText(tr("STR_OPENXCOM"));
 	_btnNew->onMouseClick((ActionHandler)&ListLoadOriginalState::btnNewClick);
@@ -182,7 +182,7 @@ void ListLoadOriginalState::btnSlotClick(Action *action)
 		if (_saves[n].tactical)
 		{
 			std::ostringstream error;
-			error << tr("STR_LOAD_UNSUCCESSFUL") << Unicode::TOK_NL_SMALL << "Battlescape saves aren't supported yet.";
+			error << tr("STR_LOAD_UNSUCCESSFUL") << Unicode::TOK_NL_SMALL << "Battlescape saves aren't supported.";
 			_game->pushState(new ErrorMessageState(error.str(), _palette, _game->getMod()->getInterface("errorMessages")->getElement("geoscapeColor")->color, "BACK01.SCR", _game->getMod()->getInterface("errorMessages")->getElement("geoscapePalette")->color));
 
 		}

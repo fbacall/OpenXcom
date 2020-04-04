@@ -66,9 +66,6 @@ NewManufactureListState::NewManufactureListState(Base *base) : _base(base), _sho
 	// Set palette
 	setInterface("selectNewManufacture");
 
-	_hiddenColor = _game->getMod()->getInterface("selectNewManufacture")->getElement("listExtended")->color;
-	_facilityRequiredColor = _game->getMod()->getInterface("selectNewManufacture")->getElement("listExtended")->color2;
-
 	add(_window, "window", "selectNewManufacture");
 	add(_btnQuickSearch, "button", "selectNewManufacture");
 	add(_btnOk, "button", "selectNewManufacture");
@@ -80,9 +77,14 @@ NewManufactureListState::NewManufactureListState(Base *base) : _base(base), _sho
 	add(_cbxFilter, "catBox", "selectNewManufacture");
 	add(_cbxCategory, "catBox", "selectNewManufacture");
 
+	_colorNormal = _lstManufacture->getColor();
+	_colorNew = Options::oxceHighlightNewTopicsHidden ? _lstManufacture->getSecondaryColor() : _colorNormal;
+	_colorHidden = _game->getMod()->getInterface("selectNewManufacture")->getElement("listExtended")->color;
+	_colorFacilityRequired = _game->getMod()->getInterface("selectNewManufacture")->getElement("listExtended")->color2;
+
 	centerAllSurfaces();
 
-	_window->setBackground(_game->getMod()->getSurface("BACK17.SCR"));
+	setWindowBackground(_window, "selectNewManufacture");
 
 	_txtTitle->setText(tr("STR_PRODUCTION_ITEMS"));
 	_txtTitle->setBig();
@@ -184,7 +186,7 @@ void NewManufactureListState::lstProdClickRight(Action *)
 	{
 		// display either category or requirements
 		_showRequirements = !_showRequirements;
-		const std::vector<std::string> &baseFunc = _base->getProvidedBaseFunc();
+		auto baseFunc = _base->getProvidedBaseFunc({});
 
 		for (size_t row = 0; row < _lstManufacture->getRows(); ++row)
 		{
@@ -195,12 +197,9 @@ void NewManufactureListState::lstProdClickRight(Action *)
 				{
 					std::ostringstream ss;
 					int count = 0;
-					for (std::vector<std::string>::const_iterator iter = info->getRequireBaseFunc().begin(); iter != info->getRequireBaseFunc().end(); ++iter)
+					auto missed = _game->getMod()->getBaseFunctionNames(~baseFunc & info->getRequireBaseFunc());
+					for (std::vector<std::string>::const_iterator iter = missed.begin(); iter != missed.end(); ++iter)
 					{
-						if (std::find(baseFunc.begin(), baseFunc.end(), *iter) != baseFunc.end())
-						{
-							continue;
-						}
 						if (count > 0)
 						{
 							ss << ", ";
@@ -223,19 +222,24 @@ void NewManufactureListState::lstProdClickRight(Action *)
 		const std::string rule = _displayedStrings[_lstManufacture->getSelectedRow()];
 		int oldState = _game->getSavedGame()->getManufactureRuleStatus(rule);
 		int newState = (oldState + 1) % RuleManufacture::MANU_STATUSES;
+		if (!Options::oxceHighlightNewTopicsHidden)
+		{
+			// only switch between hidden and not hidden
+			newState = (oldState == RuleManufacture::MANU_STATUS_HIDDEN) ? RuleManufacture::MANU_STATUS_NORMAL : RuleManufacture::MANU_STATUS_HIDDEN;
+		}
 		_game->getSavedGame()->setManufactureRuleStatus(rule, newState);
 
 		if (newState == RuleManufacture::MANU_STATUS_HIDDEN)
 		{
-			_lstManufacture->setRowColor(_lstManufacture->getSelectedRow(), _hiddenColor);
+			_lstManufacture->setRowColor(_lstManufacture->getSelectedRow(), _colorHidden);
 		}
 		else if (newState == RuleManufacture::MANU_STATUS_NEW)
 		{
-			_lstManufacture->setRowColor(_lstManufacture->getSelectedRow(), _lstManufacture->getSecondaryColor());
+			_lstManufacture->setRowColor(_lstManufacture->getSelectedRow(), _colorNew);
 		}
 		else
 		{
-			_lstManufacture->setRowColor(_lstManufacture->getSelectedRow(), _lstManufacture->getColor());
+			_lstManufacture->setRowColor(_lstManufacture->getSelectedRow(), _colorNormal);
 		}
 	}
 }
@@ -427,17 +431,17 @@ void NewManufactureListState::fillProductionList(bool refreshCategories)
 			// colors
 			if (basicFilter == MANU_FILTER_FACILITY_REQUIRED)
 			{
-				_lstManufacture->setRowColor(row, _facilityRequiredColor);
+				_lstManufacture->setRowColor(row, _colorFacilityRequired);
 			}
 			else
 			{
 				if (isHidden)
 				{
-					_lstManufacture->setRowColor(row, _hiddenColor);
+					_lstManufacture->setRowColor(row, _colorHidden);
 				}
 				else if (isNew)
 				{
-					_lstManufacture->setRowColor(row, _lstManufacture->getSecondaryColor());
+					_lstManufacture->setRowColor(row, _colorNew);
 					hasUnseen = true;
 				}
 			}

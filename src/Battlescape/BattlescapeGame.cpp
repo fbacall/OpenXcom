@@ -70,7 +70,11 @@ bool BattlescapeGame::_debugPlay = false;
  */
 void BattleActionCost::updateTU()
 {
-	if (actor && weapon)
+	if (actor && skillRules)
+	{
+		*(RuleItemUseCost*)this = actor->getActionTUs(type, skillRules);
+	}
+	else if (actor && weapon)
 	{
 		*(RuleItemUseCost*)this = actor->getActionTUs(type, weapon);
 	}
@@ -89,13 +93,13 @@ void BattleActionCost::clearTU()
 }
 
 /**
- * Test if action can by performed.
+ * Test if action can be performed.
  * @param message optional message with error condition.
  * @return Unit have enough stats to perform action.
  */
 bool BattleActionCost::haveTU(std::string *message)
 {
-	if (Time <= 0)
+	if (!skillRules && Time <= 0)
 	{
 		//no action, no message
 		return false;
@@ -132,6 +136,14 @@ bool BattleActionCost::haveTU(std::string *message)
 		}
 		return false;
 	}
+	if (actor->getMana() < Mana)
+	{
+		if (message)
+		{
+			*message = "STR_NOT_ENOUGH_MANA";
+		}
+		return false;
+	}
 	if (actor->getHealth() - actor->getStunlevel() <= Stun + Health)
 	{
 		if (message)
@@ -159,48 +171,20 @@ bool BattleActionCost::spendTU(std::string *message)
 }
 
 /**
- * Constructor for Battle Action attack.
- * @param action type of action.
- * @param unit unit performing attack.
- * @param item weapon of choice.
- */
-BattleActionAttack::BattleActionAttack(BattleActionType action, BattleUnit *unit, BattleItem *item, BattleItem *ammo) : type{ action }, attacker{ unit }, weapon_item{ nullptr }, damage_item{ nullptr }
-{
-	if (item)
-	{
-		weapon_item = item;
-		damage_item = ammo;
-		const auto battleType = item->getRules()->getBattleType();
-		if (battleType == BT_PROXIMITYGRENADE || battleType == BT_GRENADE)
-		{
-			if (!attacker && weapon_item->getPreviousOwner())
-			{
-				attacker = weapon_item->getPreviousOwner();
-			}
-		}
-	}
-}
-
-/**
- * Constructor from BattleActionCost.
- * @param action Action.
- */
-BattleActionAttack::BattleActionAttack(const BattleActionCost& action, BattleItem *ammo) : BattleActionAttack{ action.type, action.actor, action.weapon, ammo }
-{
-
-}
-
-/**
  * Initializes all the elements in the Battlescape screen.
  * @param save Pointer to the save game.
  * @param parentState Pointer to the parent battlescape state.
  */
-BattlescapeGame::BattlescapeGame(SavedBattleGame *save, BattlescapeState *parentState) : _save(save), _parentState(parentState), _playerPanicHandled(true), _AIActionCounter(0), _AISecondMove(false), _playedAggroSound(false), _endTurnRequested(false), _endTurnProcessed(false), _endConfirmationHandled(false)
+BattlescapeGame::BattlescapeGame(SavedBattleGame *save, BattlescapeState *parentState) :
+	_save(save), _parentState(parentState),
+	_playerPanicHandled(true), _AIActionCounter(0), _AISecondMove(false), _playedAggroSound(false),
+	_endTurnRequested(false), _endConfirmationHandled(false), _allEnemiesNeutralized(false)
 {
 
 	_currentAction.actor = 0;
 	_currentAction.targeting = false;
 	_currentAction.type = BA_NONE;
+	_currentAction.skillRules = nullptr;
 
 	_debugPlay = false;
 
@@ -301,7 +285,7 @@ void BattlescapeGame::handleAI(BattleUnit *unit)
 	{
 		unit->dontReselect();
 	}
-	if (_AIActionCounter >= 2 || !unit->reselectAllowed())
+	if (_AIActionCounter >= 2 || !unit->reselectAllowed() || unit->getTurnsSinceStunned() == 0) //stun check for restoring OXC behavior that AI do not attack after getup even having full TU
 	{
 		if (_save->selectNextPlayerUnit(true, _AISecondMove) == 0)
 		{
@@ -329,7 +313,7 @@ void BattlescapeGame::handleAI(BattleUnit *unit)
 		return;
 	}
 
-	unit->setVisible(false); //Possible TODO: check nr of player unit observers, then hide the unit if noone can see it. Should then be able to skip the next FOV call.
+	unit->setVisible(false); //Possible TODO: check number of player unit observers, then hide the unit if no one can see it. Should then be able to skip the next FOV call.
 
 	_save->getTileEngine()->calculateFOV(unit->getPosition(), 1, false); // might need this populate _visibleUnit for a newly-created alien.
 		// it might also help chryssalids realize they've zombified someone and need to move on
@@ -382,7 +366,7 @@ void BattlescapeGame::handleAI(BattleUnit *unit)
 	}
 	if (pickUpWeaponsMoreActively && weaponPickedUp)
 	{
-		// you have just picked up a weapon ffs... use it if you can!
+		// you have just picked up a weapon... use it if you can!
 		_parentState->debug("Re-Rethink");
 		unit->getAIModule()->setWeaponPickedUp();
 		unit->think(&action);
@@ -502,13 +486,14 @@ void BattlescapeGame::endTurn()
 {
 	_debugPlay = false;
 	_currentAction.type = BA_NONE;
+	_currentAction.skillRules = nullptr;
 	getMap()->getWaypoints()->clear();
 	_currentAction.waypoints.clear();
 	_parentState->showLaunchButton(false);
 	_currentAction.targeting = false;
 	_AISecondMove = false;
 
-	if (!_endTurnProcessed)
+	if (_triggerProcessed.tryRun())
 	{
 		if (_save->getTileEngine()->closeUfoDoors() && Mod::SLIDING_DOOR_CLOSE != -1)
 		{
@@ -516,46 +501,59 @@ void BattlescapeGame::endTurn()
 		}
 
 		// if all grenades explode we remove items that expire on that turn too.
-		std::vector<BattleItem*> forRemoval;
+		std::vector<std::tuple<BattleItem*, ExplosionBState*>> forRemoval;
 		bool exploded = false;
 
 		// check for hot grenades on the ground
-		for (BattleItem *item : *_save->getItems())
+		if (_save->getSide() != FACTION_NEUTRAL)
 		{
-			const RuleItem *rule = item->getRules();
-			const Tile *tile = item->getTile();
-			BattleUnit *unit = item->getOwner();
-			if (!tile && unit && rule->isExplodingInHands())
+			for (BattleItem *item : *_save->getItems())
 			{
-				tile = unit->getTile();
-			}
-			if (tile)
-			{
-				if (item->fuseEndTurnEffect())
+				const RuleItem *rule = item->getRules();
+				const Tile *tile = item->getTile();
+				BattleUnit *unit = item->getOwner();
+				if (!tile && unit && rule->isExplodingInHands())
 				{
-					if (rule->getBattleType() == BT_GRENADE) // it's a grenade to explode now
+					tile = unit->getTile();
+				}
+				if (tile)
+				{
+					if (item->fuseEndTurnEffect())
 					{
-						Position p = tile->getPosition().toVoxel() + Position(8, 8, - tile->getTerrainLevel() + (unit ? unit->getHeight() / 2 : 0));
-						statePushNext(new ExplosionBState(this, p, BattleActionAttack{ BA_NONE, unit, item, item, }));
-						exploded = true;
-					}
-					else
-					{
-						forRemoval.push_back(item);
+						if (rule->getBattleType() == BT_GRENADE) // it's a grenade to explode now
+						{
+							Position p = tile->getPosition().toVoxel() + Position(8, 8, -tile->getTerrainLevel() + (unit ? unit->getHeight() / 2 : 0));
+							forRemoval.push_back(std::tuple(nullptr, new ExplosionBState(this, p, BattleActionAttack{ BA_NONE, unit, item, item, })));
+							exploded = true;
+						}
+						else
+						{
+							forRemoval.push_back(std::tuple(item, nullptr));
+						}
 					}
 				}
 			}
-		}
-		for (BattleItem *item : forRemoval)
-		{
-			_save->removeItem(item);
-		}
-		if (exploded)
-		{
-			statePushBack(0);
-			return;
+			for (auto& p : forRemoval)
+			{
+				BattleItem* item = std::get<BattleItem*>(p);
+				ExplosionBState* expl = std::get<ExplosionBState*>(p);
+				if (expl)
+				{
+					statePushNext(expl);
+				}
+				else
+				{
+					_save->removeItem(item);
+				}
+			}
+			if (exploded)
+			{
+				statePushBack(0);
+				return;
+			}
 		}
 	}
+
 	// check for terrain explosions
 	Tile *t = _save->getTileEngine()->checkForTerrainExplosions();
 	if (t)
@@ -566,7 +564,7 @@ void BattlescapeGame::endTurn()
 		return;
 	}
 
-	if (!_endTurnProcessed)
+	if (_endTurnProcessed.tryRun())
 	{
 		if (_save->getSide() != FACTION_NEUTRAL)
 		{
@@ -581,15 +579,15 @@ void BattlescapeGame::endTurn()
 		t = _save->getTileEngine()->checkForTerrainExplosions();
 		if (t)
 		{
-			Position p = Position(t->getPosition().x * 16, t->getPosition().y * 16, t->getPosition().z * 24);
+			Position p = t->getPosition().toVoxel();
 			statePushNext(new ExplosionBState(this, p, BattleActionAttack{ }, t));
 			statePushBack(0);
-			_endTurnProcessed = true;
 			return;
 		}
 	}
 
-	_endTurnProcessed = false;
+	_triggerProcessed.reset();
+	_endTurnProcessed.reset();
 
 	if (_save->getSide() == FACTION_PLAYER)
 	{
@@ -602,6 +600,7 @@ void BattlescapeGame::endTurn()
 
 	checkForCasualties(nullptr, BattleActionAttack{ }, false, false);
 
+	// fires could have been started, stopped or smoke could reveal/conceal units.
 	_save->getTileEngine()->calculateLighting(LL_FIRE, TileEngine::invalid, 0, true);
 	_save->getTileEngine()->recalculateFOV();
 
@@ -694,8 +693,8 @@ void BattlescapeGame::endTurn()
 
 /**
  * Checks for casualties and adjusts morale accordingly.
- * @param murderweapon Need to know this, for a HE explosion there is an instant death.
- * @param origMurderer This is needed for credits for the kill.
+ * @param damageType Need to know this, for a HE explosion there is an instant death.
+ * @param attack This is needed for credits for the kill.
  * @param hiddenExplosion Set to true for the explosions of UFO Power sources at start of battlescape.
  * @param terrainExplosion Set to true for the explosions of terrain.
  */
@@ -739,7 +738,7 @@ void BattlescapeGame::checkForCasualties(const RuleDamageType *damageType, Battl
 		killStat.mission = _parentState->getGame()->getSavedGame()->getMissionStatistics()->size();
 		killStat.setTurn(_save->getTurn(), _save->getSide());
 		killStat.setUnitStats(victim);
-		killStat.faction = victim->getFaction();
+		killStat.faction = victim->getOriginalFaction();
 		killStat.side = victim->getFatalShotSide();
 		killStat.bodypart = victim->getFatalShotBodyPart();
 		killStat.id = victim->getId();
@@ -761,7 +760,7 @@ void BattlescapeGame::checkForCasualties(const RuleDamageType *damageType, Battl
 
 		// Assume that, in absence of a murderer and an explosion, the laster unit to hit the victim is the murderer.
 		// Possible causes of death: bleed out, fire.
-		// Possible causes of unconciousness: wounds, smoke.
+		// Possible causes of unconsciousness: wounds, smoke.
 		// Assumption : The last person to hit the victim is the murderer.
 		if (!murderer && !terrainExplosion)
 		{
@@ -879,7 +878,7 @@ void BattlescapeGame::checkForCasualties(const RuleDamageType *damageType, Battl
 				{
 					if (hiddenExplosion)
 					{
-						// this is instant death from UFO powersources, without screaming sounds
+						// this is instant death from UFO power sources, without screaming sounds
 						noSound = true;
 						statePushNext(new UnitDieBState(this, (*j), getMod()->getDamageType(DT_HE), noSound));
 					}
@@ -905,17 +904,34 @@ void BattlescapeGame::checkForCasualties(const RuleDamageType *damageType, Battl
 					if (murderer)
 					{
 						deathStat->setUnitStats(murderer);
-						deathStat->faction = murderer->getFaction();
+						deathStat->faction = murderer->getOriginalFaction();
 					}
 					_parentState->getGame()->getSavedGame()->killSoldier(victim->getGeoscapeSoldier(), deathStat);
 				}
 			}
 			else if ((*j)->getStunlevel() >= (*j)->getHealth() && (*j)->getStatus() != STATUS_UNCONSCIOUS)
 			{
-				if (victim->getGeoscapeSoldier())
+				// morale change when an enemy is stunned (only for the first time!)
+				if (getMod()->getStunningImprovesMorale() && murderer && !victim->getStatistics()->wasUnconcious)
 				{
-					victim->getStatistics()->wasUnconcious = true;
+					if ((victim->getOriginalFaction() == FACTION_PLAYER && murderer->getFaction() == FACTION_HOSTILE) ||
+						(victim->getOriginalFaction() == FACTION_HOSTILE && murderer->getFaction() == FACTION_PLAYER))
+					{
+						// the murderer gets a morale bonus if he is of a different faction (excluding neutrals)
+						murderer->moraleChange(20);
+
+						for (auto winner : *_save->getUnits())
+						{
+							if (!winner->isOut() && winner->getArmor()->getSize() == 1 && winner->getOriginalFaction() == murderer->getOriginalFaction())
+							{
+								// the winning squad gets a morale increase (the losing squad is NOT affected)
+								winner->moraleChange(10);
+							}
+						}
+					}
 				}
+
+				victim->getStatistics()->wasUnconcious = true;
 				noSound = true;
 				statePushNext(new UnitDieBState(this, (*j), getMod()->getDamageType(DT_NONE), noSound)); // no damage type used there
 			}
@@ -925,18 +941,11 @@ void BattlescapeGame::checkForCasualties(const RuleDamageType *damageType, Battl
 	BattleUnit *bu = _save->getSelectedUnit();
 	if (_save->getSide() == FACTION_PLAYER)
 	{
-		_parentState->showPsiButton(bu && bu->getSpecialWeapon(BT_PSIAMP) && !bu->isOut());
-		_parentState->showSpecialButton(false);
+		_parentState->resetUiButton();
 
 		if (bu && !bu->isOut())
 		{
-			BattleType type = BT_NONE;
-			BattleItem *specialWeapon = bu->getSpecialIconWeapon(type); // updates type!
-			if (specialWeapon && type != BT_NONE && type != BT_AMMO && type != BT_GRENADE && type != BT_PROXIMITYGRENADE && type != BT_FLARE && type != BT_CORPSE)
-			{
-				_parentState->showPsiButton(false);
-				_parentState->showSpecialButton(true, specialWeapon->getRules()->getSpecialIconSprite());
-			}
+			_parentState->updateUiButton(bu);
 		}
 	}
 }
@@ -1064,6 +1073,10 @@ void BattlescapeGame::setupCursor()
 		if (_currentAction.actor)
 		{
 			getMap()->setCursorType(CT_NORMAL, _currentAction.actor->getArmor()->getSize());
+		}
+		else
+		{
+			getMap()->setCursorType(CT_NORMAL);
 		}
 	}
 }
@@ -1434,7 +1447,7 @@ bool BattlescapeGame::handlePanickingPlayer()
 }
 
 /**
- * Common function for hanlding panicking units.
+ * Common function for handling panicking units.
  * @return False when unit not in panicking mode.
  */
 bool BattlescapeGame::handlePanickingUnit(BattleUnit *unit)
@@ -1445,6 +1458,7 @@ bool BattlescapeGame::handlePanickingUnit(BattleUnit *unit)
 	_parentState->getMap()->setCursorType(CT_NONE);
 
 	// play panic/berserk sounds first
+	bool soundPlayed = false;
 	{
 		std::vector<int> sounds;
 		if (unit->getUnitRules())
@@ -1475,6 +1489,7 @@ bool BattlescapeGame::handlePanickingUnit(BattleUnit *unit)
 		}
 		if (!sounds.empty())
 		{
+			soundPlayed = true;
 			if (sounds.size() > 1)
 				playSound(sounds[RNG::generate(0, sounds.size() - 1)]);
 			else
@@ -1495,6 +1510,11 @@ bool BattlescapeGame::handlePanickingUnit(BattleUnit *unit)
 		{
 			game->pushState(new InfoboxState(game->getLanguage()->getString("STR_HAS_GONE_BERSERK", unit->getGender()).arg(unit->getName(game->getLanguage()))));
 		}
+	}
+	else if (soundPlayed)
+	{
+		// simulate a small pause by using an invisible infobox
+		game->pushState(new InfoboxState(""));
 	}
 
 
@@ -1596,6 +1616,7 @@ bool BattlescapeGame::cancelCurrentAction(bool bForce)
 				}
 				_currentAction.targeting = false;
 				_currentAction.type = BA_NONE;
+				_currentAction.skillRules = nullptr;
 				setupCursor();
 				_parentState->getGame()->getCursor()->setVisible(true);
 				return true;
@@ -1609,6 +1630,24 @@ bool BattlescapeGame::cancelCurrentAction(bool bForce)
 	}
 
 	return false;
+}
+
+/**
+  * Cancels all selected user actions.
+  */
+void BattlescapeGame::cancelAllActions()
+{
+	_save->getPathfinding()->removePreview();
+
+	_currentAction.waypoints.clear();
+	getMap()->getWaypoints()->clear();
+	_parentState->showLaunchButton(false);
+
+	_currentAction.targeting = false;
+	_currentAction.type = BA_NONE;
+	_currentAction.skillRules = nullptr;
+	setupCursor();
+	_parentState->getGame()->getCursor()->setVisible(true);
 }
 
 /**
@@ -1741,22 +1780,32 @@ void BattlescapeGame::primaryAction(Position pos)
 		}
 		else if ((_currentAction.type == BA_PANIC || _currentAction.type == BA_MINDCONTROL || _currentAction.type == BA_USE) && _currentAction.weapon->getRules()->getBattleType() == BT_PSIAMP)
 		{
-			if (_save->selectUnit(pos) && _save->selectUnit(pos)->getFaction() != _save->getSelectedUnit()->getFaction() && _save->selectUnit(pos)->getVisible())
+			if (_save->selectUnit(pos) && _save->selectUnit(pos)->getVisible())
 			{
-				_currentAction.updateTU();
-				_currentAction.target = pos;
-				if (!_currentAction.weapon->getRules()->isLOSRequired() ||
-					std::find(_currentAction.actor->getVisibleUnits()->begin(), _currentAction.actor->getVisibleUnits()->end(), _save->selectUnit(pos)) != _currentAction.actor->getVisibleUnits()->end())
+				auto targetFaction = _save->selectUnit(pos)->getFaction();
+				bool psiTargetAllowed = _currentAction.weapon->getRules()->isPsiTargetAllowed(targetFaction);
+				if (_currentAction.type == BA_MINDCONTROL && targetFaction == FACTION_PLAYER)
 				{
-					// get the sound/animation started
-					getMap()->setCursorType(CT_NONE);
-					_parentState->getGame()->getCursor()->setVisible(false);
-					_currentAction.cameraPosition = getMap()->getCamera()->getMapOffset();
-					statePushBack(new PsiAttackBState(this, _currentAction));
+					// no mind controlling allies, unwanted side effects
+					psiTargetAllowed = false;
 				}
-				else
+				if (psiTargetAllowed)
 				{
-					_parentState->warning("STR_LINE_OF_SIGHT_REQUIRED");
+					_currentAction.updateTU();
+					_currentAction.target = pos;
+					if (!_currentAction.weapon->getRules()->isLOSRequired() ||
+						std::find(_currentAction.actor->getVisibleUnits()->begin(), _currentAction.actor->getVisibleUnits()->end(), _save->selectUnit(pos)) != _currentAction.actor->getVisibleUnits()->end())
+					{
+						// get the sound/animation started
+						getMap()->setCursorType(CT_NONE);
+						_parentState->getGame()->getCursor()->setVisible(false);
+						_currentAction.cameraPosition = getMap()->getCamera()->getMapOffset();
+						statePushBack(new PsiAttackBState(this, _currentAction));
+					}
+					else
+					{
+						_parentState->warning("STR_LINE_OF_SIGHT_REQUIRED");
+					}
 				}
 			}
 		}
@@ -1788,6 +1837,10 @@ void BattlescapeGame::primaryAction(Position pos)
 	{
 		_currentAction.actor = _save->getSelectedUnit();
 		BattleUnit *unit = _save->selectUnit(pos);
+		if (unit && unit == _save->getSelectedUnit() && (unit->getVisible() || _debugPlay))
+		{
+			playUnitResponseSound(unit, 3); // "annoyed" sound
+		}
 		if (unit && unit != _save->getSelectedUnit() && (unit->getVisible() || _debugPlay))
 		{
 		//  -= select unit =-
@@ -1798,6 +1851,7 @@ void BattlescapeGame::primaryAction(Position pos)
 				cancelCurrentAction();
 				setupCursor();
 				_currentAction.actor = unit;
+				playUnitResponseSound(unit, 0); // "select unit" sound
 			}
 		}
 		else if (playableUnitSelected())
@@ -1826,7 +1880,7 @@ void BattlescapeGame::primaryAction(Position pos)
 				}
 			}
 			// if running or shifting, ignore spotted enemies (i.e. don't stop)
-			_currentAction.ignoreSpottedEnemies = _currentAction.run || isShiftPressed;
+			_currentAction.ignoreSpottedEnemies = (_currentAction.run && Mod::EXTENDED_RUNNING_COST) || isShiftPressed;
 
 			if (bPreviewed && !_save->getPathfinding()->previewPath() && _save->getPathfinding()->getStartDirection() != -1)
 			{
@@ -1840,6 +1894,7 @@ void BattlescapeGame::primaryAction(Position pos)
 				getMap()->setCursorType(CT_NONE);
 				_parentState->getGame()->getCursor()->setVisible(false);
 				statePushBack(new UnitWalkBState(this, _currentAction));
+				playUnitResponseSound(_currentAction.actor, 1); // "start moving" sound
 			}
 		}
 	}
@@ -1900,7 +1955,7 @@ void BattlescapeGame::psiButtonAction()
 }
 
 /**
- * Handler for the psi atack result message.
+ * Handler for the psi attack result message.
  */
 void BattlescapeGame::psiAttackMessage(BattleActionAttack attack, BattleUnit *victim)
 {
@@ -1999,7 +2054,7 @@ void BattlescapeGame::requestEndTurn(bool askForConfirmation)
 
 /**
  * Sets the TU reserved type.
- * @param tur A battleactiontype.
+ * @param tur A BattleActionType.
  * @param player is this requested by the player?
  */
 void BattlescapeGame::setTUReserved(BattleActionType tur)
@@ -2031,8 +2086,7 @@ BattleUnit *BattlescapeGame::convertUnit(BattleUnit *unit)
 
 	bool visible = unit->getVisible();
 
-	getSave()->getBattleState()->showPsiButton(false);
-	getSave()->getBattleState()->showSpecialButton(false);
+	getSave()->getBattleState()->resetUiButton();
 	// in case the unit was unconscious
 	getSave()->removeUnconsciousBodyItem(unit);
 
@@ -2045,16 +2099,16 @@ BattleUnit *BattlescapeGame::convertUnit(BattleUnit *unit)
 	// remove unit-tile link
 	unit->setTile(nullptr, _save);
 
-	Unit* type = getMod()->getUnit(unit->getSpawnUnit(), true);
+	const Unit* type = unit->getSpawnUnit();
 
-	BattleUnit *newUnit = new BattleUnit(type,
+	BattleUnit *newUnit = new BattleUnit(getMod(),
+		const_cast<Unit*>(type),
 		FACTION_HOSTILE,
 		_save->getUnits()->back()->getId() + 1,
-		_save->getStartingCondition(),
+		_save->getEnviroEffects(),
 		type->getArmor(),
 		getMod()->getStatAdjustment(_parentState->getGame()->getSavedGame()->getDifficulty()),
-		getDepth(),
-		getMod()->getMaxViewDistance());
+		getDepth());
 
 	getSave()->initUnit(newUnit);
 	newUnit->setTile(tile, _save);
@@ -2116,14 +2170,19 @@ void BattlescapeGame::spawnNewUnit(BattleActionAttack attack, Position position)
 	}
 
 	// Create the unit
-	BattleUnit *newUnit = new BattleUnit(type,
+	BattleUnit *newUnit = new BattleUnit(getMod(),
+		type,
 		faction,
 		_save->getUnits()->back()->getId() + 1,
-		faction != FACTION_PLAYER ? _save->getStartingCondition() : nullptr,
+		faction != FACTION_PLAYER ? _save->getEnviroEffects() : nullptr,
 		type->getArmor(),
 		faction == FACTION_HOSTILE ? getMod()->getStatAdjustment(_parentState->getGame()->getSavedGame()->getDifficulty()) : nullptr,
-		getDepth(),
-		getMod()->getMaxViewDistance());
+		getDepth());
+
+	if (faction == FACTION_PLAYER)
+	{
+		newUnit->setSummonedPlayerUnit(true);
+	}
 
 	// Validate the position for the unit, checking if there's a surrounding tile if necessary
 	int checkDirection = attack.attacker ? (attack.attacker->getDirection() + 4) % 8 : 0;
@@ -2157,16 +2216,39 @@ void BattlescapeGame::spawnNewUnit(BattleActionAttack attack, Position position)
 			newUnit->setTurretType(newUnitWeapon->getTurretType());
 		}
 
-		getSave()->initUnit(newUnit);
+		// Pick the item sets if the unit has builtInWeaponSets
+		auto monthsPassed = _parentState->getGame()->getSavedGame()->getMonthsPassed();
+		auto alienItemLevels = getMod()->getAlienItemLevels().size();
+		int month;
+		if (monthsPassed != -1)
+		{
+			if ((size_t)monthsPassed > alienItemLevels - 1)
+			{
+				month = alienItemLevels - 1;
+			}
+			else
+			{
+				month = monthsPassed;
+			}
+		}
+		else // For "New Battle" saves
+		{
+			// We don't have access to the BattlescapeGenerator or the alienItemLevel set on generation at this point, so pick a random one
+			month = RNG::generate(0, alienItemLevels - 1);
+		}
+		size_t itemLevel = (size_t)(getMod()->getAlienItemLevels().at(month).at(RNG::generate(0,9)));
+
+		// Initialize the unit and its position
+		getSave()->initUnit(newUnit, itemLevel);
 		newUnit->setTile(_save->getTile(position), _save);
 		newUnit->setPosition(position);
 		newUnit->setDirection(unitDirection);
 		newUnit->clearTimeUnits();
 		getSave()->getUnits()->push_back(newUnit);
 		if (faction != FACTION_PLAYER)
+		{
 			newUnit->setAIModule(new AIModule(getSave(), newUnit, 0));
-		else
-			newUnit->setSummonedPlayerUnit(true);
+		}
 		bool visible = faction == FACTION_PLAYER;
 		newUnit->setVisible(visible);
 
@@ -2239,14 +2321,14 @@ void BattlescapeGame::removeSummonedPlayerUnits()
 
 	for (auto& type : resummonAsCivilians)
 	{
-		BattleUnit *newUnit = new BattleUnit(type,
+		BattleUnit *newUnit = new BattleUnit(getMod(),
+			type,
 			FACTION_NEUTRAL,
 			_save->getUnits()->back()->getId() + 1,
-			_save->getStartingCondition(),
+			_save->getEnviroEffects(),
 			type->getArmor(),
 			nullptr,
-			getDepth(),
-			getMod()->getMaxViewDistance());
+			getDepth());
 
 		// just bare minimum, this unit will never be used for anything except recovery
 		newUnit->setTile(nullptr, _save);
@@ -2275,8 +2357,8 @@ SavedBattleGame *BattlescapeGame::getSave()
 }
 
 /**
- * Gets the tilengine.
- * @return tilengine.
+ * Gets the tile engine.
+ * @return tile engine.
  */
 TileEngine *BattlescapeGame::getTileEngine()
 {
@@ -2565,7 +2647,7 @@ bool BattlescapeGame::takeItem(BattleItem* item, BattleAction *action)
 			if (slot != -1)
 			{
 				BattleActionCost cost{ unit };
-				cost.Time += i->getSlot()->getCost(weapon->getSlot());
+				cost.Time += Mod::EXTENDED_ITEM_RELOAD_COST ? i->getSlot()->getCost(weapon->getSlot()) : 0;
 				cost.Time += weapon->getRules()->getTULoad(slot);
 				if (cost.haveTU() && !weapon->getAmmoForSlot(slot))
 				{
@@ -2882,6 +2964,55 @@ void BattlescapeGame::playSound(int sound)
 	}
 }
 
+/**
+ * Play unit response sound on battlefield.
+ */
+void BattlescapeGame::playUnitResponseSound(BattleUnit *unit, int type)
+{
+	if (!getMod()->getEnableUnitResponseSounds())
+		return;
+
+	if (!Options::oxceEnableUnitResponseSounds)
+		return;
+
+	if (!unit)
+		return;
+
+	int chance = Mod::UNIT_RESPONSE_SOUNDS_FREQUENCY[type];
+	if (chance < 100 && RNG::seedless(0, 99) >= chance)
+	{
+		return;
+	}
+
+	std::vector<int> sounds;
+	if (type == 0)
+		sounds = unit->getSelectUnitSounds();
+	else if (type == 1)
+		sounds = unit->getStartMovingSounds();
+	else if (type == 2)
+		sounds = unit->getSelectWeaponSounds();
+	else if (type == 3)
+		sounds = unit->getAnnoyedSounds();
+
+	int sound = -1;
+	if (!sounds.empty())
+	{
+		if (sounds.size() > 1)
+			sound = sounds[RNG::seedless(0, sounds.size() - 1)];
+		else
+			sound = sounds.front();
+	}
+
+	if (sound != -1)
+	{
+		if (!Mix_Playing(4))
+		{
+			// use fixed channel, so that we can check if the unit isn't already/still talking
+			getMod()->getSoundByDepth(_save->getDepth(), sound)->play(4);
+		}
+	}
+}
+
 
 std::list<BattleState*> BattlescapeGame::getStates()
 {
@@ -2910,6 +3041,7 @@ void BattlescapeGame::autoEndBattle()
 			end = (liveAliens == 0 || liveSoldiers == 0);
 			if (liveAliens == 0)
 			{
+				_allEnemiesNeutralized = true; // remember that all aliens were neutralized (and the battle should end no matter what)
 				askForConfirmation = true;
 			}
 		}

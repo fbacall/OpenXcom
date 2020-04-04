@@ -42,6 +42,7 @@
 #include "../Battlescape/BattlescapeGenerator.h"
 #include "../Savegame/SavedBattleGame.h"
 #include <algorithm>
+#include "../Engine/Unicode.h"
 
 namespace OpenXcom
 {
@@ -111,7 +112,7 @@ SoldiersState::SoldiersState(Base *base) : _base(base), _origSoldierOrder(*_base
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK02.SCR"));
+	setWindowBackground(_window, "soldierList");
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&SoldiersState::btnOkClick);
@@ -175,12 +176,16 @@ SoldiersState::SoldiersState(Base *base) : _base(base), _origSoldierOrder(*_base
 	_sortFunctors.push_back(new SortFunctor(_game, functor));
 
 	PUSH_IN("STR_ID", idStat);
-	PUSH_IN("STR_FIRST_LETTER", nameStat);
+	PUSH_IN("STR_NAME_UC", nameStat);
 	PUSH_IN("STR_SOLDIER_TYPE", typeStat);
 	PUSH_IN("STR_RANK", rankStat);
 	PUSH_IN("STR_MISSIONS2", missionsStat);
 	PUSH_IN("STR_KILLS2", killsStat);
 	PUSH_IN("STR_WOUND_RECOVERY2", woundRecoveryStat);
+	if (_game->getMod()->isManaFeatureEnabled() && !_game->getMod()->getReplenishManaAfterMission())
+	{
+		PUSH_IN("STR_MANA_MISSING", manaMissingStat);
+	}
 	PUSH_IN("STR_TIME_UNITS", tuStat);
 	PUSH_IN("STR_STAMINA", staminaStat);
 	PUSH_IN("STR_HEALTH", healthStat);
@@ -190,6 +195,11 @@ SoldiersState::SoldiersState(Base *base) : _base(base), _origSoldierOrder(*_base
 	PUSH_IN("STR_THROWING_ACCURACY", throwingStat);
 	PUSH_IN("STR_MELEE_ACCURACY", meleeStat);
 	PUSH_IN("STR_STRENGTH", strengthStat);
+	if (_game->getMod()->isManaFeatureEnabled())
+	{
+		// "unlock" is checked later
+		PUSH_IN("STR_MANA_POOL", manaStat);
+	}
 	PUSH_IN("STR_PSIONIC_STRENGTH", psiStrengthStat);
 	PUSH_IN("STR_PSIONIC_SKILL", psiSkillStat);
 
@@ -237,12 +247,30 @@ void SoldiersState::cbxSortByChange(Action *action)
 	}
 
 	SortFunctor *compFunc = _sortFunctors[selIdx];
+	_dynGetter = NULL;
 	if (compFunc)
 	{
+		if (selIdx != 2)
+		{
+			_dynGetter = compFunc->getGetter();
+		}
+
 		// if CTRL is pressed, we only want to show the dynamic column, without actual sorting
 		if (!ctrlPressed)
 		{
-			std::stable_sort(_base->getSoldiers()->begin(), _base->getSoldiers()->end(), *compFunc);
+			if (selIdx == 2)
+			{
+				std::stable_sort(_base->getSoldiers()->begin(), _base->getSoldiers()->end(),
+					[](const Soldier* a, const Soldier* b)
+					{
+						return Unicode::naturalCompare(a->getName(), b->getName());
+					}
+				);
+			}
+			else
+			{
+				std::stable_sort(_base->getSoldiers()->begin(), _base->getSoldiers()->end(), *compFunc);
+			}
 			bool shiftPressed = SDL_GetModState() & KMOD_SHIFT;
 			if (shiftPressed)
 			{
@@ -252,7 +280,6 @@ void SoldiersState::cbxSortByChange(Action *action)
 	}
 	else
 	{
-		_dynGetter = NULL;
 		// restore original ordering, ignoring (of course) those
 		// soldiers that have been sacked since this state started
 		for (std::vector<Soldier *>::const_iterator it = _origSoldierOrder.begin();
@@ -270,10 +297,6 @@ void SoldiersState::cbxSortByChange(Action *action)
 	}
 
 	size_t originalScrollPos = _lstSoldiers->getScroll();
-	if (compFunc)
-	{
-		_dynGetter = compFunc->getGetter();
-	}
 	initList(originalScrollPos);
 }
 
@@ -289,6 +312,7 @@ void SoldiersState::init()
 	_game->getSavedGame()->setBattleGame(0);
 	_base->setInBattlescape(false);
 
+	_base->prepareSoldierStatsWithBonuses(); // refresh stats for sorting
 	initList(0);
 }
 
@@ -307,6 +331,7 @@ void SoldiersState::initList(size_t scrl)
 		selAction = _availableOptions.at(_cbxScreenActions->getSelected());
 	}
 
+	int offset = 0;
 	if (selAction == "STR_SOLDIER_INFO")
 	{
 		_lstSoldiers->setArrowColumn(188, ARROW_VERTICAL);
@@ -316,6 +341,7 @@ void SoldiersState::initList(size_t scrl)
 	}
 	else
 	{
+		offset = 20;
 		_lstSoldiers->setArrowColumn(-1, ARROW_VERTICAL);
 
 		// filtered list of soldiers eligible for transformation
@@ -346,19 +372,19 @@ void SoldiersState::initList(size_t scrl)
 
 	if (_dynGetter != NULL)
 	{
-		_lstSoldiers->setColumns(4, 106, 98, 60, 16);
+		_lstSoldiers->setColumns(4, 106, 98 - offset, 60 + offset, 16);
 	}
 	else
 	{
-		_lstSoldiers->setColumns(3, 106, 98, 76);
+		_lstSoldiers->setColumns(3, 106, 98 - offset, 76 + offset);
 	}
+	_txtCraft->setX(_txtRank->getX() + 98 - offset);
 
-	float absBonus = _base->getSickBayAbsoluteBonus();
-	float relBonus = _base->getSickBayRelativeBonus();
+	auto recovery = _base->getSumRecoveryPerDay();
 	unsigned int row = 0;
 	for (std::vector<Soldier*>::iterator i = _filteredListOfSoldiers.begin(); i != _filteredListOfSoldiers.end(); ++i)
 	{
-		std::string craftString = (*i)->getCraftString(_game->getLanguage(), absBonus, relBonus);
+		std::string craftString = (*i)->getCraftString(_game->getLanguage(), recovery);
 
 		if (_dynGetter != NULL)
 		{
@@ -568,7 +594,7 @@ void SoldiersState::btnInventoryClick(Action *)
 {
 	if (_base->getAvailableSoldiers(true, true) > 0)
 	{
-		SavedBattleGame *bgame = new SavedBattleGame(_game->getMod());
+		SavedBattleGame *bgame = new SavedBattleGame(_game->getMod(), _game->getLanguage());
 		_game->getSavedGame()->setBattleGame(bgame);
 		bgame->setMissionType("STR_BASE_DEFENSE");
 

@@ -41,18 +41,19 @@
 #include "../Mod/AlienDeployment.h"
 #include "../Mod/AlienRace.h"
 #include "../Mod/Mod.h"
+#include "../Mod/Texture.h"
 
 namespace OpenXcom
 {
 
 /**
  * Initializes all the elements in the Confirm Landing window.
- * @param game Pointer to the core game.
  * @param craft Pointer to the craft to confirm.
- * @param texture Texture of the landing site.
+ * @param missionTexture Texture specific to the mission (can be either specific/fixed or taken from the globe).
+ * @param globeTexture Globe texture of the landing site.
  * @param shade Shade of the landing site.
  */
-ConfirmLandingState::ConfirmLandingState(Craft *craft, Texture *texture, int shade) : _craft(craft), _texture(texture), _shade(shade)
+ConfirmLandingState::ConfirmLandingState(Craft *craft, Texture *missionTexture, Texture *globeTexture, int shade) : _craft(craft), _missionTexture(missionTexture), _globeTexture(globeTexture), _shade(shade)
 {
 	_screen = false;
 
@@ -77,15 +78,26 @@ ConfirmLandingState::ConfirmLandingState(Craft *craft, Texture *texture, int sha
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK15.SCR"));
+	setWindowBackground(_window, "confirmLanding");
 
 	_btnYes->setText(tr("STR_YES"));
 	_btnYes->onMouseClick((ActionHandler)&ConfirmLandingState::btnYesClick);
 	_btnYes->onKeyboardPress((ActionHandler)&ConfirmLandingState::btnYesClick, Options::keyOk);
 
-	_btnNo->setText(tr("STR_NO"));
+	if (SDL_GetModState() & KMOD_CTRL)
+	{
+		_btnNo->setText(tr("STR_PATROL"));
+	}
+	else
+	{
+		_btnNo->setText(tr("STR_NO"));
+	}
 	_btnNo->onMouseClick((ActionHandler)&ConfirmLandingState::btnNoClick);
 	_btnNo->onKeyboardPress((ActionHandler)&ConfirmLandingState::btnNoClick, Options::keyCancel);
+	_btnNo->onKeyboardPress((ActionHandler)&ConfirmLandingState::togglePatrolButton, SDLK_LCTRL);
+	_btnNo->onKeyboardRelease((ActionHandler)&ConfirmLandingState::togglePatrolButton, SDLK_LCTRL);
+	_btnNo->onKeyboardPress((ActionHandler)&ConfirmLandingState::togglePatrolButton, SDLK_RCTRL);
+	_btnNo->onKeyboardRelease((ActionHandler)&ConfirmLandingState::togglePatrolButton, SDLK_RCTRL);
 
 	_txtMessage->setBig();
 	_txtMessage->setAlign(ALIGN_CENTER);
@@ -152,7 +164,12 @@ std::string ConfirmLandingState::checkStartingCondition()
 	AlienDeployment *ruleDeploy = 0;
 	if (u != 0)
 	{
-		ruleDeploy = _game->getMod()->getDeployment(u->getRules()->getType());
+		std::string ufoMissionName = u->getRules()->getType();
+		if (_missionTexture && _missionTexture->isFakeUnderwater())
+		{
+			ufoMissionName = u->getRules()->getType() + "_UNDERWATER";
+		}
+		ruleDeploy = _game->getMod()->getDeployment(ufoMissionName);
 	}
 	else if (m != 0)
 	{
@@ -177,11 +194,19 @@ std::string ConfirmLandingState::checkStartingCondition()
 	}
 
 	RuleStartingCondition *rule = _game->getMod()->getStartingCondition(ruleDeploy->getStartingCondition());
+	if (!rule && _missionTexture)
+	{
+		rule = _game->getMod()->getStartingCondition(_missionTexture->getStartingCondition());
+	}
 	if (rule != 0)
 	{
-		if (!rule->isCraftAllowed(_craft->getRules()->getType()))
+		if (!rule->isCraftPermitted(_craft->getRules()->getType()))
 		{
 			return tr("STR_STARTING_CONDITION_CRAFT"); // simple message without details/argument
+		}
+		if (!_craft->areOnlyPermittedSoldierTypesOnboard(rule))
+		{
+			return tr("STR_STARTING_CONDITION_SOLDIER_TYPE"); // simple message without details/argument
 		}
 
 		if (!_craft->areRequiredItemsOnboard(rule->getRequiredItems()))
@@ -219,10 +244,10 @@ void ConfirmLandingState::btnYesClick(Action *)
 	MissionSite* m = dynamic_cast<MissionSite*>(_craft->getDestination());
 	AlienBase* b = dynamic_cast<AlienBase*>(_craft->getDestination());
 
-	SavedBattleGame *bgame = new SavedBattleGame(_game->getMod());
+	SavedBattleGame *bgame = new SavedBattleGame(_game->getMod(), _game->getLanguage());
 	_game->getSavedGame()->setBattleGame(bgame);
 	BattlescapeGenerator bgen(_game);
-	bgen.setWorldTexture(_texture);
+	bgen.setWorldTexture(_missionTexture, _globeTexture);
 	bgen.setWorldShade(_shade);
 	bgen.setCraft(_craft);
 	if (u != 0)
@@ -232,7 +257,17 @@ void ConfirmLandingState::btnYesClick(Action *)
 		else
 			bgame->setMissionType("STR_UFO_GROUND_ASSAULT");
 		bgen.setUfo(u);
-		bgen.setAlienCustomDeploy(_game->getMod()->getDeployment(u->getCraftStats().craftCustomDeploy));
+		const AlienDeployment *customWeaponDeploy = _game->getMod()->getDeployment(u->getCraftStats().craftCustomDeploy);
+		if (_missionTexture && _missionTexture->isFakeUnderwater())
+		{
+			const std::string ufoUnderwaterMissionName = u->getRules()->getType() + "_UNDERWATER";
+			const AlienDeployment *ufoUnderwaterMission = _game->getMod()->getDeployment(ufoUnderwaterMissionName, true);
+			bgen.setAlienCustomDeploy(customWeaponDeploy, ufoUnderwaterMission);
+		}
+		else
+		{
+			bgen.setAlienCustomDeploy(customWeaponDeploy);
+		}
 		bgen.setAlienRace(u->getAlienRace());
 	}
 	else if (m != 0)
@@ -249,7 +284,7 @@ void ConfirmLandingState::btnYesClick(Action *)
 		bgen.setAlienBase(b);
 		bgen.setAlienRace(b->getAlienRace());
 		bgen.setAlienCustomDeploy(_game->getMod()->getDeployment(race->getBaseCustomDeploy()), _game->getMod()->getDeployment(race->getBaseCustomMission()));
-		bgen.setWorldTexture(0);
+		bgen.setWorldTexture(0, _globeTexture);
 	}
 	else
 	{
@@ -265,8 +300,31 @@ void ConfirmLandingState::btnYesClick(Action *)
  */
 void ConfirmLandingState::btnNoClick(Action *)
 {
-	_craft->returnToBase();
+	if (SDL_GetModState() & KMOD_CTRL)
+	{
+		_craft->setDestination(0);
+	}
+	else
+	{
+		_craft->returnToBase();
+	}
 	_game->popState();
+}
+
+/**
+ * Toggles No/Patrol button.
+ * @param action Pointer to an action.
+ */
+void ConfirmLandingState::togglePatrolButton(Action *)
+{
+	if (SDL_GetModState() & KMOD_CTRL)
+	{
+		_btnNo->setText(tr("STR_PATROL"));
+	}
+	else
+	{
+		_btnNo->setText(tr("STR_NO"));
+	}
 }
 
 }

@@ -242,6 +242,10 @@ void OptionsAdvancedState::lstOptionsClick(Action *action)
 		bool *b = setting->asBool();
 		*b = !*b;
 		settingText = *b ? tr("STR_YES") : tr("STR_NO");
+		if (b == &Options::lazyLoadResources && !*b)
+		{
+			Options::reload = true; // reload when turning lazy loading off
+		}
 	}
 	else if (setting->type() == OPTION_INT) // integer variables will need special handling
 	{
@@ -288,15 +292,19 @@ void OptionsAdvancedState::lstOptionsClick(Action *action)
 			min = 0;
 			max = 100;
 		}
+		else if (i == &Options::oxceAutoNightVisionThreshold) {
+			min = 0;
+			max = 15;
+		}
 		else if (i == &Options::oxceNightVisionColor)
 		{
-			// UFO: 1-15, TFTD: 2-15 except 10
-			if (_isTFTD && (*i) == 10)
+			// UFO: 1-15, TFTD: 2-16 except 8 and 10
+			if (_isTFTD && ((*i) == 8 || (*i) == 10))
 			{
 				*i += increment;
 			}
 			min = _isTFTD ? 2 : 1;
-			max = 15;
+			max = _isTFTD ? 16 : 15;
 		}
 
 		if (*i < min)

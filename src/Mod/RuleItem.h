@@ -25,13 +25,15 @@
 #include "Unit.h"
 #include "ModScript.h"
 #include "RuleResearch.h"
+#include "RuleBaseFacilityFunctions.h"
 
 namespace OpenXcom
 {
 
 enum BattleType { BT_NONE, BT_FIREARM, BT_AMMO, BT_MELEE, BT_GRENADE, BT_PROXIMITYGRENADE, BT_MEDIKIT, BT_SCANNER, BT_MINDPROBE, BT_PSIAMP, BT_FLARE, BT_CORPSE };
-enum BattleFuseType { BFT_NONE = -3, BFT_INSTANT = -2, BFT_SET = -1, BFT_FIX_MIN = 0, BFT_FIX_MAX = 24 };
+enum BattleFuseType { BFT_NONE = -3, BFT_INSTANT = -2, BFT_SET = -1, BFT_FIX_MIN = 0, BFT_FIX_MAX = 64 };
 enum BattleMediKitType { BMT_NORMAL = 0, BMT_HEAL = 1, BMT_STIMULANT = 2, BMT_PAINKILLER = 3 };
+enum BattleMediKitAction { BMA_HEAL = 1, BMA_STIMULANT = 2, BMA_PAINKILLER = 4 };
 enum ExperienceTrainingMode {
 	ETM_DEFAULT,
 	ETM_MELEE_100, ETM_MELEE_50, ETM_MELEE_33,
@@ -51,11 +53,17 @@ enum ExperienceTrainingMode {
 	ETM_PSI_STRENGTH_OR_SKILL, ETM_PSI_STRENGTH_OR_SKILL_2X,
 	ETM_NOTHING
 };
+enum BattleActionType : Uint8 { BA_NONE, BA_TURN, BA_WALK, BA_KNEEL, BA_PRIME, BA_UNPRIME, BA_THROW, BA_AUTOSHOT, BA_SNAPSHOT, BA_AIMEDSHOT, BA_HIT, BA_USE, BA_LAUNCH, BA_MINDCONTROL, BA_PANIC, BA_RETHINK, BA_CQB };
 
+
+struct BattleActionCost;
 class BattleItem;
+class RuleSkill;
 class SurfaceSet;
 class Surface;
 class Mod;
+
+enum UnitFaction : int;
 
 struct RuleItemUseCost
 {
@@ -64,14 +72,15 @@ struct RuleItemUseCost
 	int Morale;
 	int Health;
 	int Stun;
+	int Mana;
 
 	/// Default constructor.
-	RuleItemUseCost() : Time(0), Energy(0), Morale(0), Health(0), Stun(0)
+	RuleItemUseCost() : Time(0), Energy(0), Morale(0), Health(0), Stun(0), Mana(0)
 	{
 
 	}
 	/// Create new cost with one value for time units and another for rest.
-	RuleItemUseCost(int tu, int rest = 0) : Time(tu), Energy(rest), Morale(rest), Health(rest), Stun(rest)
+	RuleItemUseCost(int tu, int rest = 0) : Time(tu), Energy(rest), Morale(rest), Health(rest), Stun(rest), Mana(rest)
 	{
 
 	}
@@ -84,7 +93,94 @@ struct RuleItemUseCost
 		Morale += cost.Morale;
 		Health += cost.Health;
 		Stun += cost.Stun;
+		Mana += cost.Mana;
 		return *this;
+	}
+
+	/**
+	 * Load use cost.
+	 * @param a Item use cost.
+	 * @param node YAML node.
+	 * @param name Name of action type.
+	 */
+	void loadCost(const YAML::Node& node, const std::string& name)
+	{
+		loadInt(Time, node["tu" + name]);
+		if (const YAML::Node& cost = node["cost" + name])
+		{
+			loadInt(Time, cost["time"]);
+			loadInt(Energy, cost["energy"]);
+			loadInt(Morale, cost["morale"]);
+			loadInt(Health, cost["health"]);
+			loadInt(Stun, cost["stun"]);
+			loadInt(Mana, cost["mana"]);
+		}
+	}
+
+	/**
+	 * Load use cost type (flat or percent).
+	 * @param a Item use type.
+	 * @param node YAML node.
+	 * @param name Name of action type.
+	 */
+	void loadPercent(const YAML::Node& node, const std::string& name)
+	{
+		if (const YAML::Node& cost = node["flat" + name])
+		{
+			if (cost.IsScalar())
+			{
+				loadTriBool(Time, cost);
+			}
+			else
+			{
+				loadTriBool(Time, cost["time"]);
+				loadTriBool(Energy, cost["energy"]);
+				loadTriBool(Morale, cost["morale"]);
+				loadTriBool(Health, cost["health"]);
+				loadTriBool(Stun, cost["stun"]);
+				loadTriBool(Mana, cost["mana"]);
+			}
+		}
+	}
+
+	/**
+	 * Load nullable bool value and store it in int (with null as -1).
+	 * @param a value to set.
+	 * @param node YAML node.
+	 */
+	void loadTriBool(int& a, const YAML::Node& node) const
+	{
+		if (node)
+		{
+			if (node.IsNull())
+			{
+				a = -1;
+			}
+			else
+			{
+				a = node.as<bool>();
+			}
+		}
+	}
+
+	/**
+	 * Load nullable int (with null as -1).
+	 * @param a value to set.
+	 * @param node YAML node.
+	 */
+	void loadInt(int& a, const YAML::Node& node) const
+	{
+		if (node)
+		{
+			if (node.IsNull())
+			{
+				a = -1;
+			}
+			else
+			{
+				a = node.as<int>();
+			}
+		}
 	}
 };
 
@@ -115,6 +211,58 @@ struct RuleItemFuseTrigger
 	bool proximityExplode = false;
 };
 
+namespace helper
+{
+
+/**
+ * Defined outside struct BattleActionAttack to allow forward declaration of it for RuleStatBonus
+ */
+struct BattleActionAttackReadOnlyImpl
+{
+	BattleActionType type;
+	const BattleUnit *attacker = nullptr;
+	const BattleItem *weapon_item = nullptr;
+	const BattleItem *damage_item = nullptr;
+	const RuleSkill *skill_rules = nullptr;
+};
+
+}
+
+
+/**
+ * Helper struct that have all data need for weapon attack.
+ */
+struct BattleActionAttack
+{
+	BattleActionType type;
+	BattleUnit *attacker = nullptr;
+	BattleItem *weapon_item = nullptr;
+	BattleItem *damage_item = nullptr;
+	const RuleSkill *skill_rules = nullptr;
+
+	/**
+	 * Helper class that have only readonly access to data.
+	 */
+	using ReadOnly = helper::BattleActionAttackReadOnlyImpl;
+
+	/**
+	 * Cast operator to readonly version.
+	 */
+	operator ReadOnly() const
+	{
+		return { type, attacker, weapon_item, damage_item, skill_rules, };
+	}
+
+	/// Get Action Attack from Action cost.
+	static BattleActionAttack GetBeforeShoot(const BattleActionCost &action);
+	/// Get Action Attack with updated unit and ammo.
+	static BattleActionAttack GetBeforeShoot(BattleActionType type, BattleUnit *unit, BattleItem *wepon, const RuleSkill *skill = nullptr);
+	/// Get Action Attack from Action cost with defined ammo.
+	static BattleActionAttack GetAferShoot(const BattleActionCost &action, BattleItem *ammo);
+	/// Get Action Attack with updated unit with defined ammo.
+	static BattleActionAttack GetAferShoot(BattleActionType type, BattleUnit *unit, BattleItem *wepon, BattleItem *ammo, const RuleSkill *skill = nullptr);
+};
+
 /**
  * Represents a specific type of item.
  * Contains constant info about an item like
@@ -138,7 +286,7 @@ private:
 	std::vector<std::string> _requiresName;
 	std::vector<std::string> _requiresBuyName;
 	std::vector<const RuleResearch *> _requires, _requiresBuy;
-	std::vector<std::string> _requiresBuyBaseFunc;
+	RuleBaseFacilityFunctions _requiresBuyBaseFunc;
 	std::map<std::string, int> _recoveryDividers;
 	std::map<std::string, std::vector<int> > _recoveryTransformationsName;
 	std::map<const RuleItem*, std::vector<int> > _recoveryTransformations;
@@ -179,30 +327,36 @@ private:
 	BattleFuseType _fuseType;
 	RuleItemFuseTrigger _fuseTriggerEvents;
 	bool _hiddenOnMinimap;
-	std::string _psiAttackName, _primeActionName, _unprimeActionName, _primeActionMessage, _unprimeActionMessage;
-	bool _twoHanded, _blockBothHands, _fixedWeapon, _fixedWeaponShow, _allowSelfHeal, _isConsumable, _isFireExtinguisher, _isExplodingInHands, _specialUseEmptyHand;
+	std::string _medikitActionName, _psiAttackName, _primeActionName, _unprimeActionName, _primeActionMessage, _unprimeActionMessage;
+	bool _twoHanded, _blockBothHands, _fixedWeapon, _fixedWeaponShow, _isConsumable, _isFireExtinguisher, _isExplodingInHands, _specialUseEmptyHand;
 	std::string _defaultInventorySlot;
+	int _defaultInvSlotX, _defaultInvSlotY;
 	std::vector<std::string> _supportedInventorySections;
 	int _waypoints, _invWidth, _invHeight;
 	int _painKiller, _heal, _stimulant;
 	BattleMediKitType _medikitType;
+	bool _medikitTargetSelf, _medikitTargetImmune;
+	int _medikitTargetMatrix;
 	std::string _medikitBackground;
-	int _woundRecovery, _healthRecovery, _stunRecovery, _energyRecovery, _moraleRecovery, _painKillerRecovery;
+	int _woundRecovery, _healthRecovery, _stunRecovery, _energyRecovery, _manaRecovery, _moraleRecovery, _painKillerRecovery;
 	int _recoveryPoints;
 	int _armor;
 	int _turretType;
 	int _aiUseDelay, _aiMeleeHitCount;
-	bool _recover, _recoverCorpse, _ignoreInBaseDefense, _liveAlien;
+	bool _recover, _recoverCorpse, _ignoreInBaseDefense, _ignoreInCraftEquip, _liveAlien;
 	int _liveAlienPrisonType;
 	int _attraction;
 	RuleItemUseCost _flatUse, _flatThrow, _flatPrime, _flatUnprime;
 	bool _arcingShot;
 	ExperienceTrainingMode _experienceTrainingMode;
+	int _manaExperience;
 	int _listOrder, _maxRange, _minRange, _dropoff, _bulletSpeed, _explosionSpeed, _shotgunPellets;
 	int _shotgunBehaviorType, _shotgunSpread, _shotgunChoke;
+	std::map<std::string, std::string> _zombieUnitByArmorMale, _zombieUnitByArmorFemale, _zombieUnitByType;
 	std::string _zombieUnit, _spawnUnit;
 	int _spawnUnitFaction;
-	bool _LOSRequired, _underwaterOnly, _landOnly, _psiReqiured;
+	int _psiTargetMatrix;
+	bool _LOSRequired, _underwaterOnly, _landOnly, _psiReqiured, _manaRequired;
 	int _meleePower, _specialType, _vaporColor, _vaporDensity, _vaporProbability;
 	std::vector<int> _customItemPreviewIndex;
 	int _kneelBonus, _oneHandedPenalty;
@@ -226,8 +380,6 @@ private:
 	void loadPercent(RuleItemUseCost& a, const YAML::Node& node, const std::string& name) const;
 	/// Load RuleItemAction from yaml.
 	void loadConfAction(RuleItemAction& a, const YAML::Node& node, const std::string& name) const;
-	/// Load sound vector from YAML.
-	void loadSoundVector(const YAML::Node &node, Mod *mod, std::vector<int> &vector);
 	/// Gets a random sound from a given vector.
 	int getRandomSound(const std::vector<int> &vector, int defaultValue = -1) const;
 	/// Load RuleItemFuseTrigger from yaml.
@@ -261,7 +413,7 @@ public:
 	/// Gets the item's buy requirements.
 	const std::vector<const RuleResearch*> &getBuyRequirements() const;
 	/// Gets the base functions required to buy craft.
-	const std::vector<std::string> &getRequiresBuyBaseFunc() const;
+	RuleBaseFacilityFunctions getRequiresBuyBaseFunc() const { return _requiresBuyBaseFunc; }
 	/// Gets the dividers used for recovery of special items.
 	const std::map<std::string, int> &getRecoveryDividers() const;
 	/// Gets the item(s) to be recovered instead of this item.
@@ -300,6 +452,8 @@ public:
 	bool getFixedShow() const;
 	/// Get name of the default inventory slot.
 	const std::string &getDefaultInventorySlot() const;
+	int getDefaultInventorySlotX() const { return _defaultInvSlotX; }
+	int getDefaultInventorySlotY() const { return _defaultInvSlotY; }
 	/// Gets the item's supported inventory sections.
 	const std::vector<std::string> &getSupportedInventorySections() const;
 	/// Checks if the item can be placed into a given inventory section.
@@ -354,36 +508,45 @@ public:
 	/// Get the psi miss animation starting frame (comes from hit.pck).
 	int getPsiMissAnimation() const;
 
+
 	/// Gets the item's power.
 	int getPower() const;
 	/// Should the item's power be displayed in Ufopedia or not?
 	bool getHidePower() const { return _hidePower; }
-	/// Get additional power from unit statistics
-	int getPowerBonus(const BattleUnit *unit) const;
-	const RuleStatBonus *getDamageBonusRaw() const { return &_damageBonus; }
 	/// Ok, so this isn't a melee type weapon but we're using it for melee... how much damage should it do?
 	int getMeleePower() const;
-	/// Get additional power for melee attack in range weapon from unit statistics.
-	int getMeleeBonus(const BattleUnit *unit) const;
-	const RuleStatBonus *getMeleeBonusRaw() const { return &_meleeBonus; }
+
 	/// Gets amount of power dropped for range in voxels.
 	float getPowerRangeReduction(float range) const;
 	float getPowerRangeReductionRaw() const { return _powerRangeReduction; }
 	float getPowerRangeThresholdRaw() const { return _powerRangeThreshold; }
 	/// Gets amount of psi accuracy dropped for range in voxels.
 	float getPsiAccuracyRangeReduction(float range) const;
-	/// Get multiplier of accuracy form unit statistics
-	int getAccuracyMultiplier(const BattleUnit *unit) const;
+
+	/// Get additional power from unit statistics
+	int getPowerBonus(BattleActionAttack::ReadOnly attack) const;
+	const RuleStatBonus *getDamageBonusRaw() const { return &_damageBonus; }
+
+	/// Get additional power for melee attack in range weapon from unit statistics.
+	int getMeleeBonus(BattleActionAttack::ReadOnly attack) const;
+	const RuleStatBonus *getMeleeBonusRaw() const { return &_meleeBonus; }
+
+	/// Get multiplier of accuracy from unit statistics
+	int getAccuracyMultiplier(BattleActionAttack::ReadOnly attack) const;
 	const RuleStatBonus *getAccuracyMultiplierRaw() const { return &_accuracyMulti; }
-	/// Get multiplier of melee hit chance form unit statistics
-	int getMeleeMultiplier(const BattleUnit *unit) const;
+
+	/// Get multiplier of melee hit chance from unit statistics
+	int getMeleeMultiplier(BattleActionAttack::ReadOnly  attack) const;
 	const RuleStatBonus *getMeleeMultiplierRaw() const { return &_meleeMulti; }
-	/// Get multiplier of throwing form unit statistics
-	int getThrowMultiplier(const BattleUnit *unit) const;
+
+	/// Get multiplier of throwing from unit statistics
+	int getThrowMultiplier(BattleActionAttack::ReadOnly attack) const;
 	const RuleStatBonus *getThrowMultiplierRaw() const { return &_throwMulti; }
+
 	/// Get multiplier of close quarters combat from unit statistics
-	int getCloseQuartersMultiplier(const BattleUnit *unit) const;
+	int getCloseQuartersMultiplier(BattleActionAttack::ReadOnly attack) const;
 	const RuleStatBonus *getCloseQuartersMultiplierRaw() const { return &_closeQuartersMulti; }
+
 
 	/// Get configuration of aimed shot action.
 	const RuleItemAction *getConfigAimed() const;
@@ -393,6 +556,7 @@ public:
 	const RuleItemAction *getConfigSnap() const;
 	/// Get configuration of melee action.
 	const RuleItemAction *getConfigMelee() const;
+
 
 	/// Gets the item's aimed shot accuracy.
 	int getAccuracyAimed() const;
@@ -507,12 +671,24 @@ public:
 	int getEnergyRecovery() const;
 	/// Gets the medikit stun recovered per shot.
 	int getStunRecovery() const;
+	/// Gets the medikit mana recovered per shot.
+	int getManaRecovery() const { return _manaRecovery; }
 	/// Gets the medikit morale recovered per shot.
 	int getMoraleRecovery() const;
 	/// Gets the medikit morale recovered based on missing health.
 	float getPainKillerRecovery() const;
-	/// Gets the medikit ability to self heal.
-	bool getAllowSelfHeal() const;
+	/// Gets the medikit's allowed targets.
+	bool getAllowTargetSelf() const { return _medikitTargetSelf; }
+	bool getAllowTargetImmune() const { return _medikitTargetImmune; }
+	bool getAllowTargetGround() const { return _medikitTargetMatrix & 21; } // 1 + 4 + 16
+	bool getAllowTargetStanding() const { return _medikitTargetMatrix & 42; } // 2 + 8 + 32
+	bool getAllowTargetFriendGround() const { return _medikitTargetMatrix & 1; }
+	bool getAllowTargetFriendStanding() const { return _medikitTargetMatrix & 2; }
+	bool getAllowTargetNeutralGround() const { return _medikitTargetMatrix & 4; }
+	bool getAllowTargetNeutralStanding() const { return _medikitTargetMatrix & 8; }
+	bool getAllowTargetHostileGround() const { return _medikitTargetMatrix & 16; }
+	bool getAllowTargetHostileStanding() const { return _medikitTargetMatrix & 32; }
+	int getMedikitTargetMatrixRaw() const { return _medikitTargetMatrix; }
 	/// Is this (medikit-type & items with prime) item consumable?
 	bool isConsumable() const;
 	/// Does this item extinguish fire?
@@ -526,17 +702,23 @@ public:
 	/// Gets the medikit custom background.
 	const std::string &getMediKitCustomBackground() const;
 	/// Gets the max explosion radius.
-	int getExplosionRadius(const BattleUnit *unit) const;
+	int getExplosionRadius(BattleActionAttack::ReadOnly attack) const;
 	/// Gets the recovery points score
 	int getRecoveryPoints() const;
 	/// Gets the item's armor.
 	int getArmor() const;
+	/// Check if item is normal inventory item.
+	bool isInventoryItem() const;
+	/// Checks if item have some use in battlescape.
+	bool isUsefulBattlescapeItem() const;
 	/// Gets the item's recoverability.
 	bool isRecoverable() const;
 	/// Gets the corpse item's recoverability.
 	bool isCorpseRecoverable() const;
 	/// Checks if the item can be equipped in base defense mission.
 	bool canBeEquippedBeforeBaseDefense() const;
+	/// Checks if the item can be equipped to craft inventory.
+	bool canBeEquippedToCraftInventory() const;
 	/// Gets the item's turret type.
 	int getTurretType() const;
 	/// Gets first turn when AI can use item.
@@ -552,6 +734,8 @@ public:
 	bool getArcingShot() const;
 	/// Which experience training mode to use for this weapon?
 	ExperienceTrainingMode getExperienceTrainingMode() const;
+	/// How much mana experience does this weapon provide?
+	int getManaExperience() const { return _manaExperience; }
 	/// How much do aliens want this thing?
 	int getAttraction() const;
 	/// Get the list weight for this item.
@@ -560,6 +744,8 @@ public:
 	int getBulletSpeed() const;
 	/// How fast does the explosion animation play?
 	int getExplosionSpeed() const;
+	/// Get name of medikit action for action menu.
+	const std::string &getMedikitActionName() const { return _medikitActionName; }
 	/// Get name of psi attack for action menu.
 	const std::string &getPsiAttackName() const { return _psiAttackName; }
 	/// Get name of prime action for action menu.
@@ -595,11 +781,17 @@ public:
 	/// Get the shotgun choke value.
 	int getShotgunChoke() const;
 	/// Gets the weapon's zombie unit.
-	const std::string &getZombieUnit() const;
+	const std::string &getZombieUnit(const BattleUnit* victim) const;
+	const std::map<std::string, std::string> &getZombieUnitByArmorMaleRaw() const { return _zombieUnitByArmorMale; }
+	const std::map<std::string, std::string> &getZombieUnitByArmorFemaleRaw() const { return _zombieUnitByArmorFemale; }
+	const std::map<std::string, std::string> &getZombieUnitByTypeRaw() const { return _zombieUnitByType; }
 	/// Gets the weapon's spawn unit.
 	const std::string &getSpawnUnit() const;
 	/// Gets which faction the spawned unit should have.
 	int getSpawnUnitFaction() const;
+	/// Checks the psiamp's allowed targets. Not used in AI. Mind control of the same faction is hardcoded disabled.
+	bool isPsiTargetAllowed(UnitFaction targetFaction) const;
+	int getPsiTargetMatrixRaw() const { return _psiTargetMatrix; }
 	/// Check if LOS is required to use this item (only applies to psionic type items)
 	bool isLOSRequired() const;
 	/// Is this item restricted to underwater use?
@@ -608,6 +800,8 @@ public:
 	bool isLandOnly() const;
 	/// Is this item require unit with psi skill to use it?
 	bool isPsiRequired() const;
+	/// Does this item need mana to operate?
+	bool isManaRequired() const;
 	/// Get the associated special type of this item.
 	int getSpecialType() const;
 	/// Get the color offset to use for the vapor trail.

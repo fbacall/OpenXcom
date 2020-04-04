@@ -53,13 +53,28 @@ namespace OpenXcom
  * @param origin Game section that originated this state.
  */
 ManageAlienContainmentState::ManageAlienContainmentState(Base *base, int prisonType, OptionsOrigin origin) :
-	_base(base), _prisonType(prisonType), _origin(origin), _sel(0), _aliensSold(0), _total(0), _doNotReset(false)
+	_base(base), _prisonType(prisonType), _origin(origin), _sel(0), _aliensSold(0), _total(0), _doNotReset(false), _threeButtons(false)
 {
+	_threeButtons = Options::canSellLiveAliens && Options::retainCorpses;
+
 	// Create objects
 	_window = new Window(this, 320, 200, 0, 0);
-	_btnOk = new TextButton(148, 16, 8, 176);
-	_btnCancel = new TextButton(148, 16, 164, 176);
-	_btnTransfer = new TextButton(148, 16, 164, 176);
+	if (_threeButtons)
+	{
+		// 3 buttons
+		_btnOk = new TextButton(96, 16, 8, 176);
+		_btnSell = new TextButton(96, 16, 112, 176);
+		_btnCancel = new TextButton(96, 16, 216, 176);
+		_btnTransfer = new TextButton(96, 16, 216, 176);
+	}
+	else
+	{
+		// 2 buttons
+		_btnOk = new TextButton(148, 16, 8, 176);
+		_btnSell = new TextButton(148, 16, 8, 176);
+		_btnCancel = new TextButton(148, 16, 164, 176);
+		_btnTransfer = new TextButton(148, 16, 164, 176);
+	}
 	_txtTitle = new Text(310, 17, 5, 8);
 	_txtAvailable =  new Text(190, 9, 10, 24);
 	_txtValueOfSales =  new Text(190, 9, 10, 32);
@@ -74,6 +89,7 @@ ManageAlienContainmentState::ManageAlienContainmentState(Base *base, int prisonT
 	setInterface("manageContainment");
 
 	add(_window, "window", "manageContainment");
+	add(_btnSell, "button", "manageContainment");
 	add(_btnOk, "button", "manageContainment");
 	add(_btnCancel, "button", "manageContainment");
 	add(_btnTransfer, "button", "manageContainment");
@@ -90,11 +106,14 @@ ManageAlienContainmentState::ManageAlienContainmentState(Base *base, int prisonT
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface((origin == OPT_BATTLESCAPE)? "BACK01.SCR" : "BACK05.SCR"));
+	setWindowBackground(_window, "manageContainment");
 
-	_btnOk->setText(trAlt("STR_REMOVE_SELECTED", _prisonType));
+	_btnOk->setText(trAlt(_threeButtons ? "STR_KILL_SELECTED" : "STR_REMOVE_SELECTED", _prisonType));
 	_btnOk->onMouseClick((ActionHandler)&ManageAlienContainmentState::btnOkClick);
 	_btnOk->onKeyboardPress((ActionHandler)&ManageAlienContainmentState::btnOkClick, Options::keyOk);
+
+	_btnSell->setText(trAlt("STR_SELL_SELECTED", _prisonType));
+	_btnSell->onMouseClick((ActionHandler)&ManageAlienContainmentState::btnSellClick);
 
 	_btnCancel->setText(tr("STR_CANCEL"));
 	_btnCancel->onMouseClick((ActionHandler)&ManageAlienContainmentState::btnCancelClick);
@@ -261,6 +280,7 @@ void ManageAlienContainmentState::resetListAndTotals()
 
 		_btnCancel->setVisible(!overCrowded);
 		_btnOk->setVisible(!overCrowded);
+		_btnSell->setVisible(!overCrowded && _threeButtons);
 		_btnTransfer->setVisible(overCrowded);
 	}
 }
@@ -282,6 +302,24 @@ void ManageAlienContainmentState::think()
  */
 void ManageAlienContainmentState::btnOkClick(Action *)
 {
+	bool sell = Options::canSellLiveAliens && !Options::retainCorpses; // in all other cases, it's kill, not sell
+	dealWithSelectedAliens(sell);
+}
+
+/**
+ * Deals with the selected aliens.
+ * @param action Pointer to an action.
+ */
+void ManageAlienContainmentState::btnSellClick(Action *)
+{
+	dealWithSelectedAliens(true); // this one is always sell
+}
+
+/**
+ * Deals with the selected aliens.
+ */
+void ManageAlienContainmentState::dealWithSelectedAliens(bool sell)
+{
 	for (size_t i = 0; i < _qtys.size(); ++i)
 	{
 		if (_qtys[i] > 0)
@@ -289,18 +327,22 @@ void ManageAlienContainmentState::btnOkClick(Action *)
 			// remove the aliens
 			_base->getStorageItems()->removeItem(_aliens[i], _qtys[i]);
 
-			if (Options::canSellLiveAliens)
+			if (sell)
 			{
 				_game->getSavedGame()->setFunds(_game->getSavedGame()->getFunds() + _game->getMod()->getItem(_aliens[i], true)->getSellCost() * _qtys[i]);
 			}
 			else
 			{
 				// add the corpses
-				_base->getStorageItems()->addItem(
-					_game->getMod()->getUnit(
-						_aliens[i], true
-					)->getArmor()->getCorpseGeoscape(), _qtys[i]
-				); // ;)
+				auto ruleUnit = _game->getMod()->getUnit(_aliens[i], false);
+				if (ruleUnit)
+				{
+					auto ruleCorpse = _game->getMod()->getItem(ruleUnit->getArmor()->getCorpseGeoscape(), false);
+					if (ruleCorpse && ruleCorpse->isRecoverable() && ruleCorpse->isCorpseRecoverable())
+					{
+						_base->getStorageItems()->addItem(ruleUnit->getArmor()->getCorpseGeoscape(), _qtys[i]);
+					}
+				}
 			}
 		}
 	}
@@ -336,7 +378,7 @@ void ManageAlienContainmentState::btnCancelClick(Action *)
 */
 void ManageAlienContainmentState::btnTransferClick(Action *)
 {
-	_game->pushState(new TransferBaseState(_base));
+	_game->pushState(new TransferBaseState(_base, nullptr));
 }
 
 /**
@@ -530,6 +572,7 @@ void ManageAlienContainmentState::updateStrings()
 	if (availableContainment == 0 || Options::storageLimitsEnforced)
 	{
 		_btnOk->setVisible(spaces >= 0);
+		_btnSell->setVisible(spaces >= 0 && _threeButtons);
 	}
 	_txtAvailable->setText(tr("STR_SPACE_AVAILABLE").arg(spaces));
 	_txtUsed->setText(tr("STR_SPACE_USED").arg(aliens));

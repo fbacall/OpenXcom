@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 #include <yaml-cpp/yaml.h>
+#include "../Mod/RuleBaseFacilityFunctions.h"
 
 namespace OpenXcom
 {
@@ -39,6 +40,43 @@ class ResearchProject;
 class Production;
 class Vehicle;
 class Ufo;
+
+enum UfoDetection : int;
+enum BasePlacementErrors : int
+{
+	/// 0: ok
+	BPE_None = 0,
+	/// 1: not connected to lift or on top of another facility (standard OXC behavior)
+	BPE_NotConnected = 1,
+	/// 2: trying to upgrade over existing facility, but it's in use
+	BPE_Used = 2,
+	/// 3: trying to upgrade over existing facility, but it's already being upgraded
+	BPE_Upgrading = 3,
+	/// 4: trying to upgrade over existing facility, but size/placement mismatch
+	BPE_UpgradeSizeMismatch = 4,
+	/// 5: trying to upgrade over existing facility, but ruleset of new facility requires a specific existing facility
+	BPE_UpgradeRequireSpecific = 5,
+	/// 6: trying to upgrade over existing facility, but ruleset disallows it
+	BPE_UpgradeDisallowed = 6,
+	/// 7: trying to upgrade over existing facility, but all buildings next to it are under construction and build queue is off
+	BPE_Queue = 7,
+	/// 8: trying to build facility, but other building ruleset forbidd curreont one functionality
+	BPE_ForbiddenByOther = 8,
+	/// 9: trying to build facility, but other building is forbbiden by builded
+	BPE_ForbiddenByThis = 9,
+};
+
+struct BaseSumDailyRecovery
+{
+	/// Amount of mana recovery or loss provided by the base.
+	int ManaRecovery = 0;
+	/// Amount of health recovery provided by the base.
+	int HealthRecovery = 0;
+	/// Sum of the amount of additional wounds healed in this base due to sick bay facilities (as percentage of max HP per soldier).
+	float SickBayRelativeBonus = 0.0f;
+	/// Sum of the amount of additional wounds healed in this base due to sick bay facilities (in absolute number).
+	float SickBayAbsoluteBonus = 0.0f;
+};
 
 /**
  * Represents a player base on the globe.
@@ -59,12 +97,13 @@ private:
 	std::vector<Production *> _productions;
 	bool _inBattlescape;
 	bool _retaliationTarget;
+	bool _fakeUnderwater;
 	std::vector<Vehicle*> _vehicles;
 	std::vector<Vehicle*> _vehiclesFromBase;
 	std::vector<BaseFacility*> _defenses;
 
 	/// Determines space taken up by ammo clips about to rearm craft.
-	double getIgnoredStores();
+	double getIgnoredStores() const;
 
 	using Target::load;
 public:
@@ -76,6 +115,8 @@ public:
 	void load(const YAML::Node& node, SavedGame *save, bool newGame, bool newBattleGame = false);
 	/// Finishes loading the base (more specifically all craft in the base) from YAML.
 	void finishLoading(const YAML::Node& node, SavedGame *save);
+	/// Tests whether the base facilities are within the base boundaries and not overlapping.
+	bool isOverlappingOrOverflowing();
 	/// Saves the base to YAML.
 	YAML::Node save() const override;
 	/// Gets the base's type.
@@ -88,12 +129,20 @@ public:
 	std::vector<BaseFacility*> *getFacilities();
 	/// Gets the base's soldiers.
 	std::vector<Soldier*> *getSoldiers();
+	/// Pre-calculates soldier stats with various bonuses.
+	void prepareSoldierStatsWithBonuses();
 	/// Gets the base's crafts.
-	std::vector<Craft*> *getCrafts();
+	std::vector<Craft*> *getCrafts() {	return &_crafts; }
+	/// Gets the base's crafts.
+	const std::vector<Craft*> *getCrafts() const { return &_crafts; }
 	/// Gets the base's transfers.
-	std::vector<Transfer*> *getTransfers();
+	std::vector<Transfer*> *getTransfers() { return &_transfers; }
+	/// Gets the base's transfers.
+	const std::vector<Transfer*> *getTransfers() const { return &_transfers; }
 	/// Gets the base's items.
-	ItemContainer *getStorageItems();
+	ItemContainer *getStorageItems() { return _items; }
+	/// Gets the base's items.
+	const ItemContainer *getStorageItems() const { return _items; }
 	/// Gets the base's scientists.
 	int getScientists() const;
 	/// Sets the base's scientists.
@@ -103,9 +152,7 @@ public:
 	/// Sets the base's engineers.
 	void setEngineers(int engineers);
 	/// Checks if a target is detected by the base's radar.
-	int detect(Target *target) const;
-	/// Checks if a target is inside the base's radar range.
-	int insideRadarRange(Target *target) const;
+	UfoDetection detect(const Ufo *target, bool alreadyTracked) const;
 	/// Gets the base's available soldiers.
 	int getAvailableSoldiers(bool checkCombatReadiness = false, bool includeWounded = false) const;
 	/// Gets the base's total soldiers.
@@ -118,16 +165,14 @@ public:
 	int getAvailableEngineers() const;
 	/// Gets the base's total engineers.
 	int getTotalEngineers() const;
-	/// Gets the base's total other employees.
-	int getTotalOtherEmployees() const;
-	/// Gets the base's total cost of other employees.
-	int getTotalOtherEmployeeCost() const;
+	/// Gets the base's total number and cost of other staff & inventory.
+	int getTotalOtherStaffAndInventoryCost(int& staffCount, int& inventoryCount) const;
 	/// Gets the base's used living quarters.
 	int getUsedQuarters() const;
 	/// Gets the base's available living quarters.
 	int getAvailableQuarters() const;
 	/// Gets the base's used storage space.
-	double getUsedStores();
+	double getUsedStores() const;
 	/// Checks if the base's stores are overfull.
 	bool storesOverfull(double offset = 0.0);
 	/// Gets the base's available storage space.
@@ -168,8 +213,6 @@ public:
 	std::pair<int, int> getSoldierCountAndSalary(const std::string &soldier) const;
 	/// Gets the base's personnel maintenance.
 	int getPersonnelMaintenance() const;
-	/// Gets the base's item maintenance.
-	int getItemMaintenance() const;
 	/// Gets the base's facility maintenance.
 	int getFacilityMaintenance() const;
 	/// Gets the base's total monthly maintenance.
@@ -214,6 +257,10 @@ public:
 	void setRetaliationTarget(bool mark = true);
 	/// Gets the retaliation status of this base.
 	bool getRetaliationTarget() const;
+	/// Mark/unmark this base as a fake underwater base.
+	void setFakeUnderwater(bool fakeUnderwater) { _fakeUnderwater = fakeUnderwater; }
+	/// Is this a fake underwater base?
+	bool isFakeUnderwater() const { return _fakeUnderwater; }
 	/// Get the detection chance for this base.
 	size_t getDetectionChance() const;
 	/// Gets how many Grav Shields the base has
@@ -236,20 +283,24 @@ public:
 	void destroyFacility(std::vector<BaseFacility*>::iterator facility);
 	/// Cleans up the defenses vector and optionally reclaims the tanks and their ammo.
 	void cleanupDefenses(bool reclaimItems);
+
+	/// Check if faciletes in area are used.
+	BasePlacementErrors isAreaInUse(BaseAreaSubset area, const RuleBaseFacility* replecment = nullptr) const;
 	/// Gets available base functionality.
-	std::vector<std::string> getProvidedBaseFunc(const BaseFacility *skip = 0) const;
+	RuleBaseFacilityFunctions getProvidedBaseFunc(BaseAreaSubset skip) const;
 	/// Gets used base functionality.
-	std::vector<std::string> getRequireBaseFunc(const BaseFacility *skip = 0) const;
-	/// Gets forbiden base functionality.
-	std::vector<std::string> getForbiddenBaseFunc() const;
+	RuleBaseFacilityFunctions getRequireBaseFunc(BaseAreaSubset skip) const;
+	/// Gets forbidden base functionality.
+	RuleBaseFacilityFunctions getForbiddenBaseFunc(BaseAreaSubset skip) const;
 	/// Gets future base functionality.
-	std::vector<std::string> getFutureBaseFunc() const;
+	RuleBaseFacilityFunctions getFutureBaseFunc(BaseAreaSubset skip) const;
 	/// Checks if it is possible to build another facility of a given type.
 	bool isMaxAllowedLimitReached(RuleBaseFacility *rule) const;
-	/// Gets the amount of additional HP healed in this base due to sick bay facilities (in absolute number).
-	float getSickBayAbsoluteBonus() const;
-	/// Gets the amount of additional HP healed in this base due to sick bay facilities (as percentage of max HP per soldier).
-	float getSickBayRelativeBonus() const;
+
+	/// Gets the summary of all recovery rates provided by the base.
+	BaseSumDailyRecovery getSumRecoveryPerDay() const;
+	/// Removes a craft from the base.
+	std::vector<Craft*>::iterator removeCraft(Craft *craft, bool unload);
 };
 
 }

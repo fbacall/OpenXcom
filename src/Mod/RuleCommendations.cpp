@@ -18,6 +18,8 @@
  */
 
 #include "RuleCommendations.h"
+#include "Mod.h"
+#include "../Engine/Collections.h"
 
 namespace OpenXcom
 {
@@ -25,7 +27,7 @@ namespace OpenXcom
 /**
  * Creates a blank set of commendation data.
  */
-RuleCommendations::RuleCommendations() : _criteria(), _killCriteria(), _description(""), _sprite()
+RuleCommendations::RuleCommendations() : _criteria(), _killCriteria(), _description(""), _sprite(), _soldierBonusTypes()
 {
 }
 
@@ -46,6 +48,21 @@ void RuleCommendations::load(const YAML::Node &node)
 	_criteria = node["criteria"].as<std::map<std::string, std::vector<int> > >(_criteria);
 	_sprite = node["sprite"].as<int>(_sprite);
 	_killCriteria = node["killCriteria"].as<std::vector<std::vector<std::pair<int, std::vector<std::string> > > > >(_killCriteria);
+	_soldierBonusTypesNames = node["soldierBonusTypes"].as<std::vector<std::string> >(_soldierBonusTypesNames);
+}
+
+/**
+ * Cross link with other rules.
+ */
+void RuleCommendations::afterLoad(const Mod* mod)
+{
+	for (auto& name : _soldierBonusTypesNames)
+	{
+		_soldierBonusTypes.push_back(mod->getSoldierBonus(name, true));
+	}
+
+	//remove not needed data
+	Collections::removeAll(_soldierBonusTypesNames);
 }
 
 /**
@@ -68,7 +85,7 @@ std::map<std::string, std::vector<int> > *RuleCommendations::getCriteria()
 
 /**
  * Get the commendation's award kill criteria.
- * @return vecotr<string> Commendation kill criteria.
+ * @return vector<string> Commendation kill criteria.
  */
 std::vector<std::vector<std::pair<int, std::vector<std::string> > > > *RuleCommendations::getKillCriteria()
 {
@@ -82,6 +99,21 @@ std::vector<std::vector<std::pair<int, std::vector<std::string> > > > *RuleComme
 int RuleCommendations::getSprite() const
 {
 	return _sprite;
+}
+
+/**
+ * Gets the soldier bonus type corresponding to the commendation's decoration level.
+ * @return Soldier bonus type.
+ */
+const RuleSoldierBonus *RuleCommendations::getSoldierBonus(int decorationLevel) const
+{
+	if (!_soldierBonusTypes.empty())
+	{
+		int lastIndex = (int)(_soldierBonusTypes.size()) - 1;
+		int index = decorationLevel > lastIndex ? lastIndex : decorationLevel;
+		return _soldierBonusTypes.at(index);
+	}
+	return nullptr;
 }
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2015 OpenXcom Developers.
+ * Copyright 2010-2019 OpenXcom Developers.
  *
  * This file is part of OpenXcom.
  *
@@ -18,49 +18,12 @@
  */
 #include "RuleStartingCondition.h"
 #include "RuleItem.h"
-#include "../Engine/Collections.h"
+#include "../Engine/Logger.h"
 #include "../Mod/Mod.h"
+#include "../Savegame/Craft.h"
+#include "../Savegame/ItemContainer.h"
 #include "../Savegame/WeightedOptions.h"
 #include <algorithm>
-
-namespace YAML
-{
-	template<>
-	struct convert<OpenXcom::EnvironmentalCondition>
-	{
-		static Node encode(const OpenXcom::EnvironmentalCondition& rhs)
-		{
-			Node node;
-			node["globalChance"] = rhs.globalChance;
-			node["chancePerTurn"] = rhs.chancePerTurn;
-			node["firstTurn"] = rhs.firstTurn;
-			node["lastTurn"] = rhs.lastTurn;
-			node["message"] = rhs.message;
-			node["color"] = rhs.color;
-			node["weaponOrAmmo"] = rhs.weaponOrAmmo;
-			node["side"] = rhs.side;
-			node["bodyPart"] = rhs.bodyPart;
-			return node;
-		}
-
-		static bool decode(const Node& node, OpenXcom::EnvironmentalCondition& rhs)
-		{
-			if (!node.IsMap())
-				return false;
-
-			rhs.globalChance = node["globalChance"].as<int>(rhs.globalChance);
-			rhs.chancePerTurn = node["chancePerTurn"].as<int>(rhs.chancePerTurn);
-			rhs.firstTurn = node["firstTurn"].as<int>(rhs.firstTurn);
-			rhs.lastTurn = node["lastTurn"].as<int>(rhs.lastTurn);
-			rhs.message = node["message"].as<std::string>(rhs.message);
-			rhs.color = node["color"].as<int>(rhs.color);
-			rhs.weaponOrAmmo = node["weaponOrAmmo"].as<std::string>(rhs.weaponOrAmmo);
-			rhs.side = node["side"].as<int>(rhs.side);
-			rhs.bodyPart = node["bodyPart"].as<int>(rhs.bodyPart);
-			return true;
-		}
-	};
-}
 
 namespace OpenXcom
 {
@@ -69,7 +32,7 @@ namespace OpenXcom
  * Creates a blank ruleset for a certain type of Starting Condition.
  * @param type String defining the type.
  */
-RuleStartingCondition::RuleStartingCondition(const std::string &type) : _type(type), _destroyRequiredItems(false), _mapBackgroundColor(15)
+RuleStartingCondition::RuleStartingCondition(const std::string& type) : _type(type), _destroyRequiredItems(false)
 {
 }
 
@@ -84,128 +47,91 @@ RuleStartingCondition::~RuleStartingCondition()
  * Loads the Starting Conditions from a YAML file.
  * @param node YAML node.
  */
-void RuleStartingCondition::load(const YAML::Node &node)
+void RuleStartingCondition::load(const YAML::Node& node)
 {
-	if (const YAML::Node &parent = node["refNode"])
+	if (const YAML::Node& parent = node["refNode"])
 	{
 		load(parent);
 	}
 	_type = node["type"].as<std::string>(_type);
-	_paletteTransformations = node["paletteTransformations"].as< std::map<std::string, std::string> >(_paletteTransformations);
-	_environmentalConditions = node["environmentalConditions"].as< std::map<std::string, EnvironmentalCondition> >(_environmentalConditions);
-	_armorTransformationsName = node["armorTransformations"].as< std::map<std::string, std::string> >(_armorTransformationsName);
 	_defaultArmor = node["defaultArmor"].as< std::map<std::string, std::map<std::string, int> > >(_defaultArmor);
 	_allowedArmors = node["allowedArmors"].as< std::vector<std::string> >(_allowedArmors);
+	_forbiddenArmors = node["forbiddenArmors"].as< std::vector<std::string> >(_forbiddenArmors);
 	_allowedVehicles = node["allowedVehicles"].as< std::vector<std::string> >(_allowedVehicles);
+	_forbiddenVehicles = node["forbiddenVehicles"].as< std::vector<std::string> >(_forbiddenVehicles);
 	_allowedItems = node["allowedItems"].as< std::vector<std::string> >(_allowedItems);
+	_forbiddenItems = node["forbiddenItems"].as< std::vector<std::string> >(_forbiddenItems);
 	_allowedItemCategories = node["allowedItemCategories"].as< std::vector<std::string> >(_allowedItemCategories);
+	_forbiddenItemCategories = node["forbiddenItemCategories"].as< std::vector<std::string> >(_forbiddenItemCategories);
 	_allowedCraft = node["allowedCraft"].as< std::vector<std::string> >(_allowedCraft);
+	_forbiddenCraft = node["forbiddenCraft"].as< std::vector<std::string> >(_forbiddenCraft);
+	_allowedSoldierTypes = node["allowedSoldierTypes"].as< std::vector<std::string> >(_allowedSoldierTypes);
+	_forbiddenSoldierTypes = node["forbiddenSoldierTypes"].as< std::vector<std::string> >(_forbiddenSoldierTypes);
 	_requiredItems = node["requiredItems"].as< std::map<std::string, int> >(_requiredItems);
 	_destroyRequiredItems = node["destroyRequiredItems"].as<bool>(_destroyRequiredItems);
-	_mapBackgroundColor = node["mapBackgroundColor"].as<int>(_mapBackgroundColor);
-	_inventoryShockIndicator = node["inventoryShockIndicator"].as<std::string>(_inventoryShockIndicator);
-	_mapShockIndicator = node["mapShockIndicator"].as<std::string>(_mapShockIndicator);
+
+	if (node["environmentalConditions"] || node["paletteTransformations"] || node["armorTransformations"]
+		|| node["mapBackgroundColor"] || node["inventoryShockIndicator"] || node["mapShockIndicator"])
+	{
+		Log(LOG_ERROR) << "There are invalid/obsolete attributes in starting condition " << _type << ". Please review the ruleset.";
+	}
 }
 
 /**
- * Cross link with other rules.
+ * Checks if the craft type is permitted.
+ * @param craftType Craft type name.
+ * @return True if permitted, false otherwise.
  */
-void RuleStartingCondition::afterLoad(const Mod* mod)
+bool RuleStartingCondition::isCraftPermitted(const std::string& craftType) const
 {
-	for (auto& pair : _armorTransformationsName)
+	if (!_forbiddenCraft.empty())
 	{
-		auto src = mod->getArmor(pair.first, true);
-		auto dest = mod->getArmor(pair.second, true);
-		_armorTransformations[src] = dest;
+		return (std::find(_forbiddenCraft.begin(), _forbiddenCraft.end(), craftType) == _forbiddenCraft.end());
+	}
+	else if (!_allowedCraft.empty())
+	{
+		return (std::find(_allowedCraft.begin(), _allowedCraft.end(), craftType) != _allowedCraft.end());
+	}
+	return true;
+}
+
+/**
+ * Checks if the soldier type is permitted.
+ * @param soldierType Soldier type name.
+ * @return True if permitted, false otherwise.
+ */
+bool RuleStartingCondition::isSoldierTypePermitted(const std::string& soldierType) const
+{
+	if (!_forbiddenSoldierTypes.empty())
+	{
+		return (std::find(_forbiddenSoldierTypes.begin(), _forbiddenSoldierTypes.end(), soldierType) == _forbiddenSoldierTypes.end());
+	}
+	else if (!_allowedSoldierTypes.empty())
+	{
+		return (std::find(_allowedSoldierTypes.begin(), _allowedSoldierTypes.end(), soldierType) != _allowedSoldierTypes.end());
+	}
+	return true;
+}
+
+/**
+ * Gets the replacement armor.
+ * @param soldierType Soldier type name.
+ * @param armorType Existing/old armor type name.
+ * @return Replacement armor type name (or empty string if no replacement is needed).
+ */
+std::string RuleStartingCondition::getArmorReplacement(const std::string& soldierType, const std::string& armorType) const
+{
+	bool allowed = true;
+	if (!_forbiddenArmors.empty())
+	{
+		allowed = (std::find(_forbiddenArmors.begin(), _forbiddenArmors.end(), armorType) == _forbiddenArmors.end());
+	}
+	else if (!_allowedArmors.empty())
+	{
+		allowed = (std::find(_allowedArmors.begin(), _allowedArmors.end(), armorType) != _allowedArmors.end());
 	}
 
-	//remove not needed data
-	Collections::deleteAll(_armorTransformationsName);
-}
-
-/**
- * Returns the language string that names the Starting Condition. Each type has a unique name.
- * @return Starting Condition name.
- */
-std::string RuleStartingCondition::getType() const
-{
-	return _type;
-}
-
-/**
- * Gets the palette transformations.
- * @return Map of palette transformations.
- */
-const std::map<std::string, std::string> *RuleStartingCondition::getPaletteTransformations() const
-{
-	return &_paletteTransformations;
-}
-
-/**
-* Gets the environmental condition for a given faction.
-* @param faction Faction code (STR_FRIENDLY, STR_HOSTILE or STR_NEUTRAL).
-* @return Environmental condition definition.
-*/
-EnvironmentalCondition RuleStartingCondition::getEnvironmetalCondition(const std::string &faction) const
-{
-	if (!_environmentalConditions.empty())
-	{
-		std::map<std::string, EnvironmentalCondition>::const_iterator i = _environmentalConditions.find(faction);
-		if (i != _environmentalConditions.end())
-		{
-			return i->second;
-		}
-	}
-
-	return EnvironmentalCondition();
-}
-
-/**
-* Returns all allowed armor types.
-* @return List of armor types.
-*/
-const std::vector<std::string> *RuleStartingCondition::getAllowedArmors() const
-{
-	return &_allowedArmors;
-}
-
-/**
-* Returns all allowed craft types.
-* @return List of craft types.
-*/
-const std::vector<std::string> *RuleStartingCondition::getAllowedCraft() const
-{
-	return &_allowedCraft;
-}
-
-/**
- * Returns the required items.
- * @return List of required items.
- */
-const std::map<std::string, int> *RuleStartingCondition::getRequiredItems() const
-{
-	return &_requiredItems;
-}
-
-/**
-* Checks if the craft type is allowed.
-* @param craftType Craft type name.
-* @return True if allowed, false otherwise.
-*/
-bool RuleStartingCondition::isCraftAllowed(const std::string &craftType) const
-{
-	return _allowedCraft.empty() || (std::find(_allowedCraft.begin(), _allowedCraft.end(), craftType) != _allowedCraft.end());
-}
-
-/**
-* Gets the replacement armor.
-* @param soldierType Soldier type name.
-* @param armorType Existing/old armor type name.
-* @return Replacement armor type name (or empty string if no replacement is needed).
-*/
-std::string RuleStartingCondition::getArmorReplacement(const std::string &soldierType, const std::string &armorType) const
-{
-	if (!_allowedArmors.empty() && (std::find(_allowedArmors.begin(), _allowedArmors.end(), armorType) == _allowedArmors.end()))
+	if (!allowed)
 	{
 		std::map<std::string, std::map<std::string, int> >::const_iterator j = _defaultArmor.find(soldierType);
 		if (j != _defaultArmor.end())
@@ -224,100 +150,117 @@ std::string RuleStartingCondition::getArmorReplacement(const std::string &soldie
 }
 
 /**
-* Gets the transformed armor.
-* @param sourceArmor Existing/old armor type.
-* @return Transformed armor type (or null if there is no transformation).
-*/
-Armor* RuleStartingCondition::getArmorTransformation(const Armor* sourceArmor) const
+ * Checks if the vehicle type is permitted.
+ * @param vehicleType Vehicle type name.
+ * @return True if permitted, false otherwise.
+ */
+bool RuleStartingCondition::isVehiclePermitted(const std::string& vehicleType) const
 {
-	if (!_armorTransformations.empty())
+	if (!_forbiddenVehicles.empty())
 	{
-		std::map<const Armor*, Armor*>::const_iterator i = _armorTransformations.find(sourceArmor);
-		if (i != _armorTransformations.end())
+		return (std::find(_forbiddenVehicles.begin(), _forbiddenVehicles.end(), vehicleType) == _forbiddenVehicles.end());
+	}
+	else if (!_allowedVehicles.empty())
+	{
+		return (std::find(_allowedVehicles.begin(), _allowedVehicles.end(), vehicleType) != _allowedVehicles.end());
+	}
+	return true;
+}
+
+/**
+ * Checks if the item type is permitted.
+ * @param itemType Item type name.
+ * @return True if permitted, false otherwise.
+ */
+bool RuleStartingCondition::isItemPermitted(const std::string& itemType, Mod* mod, Craft* craft) const
+{
+	bool itemCheckSubResult = true; // if both item lists are empty, item is OK
+
+	if (!_forbiddenItems.empty())
+	{
+		if (std::find(_forbiddenItems.begin(), _forbiddenItems.end(), itemType) != _forbiddenItems.end())
 		{
-			return i->second;
+			return false; // item explicitly forbidden
+		}
+		else
+		{
+			itemCheckSubResult = true; // item is OK, unless category rules below say otherwise
+		}
+	}
+	else if (!_allowedItems.empty())
+	{
+		if (std::find(_allowedItems.begin(), _allowedItems.end(), itemType) != _allowedItems.end())
+		{
+			return true; // item explicitly allowed
+		}
+		else
+		{
+			itemCheckSubResult = false; // item is NOT OK, unless category rules below say otherwise
 		}
 	}
 
-	return nullptr;
-}
+	bool checkForbiddenCategories = !_forbiddenItemCategories.empty();
+	bool checkAllowedCategories = !checkForbiddenCategories && !_allowedItemCategories.empty();
 
-/**
-* Checks if the vehicle type is allowed.
-* @param vehicleType Vehicle type name.
-* @return True if allowed, false otherwise.
-*/
-bool RuleStartingCondition::isVehicleAllowed(const std::string &vehicleType) const
-{
-	return _allowedVehicles.empty() || (std::find(_allowedVehicles.begin(), _allowedVehicles.end(), vehicleType) != _allowedVehicles.end());
-}
+	bool categoryCheckSubResult = true;
 
-/**
-* Checks if the item type is allowed.
-* @param itemType Item type name.
-* @return True if allowed, false otherwise.
-*/
-bool RuleStartingCondition::isItemAllowed(const std::string &itemType, Mod *mod) const
-{
-	if (_allowedItems.empty() && _allowedItemCategories.empty())
-	{
-		return true; // if nothing is specified, everything is allowed
-	}
-	else if (std::find(_allowedItems.begin(), _allowedItems.end(), itemType) != _allowedItems.end())
-	{
-		return true; // item is explicitly allowed
-	}
-	else
-	{
-		if (_allowedItemCategories.empty())
-			return false; // no categories are allowed, stop looking
+	if (checkForbiddenCategories)
+		categoryCheckSubResult = true;
+	else if (checkAllowedCategories)
+		categoryCheckSubResult = false;
 
-		RuleItem *item = mod->getItem(itemType);
+	if (checkForbiddenCategories || checkAllowedCategories)
+	{
+		RuleItem* item = mod->getItem(itemType);
 		if (item)
 		{
+			// primary categories
 			std::vector<std::string> itemCategories = item->getCategories();
+
+			// secondary categories ("inherited" from equipped ammo)
+			if (mod->getShareAmmoCategories() && item->getBattleType() == BT_FIREARM)
+			{
+				for (auto& compatibleAmmoName : *item->getPrimaryCompatibleAmmo())
+				{
+					if (craft->getItems()->getItem(compatibleAmmoName) > 0)
+					{
+						RuleItem *ammoRule = mod->getItem(compatibleAmmoName);
+						if (ammoRule)
+						{
+							for (auto& cat : ammoRule->getCategories())
+							{
+								itemCategories.push_back(cat);
+							}
+						}
+					}
+				}
+			}
+
 			if (!itemCategories.empty())
 			{
 				// check all categories of the item
 				for (std::vector<std::string>::iterator i = itemCategories.begin(); i != itemCategories.end(); ++i)
 				{
-					if (std::find(_allowedItemCategories.begin(), _allowedItemCategories.end(), (*i)) != _allowedItemCategories.end())
+					if (checkForbiddenCategories)
 					{
-						return true; // found a category that is allowed
+						if (std::find(_forbiddenItemCategories.begin(), _forbiddenItemCategories.end(), (*i)) != _forbiddenItemCategories.end())
+						{
+							return false; // found a category that is forbidden
+						}
+					}
+					else if (checkAllowedCategories)
+					{
+						if (std::find(_allowedItemCategories.begin(), _allowedItemCategories.end(), (*i)) != _allowedItemCategories.end())
+						{
+							return true; // found a category that is allowed
+						}
 					}
 				}
 			}
 		}
 	}
 
-	return false; // if everything fails, item is not allowed
-}
-
-/**
-* Returns the battlescape map background color.
-* @return Color code.
-*/
-int RuleStartingCondition::getMapBackgroundColor() const
-{
-	return _mapBackgroundColor;
-}
-
-/**
- * Returns the inventory shock indicator sprite name.
- * @return Sprite name.
- */
-const std::string &RuleStartingCondition::getInventoryShockIndicator() const
-{
-	return _inventoryShockIndicator;
-}
-
-/**
- * Returns the map shock indicator sprite name.
- * @return Sprite name.
- */
-const std::string &RuleStartingCondition::getMapShockIndicator() const
-{
-	return _mapShockIndicator;
+	return itemCheckSubResult && categoryCheckSubResult;
 }
 
 }

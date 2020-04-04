@@ -22,7 +22,6 @@
 #include "Exception.h"
 #include <yaml-cpp/yaml.h>
 #include <sstream>
-#include "../version.h"
 
 namespace OpenXcom
 {
@@ -48,36 +47,7 @@ void ModInfo::load(const YAML::Node& doc)
 
 	if (!_requiredExtendedVersion.empty())
 	{
-		std::vector<int> requiredVersion;
-		std::string each;
-		char split_char = '.';
-		std::istringstream ss(_requiredExtendedVersion);
-		while (std::getline(ss, each, split_char)) {
-			try {
-				int i = std::stoi(each);
-				requiredVersion.push_back(i);
-			} catch (...) {
-				requiredVersion.push_back(0);
-			}
-		}
-		std::vector<int> oxceVersion = { OPENXCOM_VERSION_NUMBER };
-		int diff = oxceVersion.size() - requiredVersion.size();
-		for (int j = 0; j < diff; ++j)
-		{
-			requiredVersion.push_back(0);
-		}
-		for (size_t k = 0; k < oxceVersion.size(); ++k)
-		{
-			if (requiredVersion[k] > oxceVersion[k])
-			{
-				_versionOk = false;
-				break;
-			}
-			else if (requiredVersion[k] < oxceVersion[k])
-			{
-				break;
-			}
-		}
+		_versionOk = !CrossPlatform::isHigherThanCurrentVersion(_requiredExtendedVersion);
 	}
 
 	if (_reservedSpace < 1)
@@ -97,6 +67,7 @@ void ModInfo::load(const YAML::Node& doc)
 		// only masters can load external resource dirs
 		_externalResourceDirs = doc["loadResources"].as< std::vector<std::string> >(_externalResourceDirs);
 	}
+	_resourceConfigFile = doc["resourceConfig"].as<std::string>(_resourceConfigFile);
 
 	_master = doc["master"].as<std::string>(_master);
 	if (_master == "*")
@@ -105,20 +76,17 @@ void ModInfo::load(const YAML::Node& doc)
 	}
 }
 
-const std::string &ModInfo::getPath()        const { return _path;     }
-const std::string &ModInfo::getName()        const { return _name;     }
-const std::string &ModInfo::getDescription() const { return _desc;     }
-const std::string &ModInfo::getVersion()     const { return _version;  }
-const std::string &ModInfo::getAuthor()      const { return _author;   }
-const std::string &ModInfo::getId()          const { return _id;       }
-const std::string &ModInfo::getMaster()      const { return _master;   }
-bool               ModInfo::isMaster()       const { return _isMaster; }
+const std::string &ModInfo::getPath()                    const { return _path;                    }
+const std::string &ModInfo::getName()                    const { return _name;                    }
+const std::string &ModInfo::getDescription()             const { return _desc;                    }
+const std::string &ModInfo::getVersion()                 const { return _version;                 }
+const std::string &ModInfo::getAuthor()                  const { return _author;                  }
+const std::string &ModInfo::getId()                      const { return _id;                      }
+const std::string &ModInfo::getMaster()                  const { return _master;                  }
+bool               ModInfo::isMaster()                   const { return _isMaster;                }
 const std::string &ModInfo::getRequiredExtendedVersion() const { return _requiredExtendedVersion; }
-int                ModInfo::getReservedSpace()        const { return _reservedSpace;     }
-void ModInfo::setReservedSpace(int reservedSpace)
-{
-	_reservedSpace = reservedSpace;
-}
+const std::string &ModInfo::getResourceConfigFile()      const { return _resourceConfigFile;      }
+int                ModInfo::getReservedSpace()           const { return _reservedSpace;           }
 
 /**
  * Checks if a given mod can be activated.

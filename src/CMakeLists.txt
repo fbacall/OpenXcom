@@ -2,11 +2,12 @@
 set ( root_src
   lodepng.cpp
   main.cpp
+  md5.cpp
 )
 set ( basescape_src
   Basescape/BaseInfoState.cpp
-  Basescape/BaseView.cpp
   Basescape/BasescapeState.cpp
+  Basescape/BaseView.cpp
   Basescape/BuildFacilitiesState.cpp
   Basescape/ChangeHeadquartersState.cpp
   Basescape/CraftArmorState.cpp
@@ -17,8 +18,8 @@ set ( basescape_src
   Basescape/CraftPilotSelectState.cpp
   Basescape/CraftPilotsState.cpp
   Basescape/CraftSoldiersState.cpp
-  Basescape/CraftWeaponsState.cpp
   Basescape/CraftsState.cpp
+  Basescape/CraftWeaponsState.cpp
   Basescape/DismantleFacilityState.cpp
   Basescape/GlobalManufactureState.cpp
   Basescape/GlobalResearchState.cpp
@@ -42,6 +43,7 @@ set ( basescape_src
   Basescape/SellState.cpp
   Basescape/SoldierArmorState.cpp
   Basescape/SoldierAvatarState.cpp
+  Basescape/SoldierBonusState.cpp
   Basescape/SoldierDiaryMissionState.cpp
   Basescape/SoldierDiaryOverviewState.cpp
   Basescape/SoldierDiaryPerformanceState.cpp
@@ -63,15 +65,15 @@ set ( battlescape_src
   Battlescape/AbortMissionState.cpp
   Battlescape/ActionMenuItem.cpp
   Battlescape/ActionMenuState.cpp
-  Battlescape/AliensCrashState.cpp
   Battlescape/AIModule.cpp
   Battlescape/AlienInventory.cpp
   Battlescape/AlienInventoryState.cpp
-  Battlescape/BattleState.cpp
+  Battlescape/AliensCrashState.cpp
   Battlescape/BattlescapeGame.cpp
   Battlescape/BattlescapeGenerator.cpp
   Battlescape/BattlescapeMessage.cpp
   Battlescape/BattlescapeState.cpp
+  Battlescape/BattleState.cpp
   Battlescape/BriefingLightState.cpp
   Battlescape/BriefingState.cpp
   Battlescape/Camera.cpp
@@ -107,7 +109,9 @@ set ( battlescape_src
   Battlescape/PsiAttackBState.cpp
   Battlescape/ScannerState.cpp
   Battlescape/ScannerView.cpp
+  Battlescape/SkillMenuState.cpp
   Battlescape/TileEngine.cpp
+  Battlescape/TurnDiaryState.cpp
   Battlescape/UnitDieBState.cpp
   Battlescape/UnitFallBState.cpp
   Battlescape/UnitInfoState.cpp
@@ -129,8 +133,8 @@ set ( engine_src
   Engine/FileMap.cpp
   Engine/FlcPlayer.cpp
   Engine/Font.cpp
-  Engine/GMCat.cpp
   Engine/Game.cpp
+  Engine/GMCat.cpp
   Engine/InteractiveSurface.cpp
   Engine/Language.cpp
   Engine/LanguagePlurality.cpp
@@ -181,6 +185,7 @@ set ( geoscape_src
   Geoscape/DogfightState.cpp
   Geoscape/FundingState.cpp
   Geoscape/GeoscapeCraftState.cpp
+  Geoscape/GeoscapeEventState.cpp
   Geoscape/GeoscapeState.cpp
   Geoscape/Globe.cpp
   Geoscape/GraphsState.cpp
@@ -235,7 +240,6 @@ set ( menu_src
   Menu/CutsceneState.cpp
   Menu/DeleteGameState.cpp
   Menu/ErrorMessageState.cpp
-  Menu/HelloCommanderState.cpp
   Menu/ListGamesState.cpp
   Menu/ListLoadOriginalState.cpp
   Menu/ListLoadState.cpp
@@ -251,6 +255,7 @@ set ( menu_src
   Menu/OptionsConfirmState.cpp
   Menu/OptionsControlsState.cpp
   Menu/OptionsDefaultsState.cpp
+  Menu/OptionsFoldersState.cpp
   Menu/OptionsGeoscapeState.cpp
   Menu/OptionsInformExtendedState.cpp
   Menu/OptionsModsState.cpp
@@ -277,39 +282,46 @@ set ( mod_src
   Mod/ExtraSounds.cpp
   Mod/ExtraSprites.cpp
   Mod/ExtraStrings.cpp
-  Mod/MCDPatch.cpp
   Mod/MapBlock.cpp
   Mod/MapData.cpp
   Mod/MapDataSet.cpp
   Mod/MapScript.cpp
+  Mod/MCDPatch.cpp
   Mod/Mod.cpp
   Mod/Polygon.cpp
   Mod/Polyline.cpp
   Mod/RuleAlienMission.cpp
+  Mod/RuleArcScript.cpp
   Mod/RuleBaseFacility.cpp
   Mod/RuleCommendations.cpp
   Mod/RuleConverter.cpp
   Mod/RuleCountry.cpp
   Mod/RuleCraft.cpp
   Mod/RuleCraftWeapon.cpp
+  Mod/RuleDamageType.cpp
+  Mod/RuleEnviroEffects.cpp
+  Mod/RuleEvent.cpp
+  Mod/RuleEventScript.cpp
   Mod/RuleGlobe.cpp
   Mod/RuleInterface.cpp
   Mod/RuleInventory.cpp
   Mod/RuleItem.cpp
-  Mod/RuleDamageType.cpp
+  Mod/RuleItemCategory.cpp
   Mod/RuleManufacture.cpp
+  Mod/RuleManufactureShortcut.cpp
   Mod/RuleMissionScript.cpp
   Mod/RuleMusic.cpp
   Mod/RuleRegion.cpp
   Mod/RuleResearch.cpp
+  Mod/RuleSkill.cpp
   Mod/RuleSoldier.cpp
+  Mod/RuleSoldierBonus.cpp
   Mod/RuleSoldierTransformation.cpp
+  Mod/RuleStartingCondition.cpp
   Mod/RuleStatBonus.cpp
   Mod/RuleTerrain.cpp
   Mod/RuleUfo.cpp
   Mod/RuleVideo.cpp
-  Mod/RuleStartingCondition.cpp
-  Mod/RuleItemCategory.cpp
   Mod/SoldierNamePool.cpp
   Mod/SoundDefinition.cpp
   Mod/StatString.cpp
@@ -333,6 +345,8 @@ set ( savegame_src
   Savegame/CraftWeaponProjectile.cpp
   Savegame/EquipmentLayoutItem.cpp
   Savegame/GameTime.cpp
+  Savegame/GeoscapeEvent.cpp
+  Savegame/HitLog.cpp
   Savegame/ItemContainer.cpp
   Savegame/MissionSite.cpp
   Savegame/MovingTarget.cpp
@@ -364,6 +378,8 @@ set ( ufopedia_src
   Ufopaedia/ArticleStateCraft.cpp
   Ufopaedia/ArticleStateCraftWeapon.cpp
   Ufopaedia/ArticleStateItem.cpp
+  Ufopaedia/ArticleStateText.cpp
+  Ufopaedia/ArticleStateTextImage.cpp
   Ufopaedia/ArticleStateTFTD.cpp
   Ufopaedia/ArticleStateTFTDArmor.cpp
   Ufopaedia/ArticleStateTFTDCraft.cpp
@@ -372,8 +388,6 @@ set ( ufopedia_src
   Ufopaedia/ArticleStateTFTDItem.cpp
   Ufopaedia/ArticleStateTFTDUso.cpp
   Ufopaedia/ArticleStateTFTDVehicle.cpp
-  Ufopaedia/ArticleStateText.cpp
-  Ufopaedia/ArticleStateTextImage.cpp
   Ufopaedia/ArticleStateUfo.cpp
   Ufopaedia/ArticleStateVehicle.cpp
   Ufopaedia/StatsForNerdsState.cpp
@@ -427,8 +441,9 @@ if ( "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES 
   set_property ( SOURCE ${cxx_src} ${c_src} APPEND_STRING PROPERTY COMPILE_FLAGS -Wignored-qualifiers\ )
   set_property ( SOURCE ${cxx_src} ${c_src} APPEND_STRING PROPERTY COMPILE_FLAGS -Wno-unused-parameter\ )
   set_property ( SOURCE ${cxx_src} ${c_src} APPEND_STRING PROPERTY COMPILE_FLAGS -Wno-inline\ )
-  set_property ( SOURCE ${cxx_src} ${c_src} APPEND_STRING PROPERTY COMPILE_FLAGS -Wshadow\ )
   if ( "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" )
+    # apple clang 11.0 goes crazy with -Wshadow on the yaml-cpp source code
+    set_property ( SOURCE ${cxx_src} ${c_src} APPEND_STRING PROPERTY COMPILE_FLAGS -Wshadow\ )
     # add warning flags recognized by g++ but not by clang
     set_property ( SOURCE ${cxx_src} APPEND_STRING PROPERTY COMPILE_FLAGS -Wsuggest-override\ )
     set_property ( SOURCE ${cxx_src} ${c_src} APPEND_STRING PROPERTY COMPILE_FLAGS -Wclobbered\ )
@@ -456,6 +471,9 @@ if ( MSVC )
   if ( FATAL_WARNING )
     add_definitions ( /WX )
   endif ( FATAL_WARNING )
+  set ( CMAKE_EXE_LINKER_FLAGS "/manifest:no" )
+  set ( CMAKE_MODULE_LINKER_FLAGS "/manifest:no" )
+  set ( CMAKE_SHARED_LINKER_FLAGS="/manifest:no" )
 endif ()
 
 if ( DUMP_CORE )
@@ -541,7 +559,7 @@ endif ()
 install ( TARGETS openxcom ${install_dest} DESTINATION ${CMAKE_INSTALL_BINDIR} )
 # Extra link flags for Windows. They need to be set before the SDL/YAML link flags, otherwise you will get strange link errors ('Undefined reference to WinMain@16')
 if ( WIN32 )
-  set ( basic_windows_libs advapi32.lib shell32.lib shlwapi.lib )
+  set ( basic_windows_libs advapi32.lib shell32.lib shlwapi.lib wininet.lib urlmon.lib )
   if ( MINGW )
     set ( basic_windows_libs ${basic_windows_libs} mingw32 -mwindows )
     set ( static_flags  -static )

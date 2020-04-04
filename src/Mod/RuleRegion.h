@@ -36,6 +36,8 @@ struct MissionArea
 	int texture;
 	std::string name;
 
+	MissionArea() : lonMin(0.0), lonMax(360.0), latMin(-90.0), latMax(90.0), texture(0) { }
+
 	bool operator== (const MissionArea& ma) const
 	{
 		return AreSame(lonMax, ma.lonMax) && AreSame(lonMin, ma.lonMin) && AreSame(latMax, ma.latMax) && AreSame(latMin, ma.latMin);
@@ -95,7 +97,7 @@ public:
 	/// Gets the region's base cost.
 	int getBaseCost() const;
 	/// Checks if a point is inside the region.
-	bool insideRegion(double lon, double lat) const;
+	bool insideRegion(double lon, double lat, bool ignoreTechnicalRegion = false) const;
 	/// Gets the cities in this region.
 	std::vector<City*> *getCities();
 	/// Gets the weight of this region for mission selection.

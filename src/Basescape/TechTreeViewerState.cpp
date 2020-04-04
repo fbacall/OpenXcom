@@ -25,6 +25,7 @@
 #include "../Mod/RuleInterface.h"
 #include "../Mod/RuleItem.h"
 #include "../Mod/RuleManufacture.h"
+#include "../Mod/RuleMissionScript.h"
 #include "../Mod/RuleResearch.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/Options.h"
@@ -93,7 +94,7 @@ TechTreeViewerState::TechTreeViewerState(const RuleResearch *r, const RuleManufa
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK05.SCR"));
+	setWindowBackground(_window, "techTreeViewer");
 
 	_txtTitle->setBig();
 	_txtTitle->setAlign(ALIGN_CENTER);
@@ -128,6 +129,18 @@ TechTreeViewerState::TechTreeViewerState(const RuleResearch *r, const RuleManufa
 	{
 		_alreadyAvailableResearch.insert((*j)->getName());
 		discoveredSum += (*j)->getCost();
+	}
+	for (auto info : _game->getSavedGame()->getResearchRuleStatusRaw())
+	{
+		if (info.second == RuleResearch::RESEARCH_STATUS_DISABLED)
+		{
+			auto rr = _game->getMod()->getResearch(info.first, false);
+			if (rr)
+			{
+				_alreadyAvailableResearch.insert(rr->getName());
+				discoveredSum += rr->getCost(); // intentionally count disabled as discovered
+			}
+		}
 	}
 
 	int totalSum = 0;
@@ -278,6 +291,14 @@ void TechTreeViewerState::initLists()
 					ss << std::get<1>(sym);
 				}
 			}
+			if (rule->getCost() < 10)
+			{
+				while (cost >= 1)
+				{
+					cost -= 1;
+					ss << ".";
+				}
+			}
 			_txtCostIndicator->setText(ss.str());
 		}
 		//
@@ -285,12 +306,13 @@ void TechTreeViewerState::initLists()
 		const std::vector<std::string> &researchList = _game->getMod()->getResearchList();
 		const std::vector<std::string> &manufactureList = _game->getMod()->getManufactureList();
 
-		// 0. common pre-calc
+		// 0. common pre-calculation
 		const std::vector<const RuleResearch*> reqs = rule->getRequirements();
 		const std::vector<const RuleResearch*> deps = rule->getDependencies();
 		std::vector<std::string> unlockedBy;
 		std::vector<std::string> disabledBy;
 		std::vector<std::string> getForFreeFrom;
+		std::vector<std::string> lookupOf;
 		std::vector<std::string> requiredByResearch;
 		std::vector<std::string> requiredByManufacture;
 		std::vector<std::string> requiredByFacilities;
@@ -378,6 +400,13 @@ void TechTreeViewerState::initLists()
 					}
 				}
 			}
+			if (!temp->getLookup().empty())
+			{
+				if (temp->getLookup() == rule->getName())
+				{
+					lookupOf.push_back(j);
+				}
+			}
 			for (auto& i : temp->getRequirements())
 			{
 				if (i == rule)
@@ -422,9 +451,10 @@ void TechTreeViewerState::initLists()
 		}
 
 		// 1b. requires services (from base facilities)
-		const std::vector<std::string> reqFacilities = rule->getRequireBaseFunc();
-		if (reqFacilities.size() > 0)
+		if (rule->getRequireBaseFunc().any())
 		{
+			const std::vector<std::string> reqFacilities = _game->getMod()->getBaseFunctionNames(rule->getRequireBaseFunc());
+
 			_lstLeft->addRow(1, tr("STR_SERVICES_REQUIRED").c_str());
 			_lstLeft->setRowColor(row, _blue);
 			_leftTopics.push_back("-");
@@ -562,7 +592,69 @@ void TechTreeViewerState::initLists()
 			}
 		}
 
+		// is lookup of
+		if (lookupOf.size() > 0)
+		{
+			_lstLeft->addRow(1, tr("STR_IS_LOOKUP_OF").c_str());
+			_lstLeft->setRowColor(row, _blue);
+			_leftTopics.push_back("-");
+			_leftFlags.push_back(TTV_NONE);
+			++row;
+			for (std::vector<std::string>::const_iterator i = lookupOf.begin(); i != lookupOf.end(); ++i)
+			{
+				std::string name = tr((*i));
+				name.insert(0, "  ");
+				_lstLeft->addRow(1, name.c_str());
+				if (!isDiscoveredResearch((*i)))
+				{
+					_lstLeft->setRowColor(row, _pink);
+				}
+				_leftTopics.push_back((*i));
+				_leftFlags.push_back(TTV_RESEARCH);
+				++row;
+			}
+		}
+
 		row = 0;
+
+		// lookup link
+		if (!rule->getLookup().empty())
+		{
+			_lstRight->addRow(1, tr("STR_LOOKUP").c_str());
+			_lstRight->setRowColor(row, _blue);
+			_rightTopics.push_back("-");
+			_rightFlags.push_back(TTV_NONE);
+			++row;
+
+			std::string name = tr(rule->getLookup());
+			name.insert(0, "  ");
+			_lstRight->addRow(1, name.c_str());
+			if (!isDiscoveredResearch(rule->getLookup()))
+			{
+				_lstRight->setRowColor(row, _pink);
+			}
+			_rightTopics.push_back(rule->getLookup());
+			_rightFlags.push_back(TTV_RESEARCH);
+			++row;
+		}
+
+		// spawned item
+		if (!rule->getSpawnedItem().empty())
+		{
+			_lstRight->addRow(1, tr("STR_SPAWNED_ITEM").c_str());
+			_lstRight->setRowColor(row, _blue);
+			_rightTopics.push_back("-");
+			_rightFlags.push_back(TTV_NONE);
+			++row;
+
+			std::string name = tr(rule->getSpawnedItem());
+			name.insert(0, "  ");
+			_lstRight->addRow(1, name.c_str());
+			_lstRight->setRowColor(row, _white);
+			_rightTopics.push_back("-");
+			_rightFlags.push_back(TTV_NONE);
+			++row;
+		}
 
 		// 6. required by
 		if (requiredByResearch.size() > 0 || requiredByManufacture.size() > 0 || requiredByFacilities.size() > 0 || requiredByItems.size() > 0)
@@ -727,14 +819,38 @@ void TechTreeViewerState::initLists()
 		// 9. gives one for free
 		if (free.size() > 0)
 		{
+			int remaining = 0;
+			int total = 0;
+			for (auto& i : free)
+			{
+				if (!isDiscoveredResearch(i->getName()))
+				{
+					++remaining;
+				}
+				++total;
+			}
+			for (auto& itMap : freeProtected)
+			{
+				for (auto& i : itMap.second)
+				{
+					if (!isDiscoveredResearch(i->getName()))
+					{
+						++remaining;
+					}
+					++total;
+				}
+			}
+			std::ostringstream ssFree;
 			if (rule->sequentialGetOneFree())
 			{
-				_lstRight->addRow(1, tr("STR_GIVES_ONE_FOR_FREE_SEQ").c_str());
+				ssFree << tr("STR_GIVES_ONE_FOR_FREE_SEQ");
 			}
 			else
 			{
-				_lstRight->addRow(1, tr("STR_GIVES_ONE_FOR_FREE").c_str());
+				ssFree << tr("STR_GIVES_ONE_FOR_FREE");
 			}
+			ssFree << " " << remaining << "/" << total;
+			_lstRight->addRow(1, ssFree.str().c_str());
 			_lstRight->setRowColor(row, _blue);
 			_rightTopics.push_back("-");
 			_rightFlags.push_back(TTV_NONE);
@@ -784,6 +900,76 @@ void TechTreeViewerState::initLists()
 				}
 			}
 		}
+
+		// 10. unlocks/disables alien missions
+		std::unordered_set<std::string> unlocksMissions, disablesMissions;
+		for (auto& missionScriptId : *_game->getMod()->getMissionScriptList())
+		{
+			auto missionScript = _game->getMod()->getMissionScript(missionScriptId, false);
+			if (missionScript)
+			{
+				for (auto& trigger : missionScript->getResearchTriggers())
+				{
+					if (trigger.first == _selectedTopic)
+					{
+						if (trigger.second)
+							unlocksMissions.insert(missionScriptId);
+						else
+							disablesMissions.insert(missionScriptId);
+					}
+				}
+			}
+		}
+		if (_game->getSavedGame()->getDebugMode())
+		{
+			if (!unlocksMissions.empty())
+			{
+				_lstRight->addRow(1, tr("STR_UNLOCKS_MISSIONS").c_str());
+				_lstRight->setRowColor(row, _blue);
+				_rightTopics.push_back("-");
+				_rightFlags.push_back(TTV_NONE);
+				++row;
+				for (auto& i : unlocksMissions)
+				{
+					std::ostringstream name;
+					name << "  " << tr(i);
+					_lstRight->addRow(1, name.str().c_str());
+					_lstRight->setRowColor(row, _white);
+					_rightTopics.push_back("-");
+					_rightFlags.push_back(TTV_NONE);
+					++row;
+				}
+			}
+			if (!disablesMissions.empty())
+			{
+				_lstRight->addRow(1, tr("STR_DISABLES_MISSIONS").c_str());
+				_lstRight->setRowColor(row, _blue);
+				_rightTopics.push_back("-");
+				_rightFlags.push_back(TTV_NONE);
+				++row;
+				for (auto& i : disablesMissions)
+				{
+					std::ostringstream name;
+					name << "  " << tr(i);
+					_lstRight->addRow(1, name.str().c_str());
+					_lstRight->setRowColor(row, _white);
+					_rightTopics.push_back("-");
+					_rightFlags.push_back(TTV_NONE);
+					++row;
+				}
+			}
+		}
+		else
+		{
+			if (!unlocksMissions.empty() || !disablesMissions.empty())
+			{
+				_lstRight->addRow(1, tr("STR_AFFECTS_GAME_PROGRESSION").c_str());
+				_lstRight->setRowColor(row, _gold);
+				_rightTopics.push_back("-");
+				_rightFlags.push_back(TTV_NONE);
+				++row;
+			}
+		}
 	}
 	else if (_selectedFlag == TTV_MANUFACTURING)
 	{
@@ -817,9 +1003,10 @@ void TechTreeViewerState::initLists()
 		}
 
 		// 2. requires services (from base facilities)
-		const std::vector<std::string> reqFacilities = rule->getRequireBaseFunc();
-		if (reqFacilities.size() > 0)
+		if (rule->getRequireBaseFunc().any())
 		{
+			const std::vector<std::string> reqFacilities = _game->getMod()->getBaseFunctionNames(rule->getRequireBaseFunc());
+
 			_lstLeft->addRow(1, tr("STR_SERVICES_REQUIRED").c_str());
 			_lstLeft->setRowColor(row, _blue);
 			_leftTopics.push_back("-");
@@ -913,6 +1100,45 @@ void TechTreeViewerState::initLists()
 			}
 		}
 
+		// 4b. random outputs
+		auto randomOutputs = rule->getRandomProducedItems();
+		if (randomOutputs.size() > 0)
+		{
+			_lstRight->addRow(1, tr("STR_RANDOM_PRODUCTION_DISCLAIMER").c_str());
+			_lstRight->setRowColor(row, _blue);
+			_rightTopics.push_back("-");
+			_rightFlags.push_back(TTV_NONE);
+			++row;
+			int total = 0;
+			for (auto& n : randomOutputs)
+			{
+				total += n.first;
+			}
+			for (auto& randomOutput : randomOutputs)
+			{
+				std::ostringstream chance;
+				chance << " " << randomOutput.first * 100 / total << "%";
+				_lstRight->addRow(1, chance.str().c_str());
+				_lstRight->setRowColor(row, _gold);
+				_rightTopics.push_back("-");
+				_rightFlags.push_back(TTV_NONE);
+				++row;
+				for (auto& i : randomOutput.second)
+				{
+					std::ostringstream name;
+					name << "  ";
+					name << tr(i.first->getType());
+					name << ": ";
+					name << i.second;
+					_lstRight->addRow(1, name.str().c_str());
+					_lstRight->setRowColor(row, _white);
+					_rightTopics.push_back("-");
+					_rightFlags.push_back(TTV_NONE);
+					++row;
+				}
+			}
+		}
+
 		// 5. person joining
 		if (rule->getSpawnedPersonType() != "")
 		{
@@ -965,9 +1191,10 @@ void TechTreeViewerState::initLists()
 		}
 
 		// 2. requires services (from other base facilities)
-		const std::vector<std::string> reqFacilities = rule->getRequireBaseFunc();
-		if (reqFacilities.size() > 0)
+		if (rule->getRequireBaseFunc().any())
 		{
+			const std::vector<std::string> reqFacilities = _game->getMod()->getBaseFunctionNames(rule->getRequireBaseFunc());
+
 			_lstLeft->addRow(1, tr("STR_SERVICES_REQUIRED").c_str());
 			_lstLeft->setRowColor(row, _blue);
 			_leftTopics.push_back("-");
@@ -988,9 +1215,10 @@ void TechTreeViewerState::initLists()
 		row = 0;
 
 		// 3. provides services
-		const std::vector<std::string> providedFacilities = rule->getProvidedBaseFunc();
-		if (providedFacilities.size() > 0)
+		if (rule->getProvidedBaseFunc().any())
 		{
+			const std::vector<std::string> providedFacilities = _game->getMod()->getBaseFunctionNames(rule->getProvidedBaseFunc());
+
 			_lstRight->addRow(1, tr("STR_SERVICES_PROVIDED").c_str());
 			_lstRight->setRowColor(row, _blue);
 			_rightTopics.push_back("-");
@@ -1009,9 +1237,10 @@ void TechTreeViewerState::initLists()
 		}
 
 		// 4. forbids services
-		const std::vector<std::string> forbFacilities = rule->getForbiddenBaseFunc();
-		if (forbFacilities.size() > 0)
+		if (rule->getForbiddenBaseFunc().any())
 		{
+			const std::vector<std::string> forbFacilities = _game->getMod()->getBaseFunctionNames(rule->getForbiddenBaseFunc());
+
 			_lstRight->addRow(1, tr("STR_SERVICES_FORBIDDEN").c_str());
 			_lstRight->setRowColor(row, _blue);
 			_rightTopics.push_back("-");
@@ -1085,9 +1314,9 @@ void TechTreeViewerState::initLists()
 		}
 
 		// 3. services (from base facilities) required to buy
-		const std::vector<std::string> servicesBuy = rule->getRequiresBuyBaseFunc();
-		if (servicesBuy.size() > 0)
+		if (rule->getRequiresBuyBaseFunc().any())
 		{
+			const std::vector<std::string> servicesBuy = _game->getMod()->getBaseFunctionNames(rule->getRequiresBuyBaseFunc());
 			_lstLeft->addRow(1, tr("STR_SERVICES_REQUIRED_BUY").c_str());
 			_lstLeft->setRowColor(row, _blue);
 			_leftTopics.push_back("-");

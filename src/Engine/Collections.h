@@ -20,60 +20,63 @@
 #include <vector>
 #include <map>
 #include <list>
+#include <unordered_map>
+#include <algorithm>
 #include "Exception.h"
 
 namespace OpenXcom
 {
 
 /**
- * Helper class for managing object colections
+ * Helper class for managing object collections
  */
 class Collections
 {
 public:
+
+	////////////////////////////////////////////////////////////
+	//					Helper algorithms
+	////////////////////////////////////////////////////////////
+
+	/**
+	 * Delete can be only used on owning pointers, to make clear difference to removeAll we reject case when it is used on collection without pointers.
+	 * @param p
+	 */
 	template<typename T>
 	static void deleteAll(const T& p)
 	{
-		//nothing
+		static_assert(sizeof(T) == 0, "deleteAll can be only used on pointers and collection of pointers");
 	}
 	template<typename T>
 	static void deleteAll(T* p)
 	{
 		delete p;
 	}
-	template<typename T>
-	static void deleteAll(std::vector<T>& vec)
-	{
-		for (auto p : vec)
-		{
-			deleteAll(p);
-		}
-		removeAll(vec);
-	}
-	template<typename T>
-	static void deleteAll(std::list<T>& list)
-	{
-		for (auto p : list)
-		{
-			deleteAll(p);
-		}
-		removeAll(list);
-	}
 	template<typename K, typename V>
-	static void deleteAll(std::map<K, V>& map)
+	static void deleteAll(std::pair<const K, V>& p)
 	{
-		for (auto p : map)
-		{
-			deleteAll(p.second);
-		}
-		removeAll(map);
+		deleteAll(p.second);
 	}
 
 	/**
-	 * Remove and delete (if pointer) items from colection with limit.
-	 * @param colection Ccolection from witch remove items
+	 * Delete all pointers from container, it can be nested.
+	 * SFINAE, valid only if type look like container.
+	 */
+	template<typename C, typename = decltype(std::declval<C>().begin()), typename = decltype(std::declval<C>().end())>
+	static void deleteAll(C& colection)
+	{
+		for (auto p : colection)
+		{
+			deleteAll(p);
+		}
+		removeAll(colection);
+	}
+
+	/**
+	 * Remove and delete (if pointer) items from collection with limit.
+	 * @param collection Collection from which to remove items
 	 * @param numberToRemove Limit of removal
-	 * @param func Test what should be removed, can modyfy everyting except this colection
+	 * @param func Test what should be removed, can modify everything except this collection
 	 * @return Number of values left to remove
 	 */
 	template<typename C, typename F>
@@ -96,6 +99,18 @@ public:
 	}
 
 	/**
+	 * Remove and delete (if pointer) items from collection.
+	 * @param collection Collection from which to remove items
+	 * @param func Test what should be removed, can modify everything except this collection
+	 * @return Number of values left in collection
+	 */
+	template<typename C, typename F>
+	static int deleteIf(C& colection, F&& func)
+	{
+		return deleteIf(colection, colection.size(), std::forward<F>(func));
+	}
+
+	/**
 	 * Clear vector. It set capacity to zero too.
 	 * @param vec
 	 */
@@ -107,7 +122,7 @@ public:
 
 	/**
 	 * Clear container.
-	 * @param colection
+	 * @param collection
 	 */
 	template<typename C>
 	static void removeAll(C& colection)
@@ -119,7 +134,7 @@ public:
 	 * Remove items from vector with limit.
 	 * @param vec Vector from witch remove items
 	 * @param numberToRemove Limit of removal
-	 * @param func Test what should be removed, can modyfy everyting except this vector
+	 * @param func Test what should be removed, can modify everything except this vector
 	 * @return Number of values left to remove
 	 */
 	template<typename T, typename F>
@@ -131,7 +146,7 @@ public:
 		}
 		auto begin = vec.begin();
 		auto newEnd = vec.begin();
-		//similar to `std::remove_if` but it do not allow modyfy anything in `func`
+		//similar to `std::remove_if` but it do not allow modify anything in `func`
 		for (auto it = begin; it != vec.end(); ++it)
 		{
 			auto& value = *it;
@@ -150,10 +165,10 @@ public:
 	}
 
 	/**
-	 * Remove items from colection with limit.
+	 * Remove items from collection with limit.
 	 * @param list List from witch remove items
 	 * @param numberToRemove Limit of removal
-	 * @param func Test what should be removed, can modyfy everyting except this colection
+	 * @param func Test what should be removed, can modify everything except this collection
 	 * @return Number of values left to remove
 	 */
 	template<typename C, typename F>
@@ -182,6 +197,18 @@ public:
 		return numberToRemove;
 	}
 
+	/**
+	 * Remove items from collection.
+	 * @param list List from witch remove items
+	 * @param func Test what should be removed, can modify everything except this collection
+	 * @return Number of values left in collection
+	 */
+	template<typename C, typename F>
+	static int removeIf(C& colection, F&& func)
+	{
+		return removeIf(colection, colection.size(), std::forward<F>(func));
+	}
+
 	template<typename C, typename Predicate, typename Callback>
 	static void untilLastIf(C& colection, Predicate&& p, Callback&& f)
 	{
@@ -205,6 +232,321 @@ public:
 			}
 		}
 	}
+
+	/**
+	 * Sort vector using `std::less`.
+	 */
+	template<typename T>
+	static void sortVector(std::vector<T>& vec)
+	{
+		std::sort(vec.begin(), vec.end(), std::less<>());
+	}
+
+	/**
+	 * Check for value in sorted vector by `std::less`.
+	 */
+	template<typename T>
+	static bool sortVectorHave(const std::vector<T>& vec, T v)
+	{
+		return std::binary_search(vec.begin(), vec.end(), v, std::less<>());
+	}
+
+	////////////////////////////////////////////////////////////
+	//						Range
+	////////////////////////////////////////////////////////////
+
+	template<typename T>
+	struct ValueIterator
+	{
+		T value;
+
+		T operator*()
+		{
+			return value;
+		}
+
+		void operator++()
+		{
+			++value;
+		}
+
+		void operator--()
+		{
+			--value;
+		}
+
+		bool operator!=(const ValueIterator& r)
+		{
+			return value != r.value;
+		}
+	};
+
+	template<typename ItA, typename ItB>
+	struct ZipIterator
+	{
+		ItA first;
+		ItB second;
+
+		auto operator*() -> decltype(std::make_pair(*first, *second))
+		{
+			return std::make_pair(*first, *second);
+		}
+
+		void operator++()
+		{
+			++first;
+			++second;
+		}
+
+		bool operator!=(const ZipIterator& r)
+		{
+			return first != r.first && second != r.second; //zip will stop when one of ranges ends, this is why `&&` instead of `||`
+		}
+	};
+
+	template<typename It, typename Filter>
+	class FilterIterator
+	{
+		It _curr;
+		It _end;
+		Filter _filter;
+
+	public:
+
+		FilterIterator(It curr, It end, Filter filter) :
+			_curr { std::move(curr)},
+			_end { std::move(end)},
+			_filter { std::move(filter)}
+		{
+
+		}
+
+		auto operator*() -> decltype(*_curr)
+		{
+			return *_curr;
+		}
+
+		void operator++()
+		{
+			++_curr;
+			while (_curr != _end && !_filter(*_curr))
+			{
+				++_curr;
+			}
+		}
+
+		bool operator!=(const FilterIterator& r)
+		{
+			return _curr != r._curr;
+		}
+	};
+
+	template<typename It>
+	struct ReverseIterator
+	{
+		It _curr;
+
+	public:
+
+		ReverseIterator(It curr) :
+			_curr{ std::move(curr) }
+		{
+
+		}
+
+		auto operator*() -> decltype(*_curr)
+		{
+			auto copy = _curr;
+			--copy;
+			return *copy;
+		}
+
+		void operator++()
+		{
+			--_curr;
+		}
+
+		bool operator!=(const ReverseIterator& r)
+		{
+			return _curr != r._curr;
+		}
+	};
+
+	template<typename It>
+	class Range
+	{
+		It _begin;
+		It _end;
+	public:
+
+		Range(It begin, It end) :
+			_begin { std::move(begin) },
+			_end { std::move(end) }
+		{
+		}
+
+		It begin()
+		{
+			return _begin;
+		}
+		It end()
+		{
+			return _end;
+		}
+	};
+
+	/**
+	 * Create range from `min` to `max` (excluding), if `max > min` it return empty range.
+	 * @param min minimum value of range
+	 * @param max maximum value of range
+	 * @return
+	 */
+	template<typename T>
+	static Range<ValueIterator<T>> rangeValue(T begin, T end)
+	{
+		if (begin < end)
+		{
+			return { ValueIterator<T>{ begin }, ValueIterator<T>{ end } };
+		}
+		else
+		{
+			return { ValueIterator<T>{ end }, ValueIterator<T>{ end } };
+		}
+	}
+
+	/**
+	 * Create range from zero to less than `end`
+	 * @param end
+	 * @return
+	 */
+	template<typename T>
+	static Range<ValueIterator<T>> rangeValueLess(T end)
+	{
+		return rangeValue(T{}, end);
+	}
+
+	template<typename It>
+	static Range<It> range(It begin, It end)
+	{
+		return { begin, end };
+	}
+
+	template<typename T>
+	static Range<T*> range(std::vector<T>& v)
+	{
+		return { v.data(), v.data() + v.size() };
+	}
+
+	template<typename T>
+	static Range<const T*> range(const std::vector<T>& v)
+	{
+		return { v.data(), v.data() + v.size() };
+	}
+
+	template<typename T, int N>
+	static Range<T*> range(T (&a)[N])
+	{
+		return { std::begin(a), std::end(a) };
+	}
+
+	template<typename ItA, typename ItB>
+	static Range<ZipIterator<ItA, ItB>> zip(Range<ItA> a, Range<ItB> b)
+	{
+		return { { a.begin(), b.begin() }, { a.end(), b.end() } };
+	}
+
+	template<typename It>
+	static Range<ReverseIterator<It>> reverse(Range<It> a)
+	{
+		return { a.end(), a.begin() };
+	}
+
+	template<typename It>
+	static Range<It> reverse(Range<ReverseIterator<It>> a)
+	{
+		return { a.end().curr, a.begin().curr };
+	}
+
+	template<typename It, typename Filter>
+	static Range<FilterIterator<It, Filter>> filter(Range<It> a, Filter f)
+	{
+		auto begin = a.begin();
+		auto end = a.end();
+		if (begin != end)
+		{
+			auto fbegin = FilterIterator<It, Filter>{ begin, end, f };
+			if (!f(*begin))
+			{
+				++fbegin;
+			}
+			return { fbegin, { end, end, f } };
+		}
+		else
+		{
+			return { { end, end, f }, { end, end, f } };
+		}
+	}
+
+	template<typename It>
+	static Range<ValueIterator<It>> nonDeref(Range<It> a)
+	{
+		return { { a.begin() }, { a.end() } };
+	}
+
+
+	////////////////////////////////////////////////////////////
+	//					Custom Containers
+	////////////////////////////////////////////////////////////
+
+
+	/**
+	 * Helper having conversion from some unique strings to indexs.
+	 */
+	class NamesToIndex
+	{
+		std::unordered_map<std::string, size_t> _usedValues;
+		std::unordered_map<size_t, std::string> _usedNames{ { 0, "" } };
+		size_t _last = 1; //zero is reserved for "empty"
+
+	public:
+
+		/**
+		 * Return index for given name
+		 * @param name New name or old already added name
+		 * @param max How much unique names we can hold
+		 * @return Index assigned to name.
+		 */
+		size_t addName(const std::string& name, size_t max)
+		{
+			auto& ref = _usedValues[name];
+			if (ref)
+			{
+				return ref;
+			}
+			if (_last == max)
+			{
+				throw Exception("Number of unique names reach limit because of name '" + name + "'");
+			}
+			ref = _last++;
+			_usedNames[ref] = name;
+			return ref;
+		}
+
+		/**
+		 * Get name based on index
+		 * @param i Index
+		 * @return name or empty string if index is not assigned
+		 */
+		const std::string& getName(size_t i) const
+		{
+			auto f = _usedNames.find(i);
+			if (f != _usedNames.end())
+			{
+				return f->second;
+			}
+			return _usedNames.find(0)->second;
+		}
+	};
 };
 
 }

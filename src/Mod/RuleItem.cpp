@@ -21,6 +21,7 @@
 #include "RuleItem.h"
 #include "RuleInventory.h"
 #include "RuleDamageType.h"
+#include "RuleSoldier.h"
 #include "../Savegame/BattleUnit.h"
 #include "../Engine/Exception.h"
 #include "../Engine/Collections.h"
@@ -34,6 +35,90 @@
 namespace OpenXcom
 {
 
+namespace
+{
+
+/**
+ * Update `attacker` from `weapon_item`.
+ */
+void UpdateAttacker(BattleActionAttack& attack)
+{
+	if (attack.weapon_item && !attack.attacker)
+	{
+		const auto battleType = attack.weapon_item->getRules()->getBattleType();
+		if (battleType == BT_PROXIMITYGRENADE || battleType == BT_GRENADE)
+		{
+			auto owner = attack.weapon_item->getPreviousOwner();
+			if (owner)
+			{
+				attack.attacker = owner;
+			}
+		}
+	}
+}
+
+/**
+ * Update `damage_item` from `weapon_item`.
+ */
+void UpdateAmmo(BattleActionAttack& attack)
+{
+	if (attack.weapon_item && !attack.damage_item)
+	{
+		const auto battleType = attack.weapon_item->getRules()->getBattleType();
+		if (battleType == BT_PROXIMITYGRENADE || battleType == BT_GRENADE || battleType == BT_PSIAMP)
+		{
+			attack.damage_item = attack.weapon_item;
+		}
+		else
+		{
+			attack.damage_item = attack.weapon_item->getAmmoForAction(attack.type);
+		}
+	}
+}
+
+}
+
+/**
+ * Generate ActionAttack before shoot, this mean we can get ammo from weapon.
+ * @param action BattleCost of attack.
+ * @return All attack action data.
+ */
+BattleActionAttack BattleActionAttack::GetBeforeShoot(const BattleActionCost &action)
+{
+	return GetBeforeShoot(action.type, action.actor, action.weapon, action.skillRules);
+}
+
+BattleActionAttack BattleActionAttack::GetBeforeShoot(BattleActionType type, BattleUnit *unit, BattleItem *wepon, const RuleSkill *skill)
+{
+	auto attack = BattleActionAttack{ type, unit, wepon };
+	UpdateAttacker(attack);
+	UpdateAmmo(attack);
+	attack.skill_rules = skill;
+	return attack;
+}
+
+/**
+ * Generate ActionAttack after shoot, ammo can be already spend and unloaded from weapon.
+ * @param action BattleCost of attack.
+ * @param ammo Ammo used to shoot/attack.
+ * @return All attack action data.
+ */
+BattleActionAttack BattleActionAttack::GetAferShoot(const BattleActionCost &action, BattleItem *ammo)
+{
+	return GetAferShoot(action.type, action.actor, action.weapon, ammo, action.skillRules);
+}
+
+BattleActionAttack BattleActionAttack::GetAferShoot(BattleActionType type, BattleUnit *unit, BattleItem *wepon, BattleItem *ammo, const RuleSkill *skill)
+{
+	auto attack = BattleActionAttack{ type, unit, wepon };
+	UpdateAttacker(attack);
+	attack.damage_item = ammo;
+	attack.skill_rules = skill;
+	return attack;
+}
+
+
+
 const float VexelsToTiles = 0.0625f;
 const float TilesToVexels = 16.0f;
 
@@ -43,7 +128,7 @@ const float TilesToVexels = 16.0f;
  */
 RuleItem::RuleItem(const std::string &type) :
 	_type(type), _name(type), _vehicleUnit(nullptr), _size(0.0), _costBuy(0), _costSell(0), _transferTime(24), _weight(3),
-	_bigSprite(-999), _floorSprite(-1), _handSprite(120), _bulletSprite(-1), _specialIconSprite(-1),
+	_bigSprite(-1), _floorSprite(-1), _handSprite(120), _bulletSprite(-1), _specialIconSprite(-1),
 	_hitAnimation(0), _hitMissAnimation(-1),
 	_meleeAnimation(0), _meleeMissAnimation(-1),
 	_psiAnimation(-1), _psiMissAnimation(-1),
@@ -52,15 +137,21 @@ RuleItem::RuleItem(const std::string &type) :
 	_noLOSAccuracyPenalty(-1),
 	_costUse(25), _costMind(-1, -1), _costPanic(-1, -1), _costThrow(25), _costPrime(50), _costUnprime(25),
 	_clipSize(0), _specialChance(100), _tuLoad{ }, _tuUnload{ },
-	_battleType(BT_NONE), _fuseType(BFT_NONE), _fuseTriggerEvents{ }, _hiddenOnMinimap(false), _psiAttackName(), _primeActionName("STR_PRIME_GRENADE"), _unprimeActionName(), _primeActionMessage("STR_GRENADE_IS_ACTIVATED"), _unprimeActionMessage("STR_GRENADE_IS_DEACTIVATED"),
-	_twoHanded(false), _blockBothHands(false), _fixedWeapon(false), _fixedWeaponShow(false), _allowSelfHeal(false), _isConsumable(false), _isFireExtinguisher(false), _isExplodingInHands(false), _specialUseEmptyHand(false),
-	_waypoints(0), _invWidth(1), _invHeight(1),
-	_painKiller(0), _heal(0), _stimulant(0), _medikitType(BMT_NORMAL), _woundRecovery(0), _healthRecovery(0), _stunRecovery(0), _energyRecovery(0), _moraleRecovery(0), _painKillerRecovery(1.0f), _recoveryPoints(0), _armor(20), _turretType(-1),
+	_battleType(BT_NONE), _fuseType(BFT_NONE), _fuseTriggerEvents{ }, _hiddenOnMinimap(false),
+	_medikitActionName("STR_USE_MEDI_KIT"), _psiAttackName(), _primeActionName("STR_PRIME_GRENADE"), _unprimeActionName(), _primeActionMessage("STR_GRENADE_IS_ACTIVATED"), _unprimeActionMessage("STR_GRENADE_IS_DEACTIVATED"),
+	_twoHanded(false), _blockBothHands(false), _fixedWeapon(false), _fixedWeaponShow(false), _isConsumable(false), _isFireExtinguisher(false), _isExplodingInHands(false), _specialUseEmptyHand(false),
+	_defaultInvSlotX(0), _defaultInvSlotY(0), _waypoints(0), _invWidth(1), _invHeight(1),
+	_painKiller(0), _heal(0), _stimulant(0), _medikitType(BMT_NORMAL), _medikitTargetSelf(false), _medikitTargetImmune(false), _medikitTargetMatrix(63),
+	_woundRecovery(0), _healthRecovery(0), _stunRecovery(0), _energyRecovery(0), _manaRecovery(0), _moraleRecovery(0), _painKillerRecovery(1.0f),
+	_recoveryPoints(0), _armor(20), _turretType(-1),
 	_aiUseDelay(-1), _aiMeleeHitCount(25),
-	_recover(true), _recoverCorpse(true), _ignoreInBaseDefense(false), _liveAlien(false), _liveAlienPrisonType(0), _attraction(0), _flatUse(0, 1), _flatThrow(0, 1), _flatPrime(0, 1), _flatUnprime(0, 1), _arcingShot(false), _experienceTrainingMode(ETM_DEFAULT), _listOrder(0),
+	_recover(true), _recoverCorpse(true), _ignoreInBaseDefense(false), _ignoreInCraftEquip(true), _liveAlien(false),
+	_liveAlienPrisonType(0), _attraction(0), _flatUse(0, 1), _flatThrow(0, 1), _flatPrime(0, 1), _flatUnprime(0, 1), _arcingShot(false),
+	_experienceTrainingMode(ETM_DEFAULT), _manaExperience(0), _listOrder(0),
 	_maxRange(200), _minRange(0), _dropoff(2), _bulletSpeed(0), _explosionSpeed(0), _shotgunPellets(0), _shotgunBehaviorType(0), _shotgunSpread(100), _shotgunChoke(100),
 	_spawnUnitFaction(-1),
-	_LOSRequired(false), _underwaterOnly(false), _landOnly(false), _psiReqiured(false),
+	_psiTargetMatrix(6),
+	_LOSRequired(false), _underwaterOnly(false), _landOnly(false), _psiReqiured(false), _manaRequired(false),
 	_meleePower(0), _specialType(-1), _vaporColor(-1), _vaporDensity(0), _vaporProbability(15),
 	_kneelBonus(-1), _oneHandedPenalty(-1),
 	_monthlySalary(0), _monthlyMaintenance(0),
@@ -124,6 +215,7 @@ RuleItemUseCost RuleItem::getDefault(const RuleItemUseCost& a, const RuleItemUse
 	n.Morale = a.Morale >= 0 ? a.Morale : b.Morale;
 	n.Health = a.Health >= 0 ? a.Health : b.Health;
 	n.Stun = a.Stun >= 0 ? a.Stun : b.Stun;
+	n.Mana = a.Mana >= 0 ? a.Mana : b.Mana;
 	return n;
 }
 
@@ -202,50 +294,6 @@ void RuleItem::loadInt(int& a, const YAML::Node& node) const
 }
 
 /**
- * Load item use cost type (flat or percent).
- * @param a Item use type.
- * @param node YAML node.
- * @param name Name of action type.
- */
-void RuleItem::loadPercent(RuleItemUseCost& a, const YAML::Node& node, const std::string& name) const
-{
-	if (const YAML::Node& cost = node["flat" + name])
-	{
-		if (cost.IsScalar())
-		{
-			loadTriBool(a.Time, cost);
-		}
-		else
-		{
-			loadTriBool(a.Time, cost["time"]);
-			loadTriBool(a.Energy, cost["energy"]);
-			loadTriBool(a.Morale, cost["morale"]);
-			loadTriBool(a.Health, cost["health"]);
-			loadTriBool(a.Stun, cost["stun"]);
-		}
-	}
-}
-
-/**
- * Load item use cost.
- * @param a Item use cost.
- * @param node YAML node.
- * @param name Name of action type.
- */
-void RuleItem::loadCost(RuleItemUseCost& a, const YAML::Node& node, const std::string& name) const
-{
-	loadInt(a.Time, node["tu" + name]);
-	if (const YAML::Node& cost = node["cost" + name])
-	{
-		loadInt(a.Time, cost["time"]);
-		loadInt(a.Energy, cost["energy"]);
-		loadInt(a.Morale, cost["morale"]);
-		loadInt(a.Health, cost["health"]);
-		loadInt(a.Stun, cost["stun"]);
-	}
-}
-
-/**
  * Load RuleItemAction from yaml.
  * @param a Item use config.
  * @param node YAML node.
@@ -290,31 +338,6 @@ void RuleItem::updateCategories(std::map<std::string, std::string> *replacementR
 }
 
 /**
- * Loads a sound vector for a given attribute/node.
- * @param node YAML node.
- * @param mod Mod for the item.
- * @param vector Sound vector to load into.
- */
-void RuleItem::loadSoundVector(const YAML::Node &node, Mod *mod, std::vector<int> &vector)
-{
-	if (node)
-	{
-		vector.clear();
-		if (node.IsSequence())
-		{
-			for (YAML::const_iterator i = node.begin(); i != node.end(); ++i)
-			{
-				vector.push_back(mod->getSoundOffset(i->as<int>(), "BATTLE.CAT"));
-			}
-		}
-		else
-		{
-			vector.push_back(mod->getSoundOffset(node.as<int>(), "BATTLE.CAT"));
-		}
-	}
-}
-
-/**
  * Loads the item from a YAML file.
  * @param node YAML node.
  * @param mod Mod for the item.
@@ -333,9 +356,7 @@ void RuleItem::load(const YAML::Node &node, Mod *mod, int listOrder, const ModSc
 	//requires
 	_requiresName = node["requires"].as< std::vector<std::string> >(_requiresName);
 	_requiresBuyName = node["requiresBuy"].as< std::vector<std::string> >(_requiresBuyName);
-	_requiresBuyBaseFunc = node["requiresBuyBaseFunc"].as< std::vector<std::string> >(_requiresBuyBaseFunc);
-
-	std::sort(_requiresBuyBaseFunc.begin(), _requiresBuyBaseFunc.end());
+	mod->loadBaseFunction(_type, _requiresBuyBaseFunc, node["requiresBuyBaseFunc"]);
 
 
 	_recoveryDividers = node["recoveryDividers"].as< std::map<std::string, int> >(_recoveryDividers);
@@ -346,65 +367,36 @@ void RuleItem::load(const YAML::Node &node, Mod *mod, int listOrder, const ModSc
 	_costSell = node["costSell"].as<int>(_costSell);
 	_transferTime = node["transferTime"].as<int>(_transferTime);
 	_weight = node["weight"].as<int>(_weight);
-	if (node["bigSprite"])
-	{
-		_bigSprite = mod->getSpriteOffset(node["bigSprite"].as<int>(_bigSprite), "BIGOBS.PCK");
-	}
-	if (node["floorSprite"])
-	{
-		_floorSprite = mod->getSpriteOffset(node["floorSprite"].as<int>(_floorSprite), "FLOOROB.PCK");
-	}
-	if (node["handSprite"])
-	{
-		_handSprite = mod->getSpriteOffset(node["handSprite"].as<int>(_handSprite), "HANDOB.PCK");
-	}
-	if (node["bulletSprite"])
-	{
-		// Projectiles: 0-384 entries ((105*33) / (3*3)) (35 sprites per projectile(0-34), 11 projectiles (0-10))
-		_bulletSprite = mod->getOffset(node["bulletSprite"].as<int>(_bulletSprite) * 35, 384);
-	}
-	if (node["specialIconSprite"])
-	{
-		_specialIconSprite = mod->getSpriteOffset(node["specialIconSprite"].as<int>(_specialIconSprite), "SPICONS.DAT");
-	}
-	loadSoundVector(node["reloadSound"], mod, _reloadSound);
-	loadSoundVector(node["fireSound"], mod, _fireSound);
-	loadSoundVector(node["hitSound"], mod, _hitSound);
-	loadSoundVector(node["hitMissSound"], mod, _hitMissSound);
-	loadSoundVector(node["meleeSound"], mod, _meleeSound);
-	loadSoundVector(node["meleeMissSound"], mod, _meleeMissSound);
-	loadSoundVector(node["psiSound"], mod, _psiSound);
-	loadSoundVector(node["psiMissSound"], mod, _psiMissSound);
-	if (node["hitAnimation"])
-	{
-		_hitAnimation = mod->getSpriteOffset(node["hitAnimation"].as<int>(_hitAnimation), "SMOKE.PCK");
-	}
-	if (node["hitMissAnimation"])
-	{
-		_hitMissAnimation = mod->getSpriteOffset(node["hitMissAnimation"].as<int>(_hitMissAnimation), "SMOKE.PCK");
-	}
-	if (node["meleeAnimation"])
-	{
-		_meleeAnimation = mod->getSpriteOffset(node["meleeAnimation"].as<int>(_meleeAnimation), "HIT.PCK");
-	}
-	if (node["meleeMissAnimation"])
-	{
-		_meleeMissAnimation = mod->getSpriteOffset(node["meleeMissAnimation"].as<int>(_meleeMissAnimation), "HIT.PCK");
-	}
-	if (node["psiAnimation"])
-	{
-		_psiAnimation = mod->getSpriteOffset(node["psiAnimation"].as<int>(_psiAnimation), "HIT.PCK");
-	}
-	if (node["psiMissAnimation"])
-	{
-		_psiMissAnimation = mod->getSpriteOffset(node["psiMissAnimation"].as<int>(_psiMissAnimation), "HIT.PCK");
-	}
-	loadSoundVector(node["meleeHitSound"], mod, _meleeHitSound);
-	loadSoundVector(node["explosionHitSound"], mod, _explosionHitSound);
+
+	mod->loadSpriteOffset(_type, _bigSprite, node["bigSprite"], "BIGOBS.PCK");
+	mod->loadSpriteOffset(_type, _floorSprite, node["floorSprite"], "FLOOROB.PCK");
+	mod->loadSpriteOffset(_type, _handSprite, node["handSprite"], "HANDOB.PCK");
+	// Projectiles: 0-384 entries ((105*33) / (3*3)) (35 sprites per projectile(0-34), 11 projectiles (0-10))
+	mod->loadSpriteOffset(_type, _bulletSprite, node["bulletSprite"], "Projectiles", 35);
+	mod->loadSpriteOffset(_type, _specialIconSprite, node["specialIconSprite"], "SPICONS.DAT");
+
+	mod->loadSoundOffset(_type, _reloadSound, node["reloadSound"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _fireSound, node["fireSound"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _hitSound, node["hitSound"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _hitMissSound, node["hitMissSound"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _meleeSound, node["meleeSound"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _meleeMissSound, node["meleeMissSound"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _psiSound, node["psiSound"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _psiMissSound, node["psiMissSound"], "BATTLE.CAT");
+
+	mod->loadSpriteOffset(_type, _hitAnimation, node["hitAnimation"], "SMOKE.PCK");
+	mod->loadSpriteOffset(_type, _hitMissAnimation, node["hitMissAnimation"], "SMOKE.PCK");
+	mod->loadSpriteOffset(_type, _meleeAnimation, node["meleeAnimation"], "HIT.PCK");
+	mod->loadSpriteOffset(_type, _meleeMissAnimation, node["meleeMissAnimation"], "HIT.PCK");
+	mod->loadSpriteOffset(_type, _psiAnimation, node["psiAnimation"], "HIT.PCK");
+	mod->loadSpriteOffset(_type, _psiMissAnimation, node["psiMissAnimation"], "HIT.PCK");
+	mod->loadSoundOffset(_type, _meleeHitSound, node["meleeHitSound"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _explosionHitSound, node["explosionHitSound"], "BATTLE.CAT");
 
 	if (node["battleType"])
 	{
 		_battleType = (BattleType)node["battleType"].as<int>(_battleType);
+		_ignoreInCraftEquip = !isUsefulBattlescapeItem();
 
 		if (_battleType == BT_PSIAMP)
 		{
@@ -489,6 +481,7 @@ void RuleItem::load(const YAML::Node &node, Mod *mod, int listOrder, const ModSc
 
 	_power = node["power"].as<int>(_power);
 	_hidePower = node["hidePower"].as<bool>(_hidePower);
+	_medikitActionName = node["medikitActionName"].as<std::string>(_medikitActionName);
 	_psiAttackName = node["psiAttackName"].as<std::string>(_psiAttackName);
 	_primeActionName = node["primeActionName"].as<std::string>(_primeActionName);
 	_primeActionMessage = node["primeActionMessage"].as<std::string>(_primeActionMessage);
@@ -511,27 +504,27 @@ void RuleItem::load(const YAML::Node &node, Mod *mod, int listOrder, const ModSc
 	_accuracyCloseQuarters = node["accuracyCloseQuarters"].as<int>(_accuracyCloseQuarters);
 	_noLOSAccuracyPenalty = node["noLOSAccuracyPenalty"].as<int>(_noLOSAccuracyPenalty);
 
-	loadCost(_confAimed.cost, node, "Aimed");
-	loadCost(_confAuto.cost, node, "Auto");
-	loadCost(_confSnap.cost, node, "Snap");
-	loadCost(_confMelee.cost, node, "Melee");
-	loadCost(_costUse, node, "Use");
-	loadCost(_costMind, node, "MindControl");
-	loadCost(_costPanic, node, "Panic");
-	loadCost(_costThrow, node, "Throw");
-	loadCost(_costPrime, node, "Prime");
-	loadCost(_costUnprime, node, "Unprime");
+	_confAimed.cost.loadCost(node, "Aimed");
+	_confAuto.cost.loadCost(node, "Auto");
+	_confSnap.cost.loadCost(node, "Snap");
+	_confMelee.cost.loadCost(node, "Melee");
+	_costUse.loadCost(node, "Use");
+	_costMind.loadCost(node, "MindControl");
+	_costPanic.loadCost(node, "Panic");
+	_costThrow.loadCost(node, "Throw");
+	_costPrime.loadCost(node, "Prime");
+	_costUnprime.loadCost(node, "Unprime");
 
 	loadTriBool(_flatUse.Time, node["flatRate"]);
 
-	loadPercent(_confAimed.flat, node, "Aimed");
-	loadPercent(_confAuto.flat, node, "Auto");
-	loadPercent(_confSnap.flat, node, "Snap");
-	loadPercent(_confMelee.flat, node, "Melee");
-	loadPercent(_flatUse, node, "Use");
-	loadPercent(_flatThrow, node, "Throw");
-	loadPercent(_flatPrime, node, "Prime");
-	loadPercent(_flatUnprime, node, "Unprime");
+	_confAimed.flat.loadPercent(node, "Aimed");
+	_confAuto.flat.loadPercent(node, "Auto");
+	_confSnap.flat.loadPercent(node, "Snap");
+	_confMelee.flat.loadPercent(node, "Melee");
+	_flatUse.loadPercent(node, "Use");
+	_flatThrow.loadPercent(node, "Throw");
+	_flatPrime.loadPercent(node, "Prime");
+	_flatUnprime.loadPercent(node, "Unprime");
 
 	loadConfAction(_confAimed, node, "Aimed");
 	loadConfAction(_confAuto, node, "Auto");
@@ -574,8 +567,9 @@ void RuleItem::load(const YAML::Node &node, Mod *mod, int listOrder, const ModSc
 	_fixedWeapon = node["fixedWeapon"].as<bool>(_fixedWeapon);
 	_fixedWeaponShow = node["fixedWeaponShow"].as<bool>(_fixedWeaponShow);
 	_defaultInventorySlot = node["defaultInventorySlot"].as<std::string>(_defaultInventorySlot);
+	_defaultInvSlotX = node["defaultInvSlotX"].as<int>(_defaultInvSlotX);
+	_defaultInvSlotY = node["defaultInvSlotY"].as<int>(_defaultInvSlotY);
 	_supportedInventorySections = node["supportedInventorySections"].as< std::vector<std::string> >(_supportedInventorySections);
-	_allowSelfHeal = node["allowSelfHeal"].as<bool>(_allowSelfHeal);
 	_isConsumable = node["isConsumable"].as<bool>(_isConsumable);
 	_isFireExtinguisher = node["isFireExtinguisher"].as<bool>(_isFireExtinguisher);
 	_isExplodingInHands = node["isExplodingInHands"].as<bool>(_isExplodingInHands);
@@ -590,9 +584,17 @@ void RuleItem::load(const YAML::Node &node, Mod *mod, int listOrder, const ModSc
 	_healthRecovery = node["healthRecovery"].as<int>(_healthRecovery);
 	_stunRecovery = node["stunRecovery"].as<int>(_stunRecovery);
 	_energyRecovery = node["energyRecovery"].as<int>(_energyRecovery);
+	_manaRecovery = node["manaRecovery"].as<int>(_manaRecovery);
 	_moraleRecovery = node["moraleRecovery"].as<int>(_moraleRecovery);
 	_painKillerRecovery = node["painKillerRecovery"].as<float>(_painKillerRecovery);
 	_medikitType = (BattleMediKitType)node["medikitType"].as<int>(_medikitType);
+	{
+		// FIXME: deprecated, backwards-compatibility only, remove by mid 2020
+		_medikitTargetSelf = node["allowSelfHeal"].as<bool>(_medikitTargetSelf);
+	}
+	_medikitTargetSelf = node["medikitTargetSelf"].as<bool>(_medikitTargetSelf);
+	_medikitTargetImmune = node["medikitTargetImmune"].as<bool>(_medikitTargetImmune);
+	_medikitTargetMatrix = node["medikitTargetMatrix"].as<int>(_medikitTargetMatrix);
 	_medikitBackground = node["medikitBackground"].as<std::string>(_medikitBackground);
 
 	_recoveryPoints = node["recoveryPoints"].as<int>(_recoveryPoints);
@@ -606,11 +608,13 @@ void RuleItem::load(const YAML::Node &node, Mod *mod, int listOrder, const ModSc
 	_recover = node["recover"].as<bool>(_recover);
 	_recoverCorpse = node["recoverCorpse"].as<bool>(_recoverCorpse);
 	_ignoreInBaseDefense = node["ignoreInBaseDefense"].as<bool>(_ignoreInBaseDefense);
+	_ignoreInCraftEquip = node["ignoreInCraftEquip"].as<bool>(_ignoreInCraftEquip);
 	_liveAlien = node["liveAlien"].as<bool>(_liveAlien);
 	_liveAlienPrisonType = node["prisonType"].as<int>(_liveAlienPrisonType);
 	_attraction = node["attraction"].as<int>(_attraction);
 	_arcingShot = node["arcingShot"].as<bool>(_arcingShot);
 	_experienceTrainingMode = (ExperienceTrainingMode)node["experienceTrainingMode"].as<int>(_experienceTrainingMode);
+	_manaExperience = node["manaExperience"].as<int>(_manaExperience);
 	_listOrder = node["listOrder"].as<int>(_listOrder);
 	_maxRange = node["maxRange"].as<int>(_maxRange);
 	_confAimed.range = node["aimRange"].as<int>(_confAimed.range);
@@ -625,9 +629,13 @@ void RuleItem::load(const YAML::Node &node, Mod *mod, int listOrder, const ModSc
 	_shotgunBehaviorType = node["shotgunBehavior"].as<int>(_shotgunBehaviorType);
 	_shotgunSpread = node["shotgunSpread"].as<int>(_shotgunSpread);
 	_shotgunChoke = node["shotgunChoke"].as<int>(_shotgunChoke);
+	_zombieUnitByArmorMale = node["zombieUnitByArmorMale"].as< std::map<std::string, std::string> >(_zombieUnitByArmorMale);
+	_zombieUnitByArmorFemale = node["zombieUnitByArmorFemale"].as< std::map<std::string, std::string> >(_zombieUnitByArmorFemale);
+	_zombieUnitByType = node["zombieUnitByType"].as< std::map<std::string, std::string> >(_zombieUnitByType);
 	_zombieUnit = node["zombieUnit"].as<std::string>(_zombieUnit);
 	_spawnUnit = node["spawnUnit"].as<std::string>(_spawnUnit);
 	_spawnUnitFaction = node["spawnUnitFaction"].as<int>(_spawnUnitFaction);
+	_psiTargetMatrix = node["psiTargetMatrix"].as<int>(_psiTargetMatrix);
 	_LOSRequired = node["LOSRequired"].as<bool>(_LOSRequired);
 	_meleePower = node["meleePower"].as<int>(_meleePower);
 	_underwaterOnly = node["underwaterOnly"].as<bool>(_underwaterOnly);
@@ -636,21 +644,7 @@ void RuleItem::load(const YAML::Node &node, Mod *mod, int listOrder, const ModSc
 	_vaporColor = node["vaporColor"].as<int>(_vaporColor);
 	_vaporDensity = node["vaporDensity"].as<int>(_vaporDensity);
 	_vaporProbability = node["vaporProbability"].as<int>(_vaporProbability);
-	if (const YAML::Node &cipi = node["customItemPreviewIndex"])
-	{
-		_customItemPreviewIndex.clear();
-		if (cipi.IsScalar())
-		{
-			_customItemPreviewIndex.push_back(mod->getSpriteOffset(cipi.as<int>(), "CustomItemPreviews"));
-		}
-		else
-		{
-			for (YAML::const_iterator i = cipi.begin(); i != cipi.end(); ++i)
-			{
-				_customItemPreviewIndex.push_back(mod->getSpriteOffset(i->as<int>(), "CustomItemPreviews"));
-			}
-		}
-	}
+	mod->loadSpriteOffset(_type, _customItemPreviewIndex, node["customItemPreviewIndex"], "CustomItemPreviews");
 	_kneelBonus = node["kneelBonus"].as<int>(_kneelBonus);
 	_oneHandedPenalty = node["oneHandedPenalty"].as<int>(_oneHandedPenalty);
 	_monthlySalary = node["monthlySalary"].as<int>(_monthlySalary);
@@ -668,6 +662,7 @@ void RuleItem::load(const YAML::Node &node, Mod *mod, int listOrder, const ModSc
 	_powerRangeThreshold = node["powerRangeThreshold"].as<float>(_powerRangeThreshold);
 
 	_psiReqiured = node["psiRequired"].as<bool>(_psiReqiured);
+	_manaRequired = node["manaRequired"].as<bool>(_manaRequired);
 	_scriptValues.load(node, parsers.getShared());
 
 	_battleItemScripts.load(_type, node, parsers.battleItemScripts);
@@ -707,14 +702,14 @@ void RuleItem::afterLoad(const Mod* mod)
 		}
 		else
 		{
-			throw Exception("Sorry modders, cannot recover live aliens from random unorganic junk '" + pair.first + "'!");
+			throw Exception("Sorry modders, cannot recover live aliens from random inorganic junk '" + pair.first + "'!");
 		}
 	}
 
 	//remove not needed data
-	Collections::deleteAll(_requiresName);
-	Collections::deleteAll(_requiresBuyName);
-	Collections::deleteAll(_recoveryTransformationsName);
+	Collections::removeAll(_requiresName);
+	Collections::removeAll(_requiresBuyName);
+	Collections::removeAll(_recoveryTransformationsName);
 }
 
 /**
@@ -737,7 +732,7 @@ const std::string &RuleItem::getName() const
 }
 
 /**
- * Gets name id to use when displaing in loaded weapon.
+ * Gets name id to use when displaying in loaded weapon.
  * @return Translation StringId.
  */
 const std::string &RuleItem::getNameAsAmmo() const
@@ -763,15 +758,6 @@ const std::vector<const RuleResearch *> &RuleItem::getRequirements() const
 const std::vector<const RuleResearch *> &RuleItem::getBuyRequirements() const
 {
 	return _requiresBuy;
-}
-
-/**
- * Gets the base functions required to buy item.
- * @return The sorted list of base functions ID
- */
-const std::vector<std::string> &RuleItem::getRequiresBuyBaseFunc() const
-{
-	return _requiresBuyBaseFunc;
 }
 
 /**
@@ -1494,7 +1480,7 @@ const RuleDamageType *RuleItem::getMeleeType() const
 }
 
 /**
- * Gets the item's battlye type.
+ * Gets the item's battle type.
  * @return The battle type.
  */
 BattleType RuleItem::getBattleType() const
@@ -1709,15 +1695,6 @@ float RuleItem::getPainKillerRecovery() const
 }
 
 /**
- * Gets the medikit morale recovered based on missing health.
- * @return True if you can use medkit on self.
- */
-bool RuleItem::getAllowSelfHeal() const
-{
-	return _allowSelfHeal;
-}
-
-/**
  * Is this (medikit-type & items with prime) item consumable?
  * @return True if the item is consumable.
  */
@@ -1777,13 +1754,13 @@ const std::string &RuleItem::getMediKitCustomBackground() const
  * @param stats unit stats
  * @return The radius.
  */
-int RuleItem::getExplosionRadius(const BattleUnit *unit) const
+int RuleItem::getExplosionRadius(BattleActionAttack::ReadOnly attack) const
 {
 	int radius = 0;
 
 	if (_damageType.FixRadius == -1)
 	{
-		radius = getPowerBonus(unit) * _damageType.RadiusEffectiveness;
+		radius = getPowerBonus(attack) * _damageType.RadiusEffectiveness;
 		if (_damageType.FireBlastCalc)
 		{
 			radius += 1;
@@ -1828,6 +1805,22 @@ int RuleItem::getArmor() const
 }
 
 /**
+ * Check if item is normal inventory item.
+ */
+bool RuleItem::isInventoryItem() const
+{
+	return getBigSprite() > -1 && isFixed() == false;
+}
+
+/**
+ * Checks if item have some use in battlescape.
+ */
+bool RuleItem::isUsefulBattlescapeItem() const
+{
+	return (_battleType != BT_CORPSE && _battleType != BT_NONE);
+}
+
+/**
  * Returns if the item should be recoverable
  * from the battlescape.
  * @return True if it is recoverable.
@@ -1861,6 +1854,14 @@ bool RuleItem::canBeEquippedBeforeBaseDefense() const
 	return !_ignoreInBaseDefense;
 }
 
+/**
+ * Check if the item can be equipped to craft inventory.
+ * @return True if it can be equipped.
+ */
+bool RuleItem::canBeEquippedToCraftInventory() const
+{
+	return !_ignoreInCraftEquip;
+}
 
 /**
  * Returns the item's Turret Type.
@@ -1911,7 +1912,7 @@ int RuleItem::getAIUseDelay(const Mod *mod) const
 }
 
 /**
- * Resturns number of melee hits AI should do when attacking enemy.
+ * Returns number of melee hits AI should do when attacking enemy.
  * @return Number of hits.
  */
 int RuleItem::getAIMeleeHitCount() const
@@ -2064,7 +2065,7 @@ int RuleItem::getAimRange() const
 }
 
 /**
- * Gets the maximim effective range of this weapon for Snap Shot.
+ * Gets the maximum effective range of this weapon for Snap Shot.
  * @return The maximum range.
  */
 int RuleItem::getSnapRange() const
@@ -2073,7 +2074,7 @@ int RuleItem::getSnapRange() const
 }
 
 /**
- * Gets the maximim effective range of this weapon for Auto Shot.
+ * Gets the maximum effective range of this weapon for Auto Shot.
  * @return The maximum range.
  */
 int RuleItem::getAutoRange() const
@@ -2176,8 +2177,36 @@ int RuleItem::getShotgunChoke() const
  * Gets the unit that the victim is morphed into when attacked.
  * @return The weapon's zombie unit.
  */
-const std::string &RuleItem::getZombieUnit() const
+const std::string &RuleItem::getZombieUnit(const BattleUnit* victim) const
 {
+	if (victim)
+	{
+		// by armor and gender
+		if (victim->getGender() == GENDER_MALE)
+		{
+			std::map<std::string, std::string>::const_iterator i = _zombieUnitByArmorMale.find(victim->getArmor()->getType());
+			if (i != _zombieUnitByArmorMale.end())
+			{
+				return i->second;
+			}
+		}
+		else
+		{
+			std::map<std::string, std::string>::const_iterator j = _zombieUnitByArmorFemale.find(victim->getArmor()->getType());
+			if (j != _zombieUnitByArmorFemale.end())
+			{
+				return j->second;
+			}
+		}
+		// by type
+		const std::string victimType = victim->getUnitRules() ? victim->getUnitRules()->getType() : victim->getGeoscapeSoldier()->getRules()->getType();
+		std::map<std::string, std::string>::const_iterator k = _zombieUnitByType.find(victimType);
+		if (k != _zombieUnitByType.end())
+		{
+			return k->second;
+		}
+	}
+	// fall back
 	return _zombieUnit;
 }
 
@@ -2206,6 +2235,29 @@ int RuleItem::getSpawnUnitFaction() const
 int RuleItem::getMeleePower() const
 {
 	return _meleePower;
+}
+
+/**
+ * Checks the psiamp's allowed targets.
+ * - Not used in AI.
+ * - Mind control of the same faction is hardcoded disabled.
+ * @return True if allowed, false otherwise.
+ */
+bool RuleItem::isPsiTargetAllowed(UnitFaction targetFaction) const
+{
+	if (targetFaction == FACTION_PLAYER)
+	{
+		return _psiTargetMatrix & 1;
+	}
+	else if (targetFaction == FACTION_HOSTILE)
+	{
+		return _psiTargetMatrix & 2;
+	}
+	else if (targetFaction == FACTION_NEUTRAL)
+	{
+		return _psiTargetMatrix & 4;
+	}
+	return false;
 }
 
 /**
@@ -2245,13 +2297,12 @@ bool RuleItem::isPsiRequired() const
 }
 
 /**
- * Compute power bonus based on unit stats.
- * @param stats unit stats
- * @return bonus power.
+ * Is mana required to use this weapon?
+ * @return If mana is required.
  */
-int RuleItem::getPowerBonus(const BattleUnit *unit) const
+bool RuleItem::isManaRequired() const
 {
-	return _power + _damageBonus.getBonus(unit);
+	return _manaRequired;
 }
 
 /**
@@ -2259,9 +2310,19 @@ int RuleItem::getPowerBonus(const BattleUnit *unit) const
  * @param stats unit stats
  * @return bonus power.
  */
-int RuleItem::getMeleeBonus(const BattleUnit *unit) const
+int RuleItem::getPowerBonus(BattleActionAttack::ReadOnly attack) const
 {
-	return _meleePower + _meleeBonus.getBonus(unit);
+	return _damageBonus.getBonus(attack, _power);
+}
+
+/**
+ * Compute power bonus based on unit stats.
+ * @param stats unit stats
+ * @return bonus power.
+ */
+int RuleItem::getMeleeBonus(BattleActionAttack::ReadOnly attack) const
+{
+	return _meleeBonus.getBonus(attack, _meleePower);
 }
 
 /**
@@ -2269,9 +2330,9 @@ int RuleItem::getMeleeBonus(const BattleUnit *unit) const
  * @param stats unit stats
  * @return multiplier.
  */
-int RuleItem::getMeleeMultiplier(const BattleUnit *unit) const
+int RuleItem::getMeleeMultiplier(BattleActionAttack::ReadOnly attack) const
 {
-	return _meleeMulti.getBonus(unit);
+	return _meleeMulti.getBonus(attack);
 }
 
 /**
@@ -2279,9 +2340,9 @@ int RuleItem::getMeleeMultiplier(const BattleUnit *unit) const
  * @param stats unit stats
  * @return multiplier.
  */
-int RuleItem::getAccuracyMultiplier(const BattleUnit *unit) const
+int RuleItem::getAccuracyMultiplier(BattleActionAttack::ReadOnly attack) const
 {
-	return _accuracyMulti.getBonus(unit);
+	return _accuracyMulti.getBonus(attack);
 }
 
 /**
@@ -2289,9 +2350,9 @@ int RuleItem::getAccuracyMultiplier(const BattleUnit *unit) const
  * @param stats unit stats
  * @return multiplier.
  */
-int RuleItem::getThrowMultiplier(const BattleUnit *unit) const
+int RuleItem::getThrowMultiplier(BattleActionAttack::ReadOnly attack) const
 {
-	return _throwMulti.getBonus(unit);
+	return _throwMulti.getBonus(attack);
 }
 
 /**
@@ -2299,9 +2360,9 @@ int RuleItem::getThrowMultiplier(const BattleUnit *unit) const
  * @param stats unit stats
  * @return multiplier.
  */
-int RuleItem::getCloseQuartersMultiplier(const BattleUnit *unit) const
+int RuleItem::getCloseQuartersMultiplier(BattleActionAttack::ReadOnly attack) const
 {
-	return _closeQuartersMulti.getBonus(unit);
+	return _closeQuartersMulti.getBonus(attack);
 }
 
 /**
@@ -2404,7 +2465,7 @@ int RuleItem::getSprayWaypoints() const
 namespace
 {
 
-void getBattleTypeScript(RuleItem *ri, int &ret)
+void getBattleTypeScript(const RuleItem *ri, int &ret)
 {
 	if (ri)
 	{

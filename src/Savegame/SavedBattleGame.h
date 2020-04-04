@@ -23,6 +23,7 @@
 #include "Tile.h"
 #include "BattleUnit.h"
 #include "../Mod/AlienDeployment.h"
+#include "HitLog.h"
 
 namespace OpenXcom
 {
@@ -35,7 +36,7 @@ class BattlescapeState;
 class Position;
 class Pathfinding;
 class TileEngine;
-class RuleStartingCondition;
+class RuleEnviroEffects;
 class BattleItem;
 class Mod;
 class State;
@@ -67,13 +68,14 @@ private:
 	std::vector<BattleItem*> _items, _deleted;
 	Pathfinding *_pathfinding;
 	TileEngine *_tileEngine;
-	std::string _missionType, _alienCustomDeploy, _alienCustomMission;
-	const RuleStartingCondition *_startingCondition;
+	std::string _missionType, _strTarget, _strCraftOrBase, _alienCustomDeploy, _alienCustomMission;
+	const RuleEnviroEffects *_enviroEffects;
 	bool _ecEnabledFriendly, _ecEnabledHostile, _ecEnabledNeutral;
 	int _globalShade;
 	UnitFaction _side;
 	int _turn, _bughuntMinTurn;
 	int _animFrame;
+	bool _nameDisplay;
 	bool _debugMode, _bughuntMode;
 	bool _aborted;
 	bool _baseCraftInventory = false;
@@ -89,21 +91,22 @@ private:
 	ItemContainer *_baseItems;
 	int _depth, _ambience;
 	double _ambientVolume;
+	std::vector<int> _ambienceRandom;
+	int _minAmbienceRandomDelay, _maxAmbienceRandomDelay, _currentAmbienceDelay;
 	std::vector<BattleItem*> _recoverGuaranteed, _recoverConditional;
 	std::string _music;
 	int _turnLimit, _cheatTurn;
 	ChronoTrigger _chronoTrigger;
 	bool _beforeGame;
 	std::string _hiddenMovementBackground;
+	HitLog *_hitLog;
 	ScriptValues<SavedBattleGame> _scriptValues;
 	/// Selects a soldier.
 	BattleUnit *selectPlayerUnit(int dir, bool checkReselect = false, bool setReselect = false, bool checkInventory = false);
 
 public:
-    /// FIXME: hit log
-	std::ostringstream hitLog;
 	/// Creates a new battle save, based on the current generic save.
-	SavedBattleGame(Mod *rule);
+	SavedBattleGame(Mod *rule, Language *lang);
 	/// Cleans up the saved game.
 	~SavedBattleGame();
 	/// Loads a saved battle game from YAML.
@@ -112,22 +115,30 @@ public:
 	YAML::Node save() const;
 	/// Sets the dimensions of the map and initializes it.
 	void initMap(int mapsize_x, int mapsize_y, int mapsize_z, bool resetTerrain = true);
-	/// Initialises the pathfinding and tileengine.
+	/// Initialises the pathfinding and tile engine.
 	void initUtilities(Mod *mod, bool craftInventory = false);
-	/// Gets if this is craft pre-eqipt phase in base view.
+	/// Gets if this is craft pre-equip phase in base view.
 	bool isBaseCraftInventory();
-	/// Gets the game's mapdatafiles.
+	/// Gets the game's mapdata files.
 	std::vector<MapDataSet*> *getMapDataSets();
 	/// Sets the mission type.
 	void setMissionType(const std::string &missionType);
 	/// Gets the mission type.
 	const std::string &getMissionType() const;
+	/// Sets the mission target.
+	void setMissionTarget(const std::string& missionTarget) { _strTarget = missionTarget; }
+	/// Gets the mission target.
+	const std::string& getMissionTarget() const { return _strTarget; }
+	/// Sets the mission craft/base.
+	void setMissionCraftOrBase(const std::string& missionCraftOrBase) { _strCraftOrBase = missionCraftOrBase; }
+	/// Gets the mission craft/base.
+	const std::string& getMissionCraftOrBase() const { return _strCraftOrBase; }
 	/// Gets the base's items BEFORE the mission.
 	ItemContainer *getBaseStorageItems();
-	/// Applies the starting condition.
-	void applyStartingCondition(const RuleStartingCondition* startingCondition);
-	/// Gets the starting condition.
-	const RuleStartingCondition *getStartingCondition() const;
+	/// Applies the enviro effects.
+	void applyEnviroEffects(const RuleEnviroEffects* enviroEffects);
+	/// Gets the enviro effects.
+	const RuleEnviroEffects* getEnviroEffects() const;
 	/// Are environmental conditions (for a given faction) enabled?
 	bool getEnvironmentalConditionsEnabled(UnitFaction faction) const;
 	/// Sets the custom alien data.
@@ -206,8 +217,8 @@ public:
 		{
 			return nullptr;
 		}
-		// diffrence of pointers between layers is equal `_mapsize_y * _mapsize_x`
-		// when we subtrack this value from valid tile we get valid tile from lower layer.
+		// difference of pointers between layers is equal `_mapsize_y * _mapsize_x`
+		// when we subtract this value from valid tile we get valid tile from lower layer.
 		return tile - _mapsize_y * _mapsize_x;
 	}
 
@@ -222,8 +233,8 @@ public:
 		{
 			return nullptr;
 		}
-		// diffrence of pointers between layers is equal `_mapsize_y * _mapsize_x`
-		// when we subtrack this value from valid tile we get valid tile from lower layer.
+		// difference of pointers between layers is equal `_mapsize_y * _mapsize_x`
+		// when we subtract this value from valid tile we get valid tile from lower layer.
 		return tile - _mapsize_y * _mapsize_x;
 	}
 
@@ -238,7 +249,7 @@ public:
 		{
 			return nullptr;
 		}
-		// diffrence of pointers between layers is equal `_mapsize_y * _mapsize_x`
+		// difference of pointers between layers is equal `_mapsize_y * _mapsize_x`
 		// when we add this value from valid tile we get valid tile from upper layer.
 		return tile + _mapsize_y * _mapsize_x;
 	}
@@ -254,7 +265,7 @@ public:
 		{
 			return nullptr;
 		}
-		// diffrence of pointers between layers is equal `_mapsize_y * _mapsize_x`
+		// difference of pointers between layers is equal `_mapsize_y * _mapsize_x`
 		// when we add this value from valid tile we get valid tile from upper layer.
 		return tile + _mapsize_y * _mapsize_x;
 	}
@@ -271,18 +282,20 @@ public:
 	BattleUnit *selectUnit(Position pos);
 	/// Gets the pathfinding object.
 	Pathfinding *getPathfinding() const;
-	/// Gets a pointer to the tileengine.
+	/// Gets a pointer to the tile engine.
 	TileEngine *getTileEngine() const;
 	/// Gets the playing side.
 	UnitFaction getSide() const;
 	/// Can unit use that weapon?
-	bool canUseWeapon(const BattleItem *weapon, const BattleUnit *unit, bool isBerserking) const;
+	bool canUseWeapon(const BattleItem *weapon, const BattleUnit *unit, bool isBerserking, BattleActionType actionType, std::string* message = nullptr) const;
 	/// Gets the turn number.
 	int getTurn() const;
 	/// Sets the bug hunt turn number.
 	void setBughuntMinTurn(int bughuntMinTurn);
 	/// Gets the bug hunt turn number.
 	int getBughuntMinTurn() const;
+	/// Start first turn of battle.
+	void startFirstTurn();
 	/// Ends the turn.
 	void endTurn();
 	/// Gets animation frame.
@@ -305,18 +318,18 @@ public:
 	void deleteList(BattleItem *item);
 	/// Removes an item from the game.
 	void removeItem(BattleItem *item);
-	/// Add buildIn weapon form list to unit.
+	/// Add buildIn weapon from list to unit.
 	void addFixedItems(BattleUnit *unit, const std::vector<std::string> &fixed);
 	/// Init new created unit.
 	void initUnit(BattleUnit *unit, size_t itemLevel = 0);
 	/// Init new created item.
-	void initItem(BattleItem *item);
+	void initItem(BattleItem *item, BattleUnit *unit = nullptr);
 	/// Create new item for unit.
 	BattleItem *createItemForUnit(const RuleItem *rule, BattleUnit *unit, bool fixedWeapon = false);
 	/// Create new item for unit.
 	BattleItem *createItemForUnit(const std::string& type, BattleUnit *unit, bool fixedWeapon = false);
-	/// Create new buildin item for unit.
-	BattleItem *createItemForUnitBuildin(RuleItem *rule, BattleUnit *unit);
+	/// Create new built-in item for unit.
+	BattleItem *createItemForUnitBuildin(const RuleItem *rule, BattleUnit *unit);
 	/// Create new item for tile.
 	BattleItem *createItemForTile(RuleItem *rule, Tile *tile);
 	/// Create new item for tile.
@@ -339,7 +352,7 @@ public:
 	Node *getPatrolNode(bool scout, BattleUnit *unit, Node *fromNode);
 	/// Carries out new turn preparations.
 	void prepareNewTurn();
-	/// Revives unconscious units (healthcheck).
+	/// Revives unconscious units (health check).
 	void reviveUnconsciousUnits(bool noTU = false);
 	/// Removes the body item that corresponds to the unit.
 	void removeUnconsciousBodyItem(BattleUnit *bu);
@@ -377,6 +390,10 @@ public:
 	void resetTiles();
 	/// get an 11x11 grid of positions (-10 to +10) to check.
 	const std::vector<Position> &getTileSearch() const;
+	/// check if the names or the callsigns of the soldiers should be displayed
+	bool isNameDisplay() const;
+	/// set displaying the name (true) or the callsign (false)
+	void setNameDisplay(bool displayName);
 	/// check if the AI has engaged cheat mode.
 	bool isCheating() const;
 	/// get the reserved fire mode.
@@ -407,6 +424,23 @@ public:
 	void setAmbientSound(int sound);
 	/// gets the ambient sound effect;
 	int getAmbientSound() const;
+	/// Gets/sets the random ambient sound effects.
+	const std::vector<int> &getAmbienceRandom() const { return _ambienceRandom; };
+	void setAmbienceRandom(const std::vector<int> &ambienceRandom) { _ambienceRandom = ambienceRandom; }
+	/// Gets/sets the minimum delay for the random ambient sound effect.
+	int getMinAmbienceRandomDelay() const { return _minAmbienceRandomDelay; }
+	void setMinAmbienceRandomDelay(int minAmbienceRandomDelay) { _minAmbienceRandomDelay = minAmbienceRandomDelay; }
+	/// Gets/sets the maximum delay for the random ambient sound effect.
+	int getMaxAmbienceRandomDelay() const { return _maxAmbienceRandomDelay; }
+	void setMaxAmbienceRandomDelay(int maxAmbienceRandomDelay) { _maxAmbienceRandomDelay = maxAmbienceRandomDelay; }
+	/// Gets/sets the current delay for the random ambient sound effect.
+	int getCurrentAmbienceDelay() const { return _currentAmbienceDelay; }
+	void setCurrentAmbienceDelay(int currentAmbienceDelay) { _currentAmbienceDelay = currentAmbienceDelay; }
+	void decreaseCurrentAmbienceDelay() { _currentAmbienceDelay--; }
+	/// Reset the current random ambient sound delay.
+	void resetCurrentAmbienceDelay();
+	/// Play a random ambient sound.
+	void playRandomAmbientSound();
 	// gets ruleset.
 	const Mod *getMod() const;
 	/// gets the list of items we're guaranteed.
@@ -441,6 +475,11 @@ public:
 	void setRandomHiddenMovementBackground(const Mod *mod);
 	/// Gets the hidden movement background ID.
 	std::string getHiddenMovementBackground() const;
+	/// Appends a given entry to the hit log. Works only during the player's turn.
+	void appendToHitLog(HitLogEntryType type, UnitFaction faction);
+	void appendToHitLog(HitLogEntryType type, UnitFaction faction, const std::string &text);
+	/// Gets the hit log.
+	const HitLog *getHitLog() const;
 	/// Reset all the unit hit state flags.
 	void resetUnitHitStates();
 };

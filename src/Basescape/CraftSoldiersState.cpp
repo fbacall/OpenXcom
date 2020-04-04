@@ -38,6 +38,7 @@
 #include "SoldierInfoState.h"
 #include "../Mod/Armor.h"
 #include "../Mod/RuleInterface.h"
+#include "../Engine/Unicode.h"
 
 namespace OpenXcom
 {
@@ -82,12 +83,13 @@ CraftSoldiersState::CraftSoldiersState(Base *base, size_t craft)
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK02.SCR"));
+	setWindowBackground(_window, "craftSoldiers");
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&CraftSoldiersState::btnOkClick);
 	_btnOk->onKeyboardPress((ActionHandler)&CraftSoldiersState::btnOkClick, Options::keyCancel);
-	_btnOk->onKeyboardPress((ActionHandler)&CraftSoldiersState::btnDeassignAllSoldiersClick, Options::keyResetAll);
+	_btnOk->onKeyboardPress((ActionHandler)&CraftSoldiersState::btnDeassignAllSoldiersClick, Options::keyRemoveSoldiersFromAllCrafts);
+	_btnOk->onKeyboardPress((ActionHandler)&CraftSoldiersState::btnDeassignCraftSoldiersClick, Options::keyRemoveSoldiersFromCraft);
 
 	_txtTitle->setBig();
 	Craft *c = _base->getCrafts()->at(_craft);
@@ -109,12 +111,16 @@ CraftSoldiersState::CraftSoldiersState(Base *base, size_t craft)
 	_sortFunctors.push_back(new SortFunctor(_game, functor));
 
 	PUSH_IN("STR_ID", idStat);
-	PUSH_IN("STR_FIRST_LETTER", nameStat);
+	PUSH_IN("STR_NAME_UC", nameStat);
 	PUSH_IN("STR_SOLDIER_TYPE", typeStat);
 	PUSH_IN("STR_RANK", rankStat);
 	PUSH_IN("STR_MISSIONS2", missionsStat);
 	PUSH_IN("STR_KILLS2", killsStat);
 	PUSH_IN("STR_WOUND_RECOVERY2", woundRecoveryStat);
+	if (_game->getMod()->isManaFeatureEnabled() && !_game->getMod()->getReplenishManaAfterMission())
+	{
+		PUSH_IN("STR_MANA_MISSING", manaMissingStat);
+	}
 	PUSH_IN("STR_TIME_UNITS", tuStat);
 	PUSH_IN("STR_STAMINA", staminaStat);
 	PUSH_IN("STR_HEALTH", healthStat);
@@ -124,6 +130,11 @@ CraftSoldiersState::CraftSoldiersState(Base *base, size_t craft)
 	PUSH_IN("STR_THROWING_ACCURACY", throwingStat);
 	PUSH_IN("STR_MELEE_ACCURACY", meleeStat);
 	PUSH_IN("STR_STRENGTH", strengthStat);
+	if (_game->getMod()->isManaFeatureEnabled())
+	{
+		// "unlock" is checked later
+		PUSH_IN("STR_MANA_POOL", manaStat);
+	}
 	PUSH_IN("STR_PSIONIC_STRENGTH", psiStrengthStat);
 	PUSH_IN("STR_PSIONIC_SKILL", psiSkillStat);
 
@@ -172,12 +183,30 @@ void CraftSoldiersState::cbxSortByChange(Action *)
 	}
 
 	SortFunctor *compFunc = _sortFunctors[selIdx];
+	_dynGetter = NULL;
 	if (compFunc)
 	{
+		if (selIdx != 2)
+		{
+			_dynGetter = compFunc->getGetter();
+		}
+
 		// if CTRL is pressed, we only want to show the dynamic column, without actual sorting
 		if (!ctrlPressed)
 		{
-			std::stable_sort(_base->getSoldiers()->begin(), _base->getSoldiers()->end(), *compFunc);
+			if (selIdx == 2)
+			{
+				std::stable_sort(_base->getSoldiers()->begin(), _base->getSoldiers()->end(),
+					[](const Soldier* a, const Soldier* b)
+					{
+						return Unicode::naturalCompare(a->getName(), b->getName());
+					}
+				);
+			}
+			else
+			{
+				std::stable_sort(_base->getSoldiers()->begin(), _base->getSoldiers()->end(), *compFunc);
+			}
 			bool shiftPressed = SDL_GetModState() & KMOD_SHIFT;
 			if (shiftPressed)
 			{
@@ -187,7 +216,6 @@ void CraftSoldiersState::cbxSortByChange(Action *)
 	}
 	else
 	{
-		_dynGetter = NULL;
 		// restore original ordering, ignoring (of course) those
 		// soldiers that have been sacked since this state started
 		for (std::vector<Soldier *>::const_iterator it = _origSoldierOrder.begin();
@@ -205,10 +233,6 @@ void CraftSoldiersState::cbxSortByChange(Action *)
 	}
 
 	size_t originalScrollPos = _lstSoldiers->getScroll();
-	if (compFunc)
-	{
-		_dynGetter = compFunc->getGetter();
-	}
 	initList(originalScrollPos);
 }
 
@@ -239,8 +263,7 @@ void CraftSoldiersState::initList(size_t scrl)
 	}
 
 	Craft *c = _base->getCrafts()->at(_craft);
-	float absBonus = _base->getSickBayAbsoluteBonus();
-	float relBonus = _base->getSickBayRelativeBonus();
+	auto recovery = _base->getSumRecoveryPerDay();
 	for (std::vector<Soldier*>::iterator i = _base->getSoldiers()->begin(); i != _base->getSoldiers()->end(); ++i)
 	{
 		if (_dynGetter != NULL)
@@ -249,11 +272,11 @@ void CraftSoldiersState::initList(size_t scrl)
 			int dynStat = (*_dynGetter)(_game, *i);
 			std::ostringstream ss;
 			ss << dynStat;
-			_lstSoldiers->addRow(4, (*i)->getName(true, 19).c_str(), tr((*i)->getRankString()).c_str(), (*i)->getCraftString(_game->getLanguage(), absBonus, relBonus).c_str(), ss.str().c_str());
+			_lstSoldiers->addRow(4, (*i)->getName(true, 19).c_str(), tr((*i)->getRankString()).c_str(), (*i)->getCraftString(_game->getLanguage(), recovery).c_str(), ss.str().c_str());
 		}
 		else
 		{
-			_lstSoldiers->addRow(3, (*i)->getName(true, 19).c_str(), tr((*i)->getRankString()).c_str(), (*i)->getCraftString(_game->getLanguage(), absBonus, relBonus).c_str());
+			_lstSoldiers->addRow(3, (*i)->getName(true, 19).c_str(), tr((*i)->getRankString()).c_str(), (*i)->getCraftString(_game->getLanguage(), recovery).c_str());
 		}
 
 		Uint8 color;
@@ -286,6 +309,7 @@ void CraftSoldiersState::initList(size_t scrl)
 void CraftSoldiersState::init()
 {
 	State::init();
+	_base->prepareSoldierStatsWithBonuses(); // refresh stats for sorting
 	initList(0);
 
 }
@@ -504,6 +528,29 @@ void CraftSoldiersState::btnDeassignAllSoldiersClick(Action *action)
 	}
 
 	Craft *c = _base->getCrafts()->at(_craft);
+	_txtAvailable->setText(tr("STR_SPACE_AVAILABLE").arg(c->getSpaceAvailable()));
+	_txtUsed->setText(tr("STR_SPACE_USED").arg(c->getSpaceUsed()));
+}
+
+/**
+ * De-assign all soldiers from the current craft.
+ * @param action Pointer to an action.
+ */
+void CraftSoldiersState::btnDeassignCraftSoldiersClick(Action *action)
+{
+	Craft *c = _base->getCrafts()->at(_craft);
+	int row = 0;
+	for (auto s : *_base->getSoldiers())
+	{
+		if (s->getCraft() == c)
+		{
+			s->setCraft(0);
+			_lstSoldiers->setCellText(row, 2, tr("STR_NONE_UC"));
+			_lstSoldiers->setRowColor(row, _lstSoldiers->getColor());
+		}
+		row++;
+	}
+
 	_txtAvailable->setText(tr("STR_SPACE_AVAILABLE").arg(c->getSpaceAvailable()));
 	_txtUsed->setText(tr("STR_SPACE_USED").arg(c->getSpaceUsed()));
 }

@@ -46,13 +46,16 @@ class BattlescapeGame;
  */
 class BattlescapeState : public State
 {
+
+enum ButtonType { BTN_PSI, BTN_SPECIAL, BTN_SKILL };
+
 private:
 	Surface *_rank, *_rankTiny;
 	InteractiveSurface *_icons;
 	Map *_map;
 	BattlescapeButton *_btnUnitUp, *_btnUnitDown, *_btnMapUp, *_btnMapDown, *_btnShowMap, *_btnKneel;
 	BattlescapeButton *_btnInventory, *_btnCenter, *_btnNextSoldier, *_btnNextStop, *_btnShowLayers, *_btnHelp;
-	BattlescapeButton *_btnEndTurn, *_btnAbort, *_btnLaunch, *_btnPsi, *_btnSpecial, *_reserve;
+	BattlescapeButton *_btnEndTurn, *_btnAbort, *_btnLaunch, *_btnPsi, *_btnSpecial, *_btnSkills, *_reserve;
 	InteractiveSurface *_btnStats;
 	BattlescapeButton *_btnReserveNone, *_btnReserveSnap, *_btnReserveAimed, *_btnReserveAuto, *_btnReserveKneel, *_btnZeroTUs;
 	InteractiveSurface *_btnLeftHandItem, *_btnRightHandItem;
@@ -61,6 +64,7 @@ private:
 	InteractiveSurface *_btnVisibleUnit[VISIBLE_MAX];
 	NumberText *_numVisibleUnit[VISIBLE_MAX];
 	BattleUnit *_visibleUnit[VISIBLE_MAX];
+	InteractiveSurface* _btnToggleNV;
 	WarningMessage *_warning;
 	Text *_txtName;
 	NumberText *_numTimeUnits, *_numEnergy, *_numHealth, *_numMorale, *_numLayers;
@@ -68,7 +72,8 @@ private:
 	std::vector<NumberText*> _numMedikitLeft, _numMedikitRight;
 	NumberText *_numTwoHandedIndicatorLeft, *_numTwoHandedIndicatorRight;
 	Uint8 _twoHandedRed, _twoHandedGreen;
-	Bar *_barTimeUnits, *_barEnergy, *_barHealth, *_barMorale;
+	Bar *_barTimeUnits, *_barEnergy, *_barHealth, *_barMorale, *_barMana;
+	bool _manaBarVisible;
 	Timer *_animTimer, *_gameTimer;
 	SavedBattleGame *_save;
 	Text *_txtDebug, *_txtTooltip;
@@ -102,6 +107,12 @@ private:
 	void blinkHealthBar();
 	/// Shows the unit kneel state.
 	void toggleKneelButton(BattleUnit* unit);
+	/// Shows the PSI button.
+	void showPsiButton(bool show);
+	/// Shows the special weapon button.
+	void showSpecialButton(bool show, int sprite = 1);
+	/// Shows the skills menu button.
+	void showSkillsButton(bool show, int sprite = 1);
 public:
 	/// Selects the next soldier.
 	void selectNextPlayerUnit(bool checkReselect = false, bool setReselect = false, bool checkInventory = false, bool checkFOV = true);
@@ -165,12 +176,16 @@ public:
 	void btnRightHandItemClick(Action *action);
 	/// Handler for clicking a visible unit button.
 	void btnVisibleUnitClick(Action *action);
+	/// Handler for clicking the Toggle Night Vision and Personal Lights button.
+	void btnToggleNightVisionAndPersonalLightsClick(Action* action);
 	/// Handler for clicking the launch rocket button.
 	void btnLaunchClick(Action *action);
 	/// Handler for clicking the use psi button.
 	void btnPsiClick(Action *action);
 	/// Handler for clicking the use special weapon button.
 	void btnSpecialClick(Action *action);
+	/// Handler for clicking the skills menu button.
+	void btnSkillsClick(Action *action);
 	/// Handler for clicking a reserved button.
 	void btnReserveClick(Action *action);
 	/// Handler for clicking the reload button.
@@ -185,6 +200,8 @@ public:
 	bool playableUnitSelected();
 	/// Updates soldier name/rank/tu/energy/health/morale.
 	void updateSoldierInfo(bool checkFOV = true);
+	/// Updates the special/psi/skill button display based on the battle unit
+	void updateUiButton(const BattleUnit* battleUnit);
 	/// Animates map objects on the map, also smoke,fire, ...
 	void animate();
 	/// Handles the battle game state.
@@ -201,6 +218,8 @@ public:
 	void bugHuntMessage();
 	/// Show warning message.
 	void warning(const std::string &message);
+	/// Show warning message, no translation.
+	void warningRaw(const std::string &message);
 	/// Gets melee damage preview.
 	std::string getMeleeDamagePreview(BattleUnit *actor, BattleItem *weapon) const;
 	/// Handles keypresses.
@@ -211,10 +230,9 @@ public:
 	void finishBattle(bool abort, int inExitArea);
 	/// Show the launch button.
 	void showLaunchButton(bool show);
-	/// Shows the PSI button.
-	void showPsiButton(bool show);
-	/// Shows the special weapon button.
-	void showSpecialButton(bool show, int sprite = 1);
+	/// Show one of Psi, Special or Skill button
+	void showUiButton(ButtonType buttonType, int spriteIndex = 1);
+	void resetUiButton();
 	/// Clears mouse-scrolling state.
 	void clearMouseScrollingState();
 	/// Returns a pointer to the battlegame, in case we need its functions.

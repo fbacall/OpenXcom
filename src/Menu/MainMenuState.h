@@ -29,7 +29,11 @@ class Text;
 // Utility class for enqueuing a state in the stack that goes to the main menu
 class GoToMainMenuState : public State
 {
+private:
+	bool _updateCheck;
 public:
+	GoToMainMenuState(bool updateCheck = false);
+	~GoToMainMenuState();
 	void init() override;
 };
 
@@ -40,12 +44,16 @@ public:
 class MainMenuState : public State
 {
 private:
-	TextButton *_btnNewGame, *_btnNewBattle, *_btnLoad, *_btnOptions, *_btnQuit;
+	TextButton *_btnNewGame, *_btnNewBattle, *_btnLoad, *_btnOptions, *_btnMods, *_btnQuit, *_btnUpdate;
 	Window *_window;
-	Text *_txtTitle;
+	Text *_txtTitle, *_txtUpdateInfo;
+#ifdef _WIN32
+	bool _debugInVisualStudio;
+	std::string _newVersion;
+#endif
 public:
 	/// Creates the Main Menu state.
-	MainMenuState();
+	MainMenuState(bool updateCheck = false);
 	/// Cleans up the Main Menu state.
 	~MainMenuState();
 	/// Handler for clicking the New Game button.
@@ -56,8 +64,12 @@ public:
 	void btnLoadClick(Action *action);
 	/// Handler for clicking the Options button.
 	void btnOptionsClick(Action *action);
+	/// Handler for clicking the Mods button.
+	void btnModsClick(Action *action);
 	/// Handler for clicking the Quit button.
 	void btnQuitClick(Action *action);
+	/// Handler for clicking the Update button.
+	void btnUpdateClick(Action* action);
 	/// Update the resolution settings, we just resized the window.
 	void resize(int &dX, int &dY) override;
 	void init() override;

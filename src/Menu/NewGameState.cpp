@@ -91,7 +91,7 @@ NewGameState::NewGameState()
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK01.SCR"));
+	setWindowBackground(_window, "newGameMenu");
 
 	_btnBeginner->setText(tr("STR_1_BEGINNER"));
 	_btnBeginner->setGroup(&_difficulty);
@@ -161,7 +161,7 @@ void NewGameState::btnOkClick(Action *)
 	{
 		diff = DIFF_SUPERHUMAN;
 	}
-	SavedGame *save = _game->getMod()->newSave();
+	SavedGame *save = _game->getMod()->newSave(diff);
 	save->setDifficulty(diff);
 	save->setIronman(_btnIronman->getPressed());
 	_game->setSavedGame(save);

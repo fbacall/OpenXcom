@@ -106,7 +106,7 @@ SoldierDiaryPerformanceState::SoldierDiaryPerformanceState(Base *base, size_t so
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK02.SCR"));
+	setWindowBackground(_window, "soldierDiaryPerformance");
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&SoldierDiaryPerformanceState::btnOkClick);
@@ -185,8 +185,6 @@ SoldierDiaryPerformanceState::SoldierDiaryPerformanceState(Base *base, size_t so
 	_btnKills->setGroup(&_group);
 	_btnMissions->setGroup(&_group);
 	_btnCommendations->setGroup(&_group);
-
-	init(); // Populate the list
 }
 
 /**
@@ -311,7 +309,7 @@ void SoldierDiaryPerformanceState::init()
 	{
 		for (std::vector<SoldierCommendations*>::const_iterator i = _soldier->getDiary()->getSoldierCommendations()->begin(); i != _soldier->getDiary()->getSoldierCommendations()->end(); ++i)
 		{
-		RuleCommendations *commendation = _game->getMod()->getCommendation((*i)->getType());
+		RuleCommendations *commendation = (*i)->getRule();
 		if ((*i)->getNoun() != "noNoun")
 		{
 			_lstCommendations->addRow(2, tr((*i)->getType()).arg(tr((*i)->getNoun())).c_str(), tr((*i)->getDecorationDescription()).c_str());
@@ -352,7 +350,7 @@ void SoldierDiaryPerformanceState::drawSprites()
 
 	for (std::vector<SoldierCommendations*>::const_iterator i = _list->at(_soldierId)->getDiary()->getSoldierCommendations()->begin() ; i != _list->at(_soldierId)->getDiary()->getSoldierCommendations()->end() ; ++i)
 	{
-		RuleCommendations *commendation = _game->getMod()->getCommendation((*i)->getType());
+		RuleCommendations *commendation = (*i)->getRule();
 		// Skip commendations that are not visible in the textlist
 		if ( vectorIterator < scrollDepth || vectorIterator - scrollDepth >= (int)_commendations.size())
 		{

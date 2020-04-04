@@ -29,7 +29,7 @@ namespace OpenXcom
  * @param type String defining the type.
  */
 Unit::Unit(const std::string &type) :
-	_type(type), _showFullNameInAlienInventory(-1), _standHeight(0), _kneelHeight(0), _floatHeight(0), _value(0),
+	_type(type), _showFullNameInAlienInventory(-1), _armor(nullptr), _standHeight(0), _kneelHeight(0), _floatHeight(0), _value(0),
 	_moraleLossWhenKilled(100), _aggroSound(-1), _moveSound(-1), _intelligence(0), _aggression(0),
 	_spotter(0), _sniper(0), _energyRecovery(30), _specab(SPECAB_NONE), _livingWeapon(false),
 	_psiWeapon("ALIEN_PSI_WEAPON"), _capturable(true), _canSurrender(false), _autoSurrender(false),
@@ -43,31 +43,6 @@ Unit::Unit(const std::string &type) :
 Unit::~Unit()
 {
 
-}
-
-/**
- * Loads a sound vector for a given attribute/node.
- * @param node YAML node.
- * @param mod Mod for the item.
- * @param vector Sound vector to load into.
- */
-void Unit::loadSoundVector(const YAML::Node &node, Mod *mod, std::vector<int> &vector)
-{
-	if (node)
-	{
-		vector.clear();
-		if (node.IsSequence())
-		{
-			for (YAML::const_iterator i = node.begin(); i != node.end(); ++i)
-			{
-				vector.push_back(mod->getSoundOffset(i->as<int>(), "BATTLE.CAT"));
-			}
-		}
-		else
-		{
-			vector.push_back(mod->getSoundOffset(node.as<int>(), "BATTLE.CAT"));
-		}
-	}
 }
 
 /**
@@ -103,7 +78,10 @@ void Unit::load(const YAML::Node &node, Mod *mod)
 	_sniper = node["sniper"].as<int>(_sniper);
 	_energyRecovery = node["energyRecovery"].as<int>(_energyRecovery);
 	_specab = (SpecialAbility)node["specab"].as<int>(_specab);
-	_spawnUnit = node["spawnUnit"].as<std::string>(_spawnUnit);
+	if (const YAML::Node& spawn = node["spawnUnit"])
+	{
+		_spawnUnitName = spawn.as<std::string>();
+	}
 	_livingWeapon = node["livingWeapon"].as<bool>(_livingWeapon);
 	_canSurrender = node["canSurrender"].as<bool>(_canSurrender);
 	_autoSurrender = node["autoSurrender"].as<bool>(_autoSurrender);
@@ -118,17 +96,18 @@ void Unit::load(const YAML::Node &node, Mod *mod)
 	{
 		_builtInWeapons.push_back(node["builtInWeapons"].as<std::vector<std::string> >());
 	}
-	loadSoundVector(node["deathSound"], mod, _deathSound);
-	loadSoundVector(node["panicSound"], mod, _panicSound);
-	loadSoundVector(node["berserkSound"], mod, _berserkSound);
-	if (node["aggroSound"])
-	{
-		_aggroSound = mod->getSoundOffset(node["aggroSound"].as<int>(_aggroSound), "BATTLE.CAT");
-	}
-	if (node["moveSound"])
-	{
-		_moveSound = mod->getSoundOffset(node["moveSound"].as<int>(_moveSound), "BATTLE.CAT");
-	}
+
+	mod->loadSoundOffset(_type, _deathSound, node["deathSound"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _panicSound, node["panicSound"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _berserkSound, node["berserkSound"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _aggroSound, node["aggroSound"], "BATTLE.CAT");
+
+	mod->loadSoundOffset(_type, _selectUnitSound, node["selectUnitSound"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _startMovingSound, node["startMovingSound"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _selectWeaponSound, node["selectWeaponSound"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _annoyedSound, node["annoyedSound"], "BATTLE.CAT");
+
+	mod->loadSoundOffset(_type, _moveSound, node["moveSound"], "BATTLE.CAT");
 }
 
 /**
@@ -137,6 +116,7 @@ void Unit::load(const YAML::Node &node, Mod *mod)
 void Unit::afterLoad(const Mod* mod)
 {
 	_armor = mod->getArmor(_armorName, true);
+	_spawnUnit = mod->getUnit(_spawnUnitName, true);
 }
 
 /**
@@ -316,7 +296,7 @@ int Unit::getSpecialAbility() const
  * Gets the unit that is spawned when this one dies.
  * @return The unit's spawn unit.
  */
-std::string Unit::getSpawnUnit() const
+const Unit *Unit::getSpawnUnit() const
 {
 	return _spawnUnit;
 }
@@ -438,6 +418,30 @@ bool Unit::getShowFullNameInAlienInventory(Mod *mod) const
 //					Script binding
 ////////////////////////////////////////////////////////////
 
+namespace
+{
+std::string debugDisplayScript(const Unit* unit)
+{
+	if (unit)
+	{
+		std::string s;
+		s += Unit::ScriptName;
+		s += "(name: \"";
+		s += unit->getType();
+		s += "\")";
+		return s;
+	}
+	else
+	{
+		return "null";
+	}
+}
+}
+void Unit::ScriptRegister(ScriptParserBase* parser)
+{
+	Bind<Unit> un = { parser };
+	un.addDebugDisplay<&debugDisplayScript>();
+}
 /**
  * Register StatAdjustment in script parser.
  * @param parser Script parser.
@@ -446,7 +450,7 @@ void StatAdjustment::ScriptRegister(ScriptParserBase* parser)
 {
 	Bind<StatAdjustment> sa = { parser };
 
-	UnitStats::addGetStatsScript<StatAdjustment, &StatAdjustment::statGrowth>(sa, "", true);
+	UnitStats::addGetStatsScript<&StatAdjustment::statGrowth>(sa, "", true);
 }
 
 } // namespace OpenXcom

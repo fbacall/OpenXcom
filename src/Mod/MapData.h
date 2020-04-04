@@ -82,6 +82,8 @@ public:
 	bool isDoor() const;
 	/// Gets whether this is a grav lift.
 	bool isGravLift() const;
+	/// Gets whether this should be drawn behind a unit or in front of a unit (i.e. if it works as a S or E wall).
+	bool isBackTileObject() const;
 	/// Sets all kinds of flags.
 	void setFlags(bool isUfoDoor, bool stopLOS, bool isNoFloor, int bigWall, bool isGravLift, bool isDoor, bool blockFire, bool blockSmoke, bool baseModule);
 	/// Gets the amount of blockage of a certain type.
@@ -114,7 +116,7 @@ public:
 	int getFootstepSound() const;
 	/// Sets the index to the footstep sound.
 	void setFootstepSound(int value);
-	/// Gets sthe alternative object ID.
+	/// Gets the alternative object ID.
 	int getAltMCD() const;
 	/// Sets the alternative object ID.
 	void setAltMCD(int value);

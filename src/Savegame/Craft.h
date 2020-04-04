@@ -36,6 +36,9 @@ class ItemContainer;
 class Mod;
 class SavedGame;
 class Vehicle;
+class RuleStartingCondition;
+
+enum UfoDetection : int;
 
 /**
  * Represents a craft stored in a base.
@@ -146,7 +149,7 @@ public:
 	int getDamagePercentage() const;
 	/// Gets the craft's max shield capacity
 	int getShieldCapacity () const;
-        /// Gets the craft's shield remaining
+	/// Gets the craft's shield remaining
 	int getShield() const;
 	/// Sets the craft's shield remaining
 	void setShield(int shield);
@@ -175,9 +178,7 @@ public:
 	/// Returns the crew to their base (using transfers).
 	void evacuateCrew(const Mod *mod);
 	/// Checks if a target is detected by the craft's radar.
-	bool detect(Target *target) const;
-	/// Checks if a target is inside the craft's radar range.
-	bool insideRadarRange(Target *target) const;
+	UfoDetection detect(const Ufo *target, bool alreadyTracked) const;
 	/// Handles craft logic.
 	bool think();
 	/// Does a craft full checkup.
@@ -206,10 +207,12 @@ public:
 	int getSpaceAvailable() const;
 	/// Gets the amount of space used inside a craft.
 	int getSpaceUsed() const;
+	/// Checks if there are only permitted soldier types onboard.
+	bool areOnlyPermittedSoldierTypesOnboard(const RuleStartingCondition* sc);
 	/// Checks if there are enough required items onboard.
-	bool areRequiredItemsOnboard(const std::map<std::string, int> *requiredItems);
+	bool areRequiredItemsOnboard(const std::map<std::string, int>& requiredItems);
 	/// Destroys given required items.
-	void destroyRequiredItems(const std::map<std::string, int> *requiredItems);
+	void destroyRequiredItems(const std::map<std::string, int>& requiredItems);
 	/// Checks if there are enough pilots onboard.
 	bool arePilotsOnboard();
 	/// Checks if a pilot is already on the list.

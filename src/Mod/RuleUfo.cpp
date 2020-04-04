@@ -19,6 +19,7 @@
 #include "RuleUfo.h"
 #include "RuleTerrain.h"
 #include "Mod.h"
+#include "../Engine/ScriptBind.h"
 
 namespace OpenXcom
 {
@@ -33,7 +34,7 @@ RuleUfo::RuleUfo(const std::string &type) :
 	_power(0), _range(0), _score(0), _reload(0), _breakOffTime(0), _missionScore(1),
 	_hunterKillerPercentage(0), _huntMode(0), _huntSpeed(100), _huntBehavior(2),
 	_missilePower(0),
-	_fireSound(-1), _alertSound(-1),
+	_fireSound(-1), _alertSound(-1), _huntAlertSound(-1),
 	_battlescapeTerrainData(0), _stats(), _statsRaceBonus()
 {
 	_stats.sightRange = 268;
@@ -54,14 +55,19 @@ RuleUfo::~RuleUfo()
  * @param node YAML node.
  * @param mod Mod for the UFO.
  */
-void RuleUfo::load(const YAML::Node &node, Mod *mod)
+void RuleUfo::load(const YAML::Node &node, const ModScript &parsers, Mod *mod)
 {
 	if (const YAML::Node &parent = node["refNode"])
 	{
-		load(parent, mod);
+		load(parent, parsers, mod);
 	}
 	_type = node["type"].as<std::string>(_type);
 	_size = node["size"].as<std::string>(_size);
+	// sigh
+	if (_size == "STR_MEDIUM")
+	{
+		_size = "STR_MEDIUM_UC";
+	}
 	_sprite = node["sprite"].as<int>(_sprite);
 	if (node["marker"])
 	{
@@ -106,14 +112,12 @@ void RuleUfo::load(const YAML::Node &node, Mod *mod)
 		}
 	}
 
-	if (node["fireSound"])
-	{
-		_fireSound = mod->getSoundOffset(node["fireSound"].as<int>(_fireSound), "GEO.CAT");
-	}
-	if (node["alertSound"])
-	{
-		_alertSound = mod->getSoundOffset(node["alertSound"].as<int>(_alertSound), "GEO.CAT");
-	}
+	mod->loadSoundOffset(_type, _fireSound, node["fireSound"], "GEO.CAT");
+	mod->loadSoundOffset(_type, _alertSound, node["alertSound"], "GEO.CAT");
+	mod->loadSoundOffset(_type, _huntAlertSound, node["huntAlertSound"], "GEO.CAT");
+
+	_ufoScripts.load(_type, node, parsers.ufoScripts);
+	_scriptValues.load(node, parsers.getShared());
 }
 
 /**
@@ -269,12 +273,21 @@ int RuleUfo::getFireSound() const
 }
 
 /**
- * Gets the UFO's alert sound.
+ * Gets the UFO's alert sound (UFO detected alert).
  * @return The alert sound ID.
  */
 int RuleUfo::getAlertSound() const
 {
 	return _alertSound;
+}
+
+/**
+ * Gets the UFO's alert sound (UFO on intercept course alert).
+ * @return The alert sound ID.
+ */
+int RuleUfo::getHuntAlertSound() const
+{
+	return _huntAlertSound;
 }
 
 /**
@@ -359,6 +372,51 @@ int RuleUfo::getHuntSpeed() const
 int RuleUfo::getHuntBehavior() const
 {
 	return _huntBehavior;
+}
+
+////////////////////////////////////////////////////////////
+//					Script binding
+////////////////////////////////////////////////////////////
+
+namespace
+{
+
+std::string debugDisplayScript(const RuleUfo* ru)
+{
+	if (ru)
+	{
+		std::string s;
+		s += RuleUfo::ScriptName;
+		s += "(name: \"";
+		s += ru->getType();
+		s += "\")";
+		return s;
+	}
+	else
+	{
+		return "null";
+	}
+}
+
+} // namespace
+
+/**
+ * Register RuleUfo in script parser.
+ * @param parser Script parser.
+ */
+void RuleUfo::ScriptRegister(ScriptParserBase* parser)
+{
+	Bind<RuleUfo> ar = { parser };
+
+	ar.add<&RuleUfo::getRadius>("getRadius");
+	ar.add<&RuleUfo::getWeaponRange>("getWeaponRange");
+	ar.add<&RuleUfo::getWeaponPower>("getWeaponPower");
+	ar.add<&RuleUfo::getWeaponReload>("getWeaponReload");
+
+	RuleUfoStats::addGetStatsScript<&RuleUfo::_stats>(ar, "");
+
+	ar.addScriptValue<&RuleUfo::_scriptValues>(false);
+	ar.addDebugDisplay<&debugDisplayScript>();
 }
 
 }

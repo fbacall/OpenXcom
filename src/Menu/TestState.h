@@ -41,7 +41,7 @@ struct PaletteTestMetadata {
 	std::string palettePath;
 	bool usesBackPals;
 
-	PaletteTestMetadata() {};
+	PaletteTestMetadata() : firstIndexToCheck(0), lastIndexToCheck(255), maxTolerance(0), usesBackPals(false) { };
 	PaletteTestMetadata(const std::string &_paletteName, int _firstIndexToCheck, int _lastIndexToCheck, int _maxTolerance, const std::string &_palettePath, bool _usesBackPals) :
 		paletteName(_paletteName), firstIndexToCheck(_firstIndexToCheck), lastIndexToCheck(_lastIndexToCheck), maxTolerance(_maxTolerance), palettePath(_palettePath), usesBackPals(_usesBackPals)
 	{
@@ -67,6 +67,8 @@ private:
 	std::map<int, Palette*> _vanillaPalettes;
 	std::vector<std::string> _testCases;
 	/// Test cases.
+	void testCase4();
+	void testCase3();
 	void testCase2();
 	int checkPalette(const std::string& fullPath, int width, int height);
 	int matchPalette(Surface *image, int index, Palette *test);

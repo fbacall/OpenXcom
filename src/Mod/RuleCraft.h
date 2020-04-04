@@ -20,6 +20,7 @@
 #include <vector>
 #include <string>
 #include <yaml-cpp/yaml.h>
+#include "RuleBaseFacilityFunctions.h"
 
 namespace OpenXcom
 {
@@ -28,7 +29,7 @@ class RuleTerrain;
 class Mod;
 
 /**
- * Battle statistic of craft type and bonus form craft weapons.
+ * Battle statistic of craft type and bonus from craft weapons.
  */
 struct RuleCraftStats
 {
@@ -90,7 +91,7 @@ struct RuleCraftStats
 		s -= *this;
 		return s;
 	}
-	/// Loads stats form YAML.
+	/// Loads stats from YAML.
 	void load(const YAML::Node &node)
 	{
 		fuelMax = node["fuelMax"].as<int>(fuelMax);
@@ -109,6 +110,26 @@ struct RuleCraftStats
 		shieldRechargeInGeoscape = node["shieldRechargeInGeoscape"].as<int>(shieldRechargeInGeoscape);
 		shieldBleedThrough = node["shieldBleedThrough"].as<int>(shieldBleedThrough);
 	}
+
+	template<auto Stat, typename TBind>
+	static void addGetStatsScript(TBind& b, std::string prefix)
+	{
+		b.template addField<Stat, &RuleCraftStats::fuelMax>(prefix + "getFuelMax");
+		b.template addField<Stat, &RuleCraftStats::damageMax>(prefix + "getDamageMax");
+		b.template addField<Stat, &RuleCraftStats::speedMax>(prefix + "getSpeedMax");
+		b.template addField<Stat, &RuleCraftStats::accel>(prefix + "getAccel");
+		b.template addField<Stat, &RuleCraftStats::radarRange>(prefix + "getRadarRange");
+		b.template addField<Stat, &RuleCraftStats::radarChance>(prefix + "getRadarChance");
+		b.template addField<Stat, &RuleCraftStats::sightRange>(prefix + "getSightRange");
+		b.template addField<Stat, &RuleCraftStats::hitBonus>(prefix + "getHitBonus");
+		b.template addField<Stat, &RuleCraftStats::avoidBonus>(prefix + "getAvoidBonus");
+		b.template addField<Stat, &RuleCraftStats::powerBonus>(prefix + "getPowerBonus");
+		b.template addField<Stat, &RuleCraftStats::armor>(prefix + "getArmor");
+		b.template addField<Stat, &RuleCraftStats::shieldCapacity>(prefix + "getShieldCapacity");
+		b.template addField<Stat, &RuleCraftStats::shieldRecharge>(prefix + "getShieldRecharge");
+		b.template addField<Stat, &RuleCraftStats::shieldRechargeInGeoscape>(prefix + "getShieldRechargeInGeoscape");
+		b.template addField<Stat, &RuleCraftStats::shieldBleedThrough>(prefix + "getShieldBleedThrough");
+	}
 };
 
 /**
@@ -122,13 +143,13 @@ class RuleCraft
 public:
 	/// Maximum number of weapon slots on craft.
 	static const int WeaponMax = 4;
-	/// Maximum of diffrernt types in one weapon slot.
-	static const int WeaponTypeMax = 4;
+	/// Maximum of different types in one weapon slot.
+	static const int WeaponTypeMax = 8;
 
 private:
 	std::string _type;
 	std::vector<std::string> _requires;
-	std::vector<std::string> _requiresBuyBaseFunc;
+	RuleBaseFacilityFunctions _requiresBuyBaseFunc;
 	int _sprite, _marker;
 	int _weapons, _soldiers, _pilots, _vehicles, _costBuy, _costRent, _costSell;
 	char _weaponTypes[WeaponMax][WeaponTypeMax];
@@ -142,7 +163,7 @@ private:
 	std::vector<int> _craftInventoryTile;
 	RuleCraftStats _stats;
 	int _shieldRechargeAtBase;
-	bool _mapVisible;
+	bool _mapVisible, _forceShowInMonthlyCosts;
 public:
 	/// Creates a blank craft ruleset.
 	RuleCraft(const std::string &type);
@@ -155,7 +176,7 @@ public:
 	/// Gets the craft's requirements.
 	const std::vector<std::string> &getRequirements() const;
 	/// Gets the base functions required to buy craft.
-	const std::vector<std::string> &getRequiresBuyBaseFunc() const;
+	RuleBaseFacilityFunctions getRequiresBuyBaseFunc() const { return _requiresBuyBaseFunc; }
 	/// Gets the craft's sprite.
 	int getSprite() const;
 	/// Gets the craft's globe marker.
@@ -182,8 +203,6 @@ public:
 	int getRentCost() const;
 	/// Gets the craft's value.
 	int getSellCost() const;
-	/// Gets craft type.
-	int getCraftType() const;
 	/// Gets the craft's refuel item.
 	const std::string &getRefuelItem() const;
 	/// Gets the craft's repair rate.
@@ -235,6 +254,8 @@ public:
 	int getShieldRechargeAtBase() const;
 	/// Get whether the craft's map should be visible at the start of a battle
 	bool isMapVisible() const;
+	/// Gets whether or not the craft type should be displayed in Monthly Costs even if not present in the base.
+	bool forceShowInMonthlyCosts() const;
 	/// Calculate the theoretical range of the craft in nautical miles
 	int calculateRange(int type);
 };

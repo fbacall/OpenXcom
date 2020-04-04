@@ -38,21 +38,22 @@ class Pathfinding;
 class Mod;
 class InfoboxOKState;
 class SoldierDiary;
+class RuleSkill;
 
-enum BattleActionType : Uint8 { BA_NONE, BA_TURN, BA_WALK, BA_KNEEL, BA_PRIME, BA_UNPRIME, BA_THROW, BA_AUTOSHOT, BA_SNAPSHOT, BA_AIMEDSHOT, BA_HIT, BA_USE, BA_LAUNCH, BA_MINDCONTROL, BA_PANIC, BA_RETHINK, BA_CQB };
 enum BattleActionMove { BAM_NORMAL = 0, BAM_RUN = 1, BAM_STRAFE = 2 };
 
 struct BattleActionCost : RuleItemUseCost
 {
 	BattleActionType type;
-	BattleUnit *actor;
-	BattleItem *weapon;
+	BattleUnit *actor = nullptr;
+	BattleItem *weapon = nullptr;
+	const RuleSkill* skillRules = nullptr; // if defined, this is a skill action
 
 	/// Default constructor.
-	BattleActionCost() : type(BA_NONE), actor(0), weapon(0) { }
+	BattleActionCost() : type(BA_NONE) { }
 
 	/// Constructor from unit.
-	BattleActionCost(BattleUnit *unit) : type(BA_NONE), actor(unit), weapon(0) { }
+	BattleActionCost(BattleUnit *unit) : type(BA_NONE), actor(unit) { }
 
 	/// Constructor with update.
 	BattleActionCost(BattleActionType action, BattleUnit *unit, BattleItem *item) : type(action), actor(unit), weapon(item) { updateTU(); }
@@ -85,7 +86,7 @@ struct BattleAction : BattleActionCost
 	bool sprayTargeting; // Used to separate waypoint checks between confirm firing mode and the "spray" autoshot
 
 	/// Default constructor
-	BattleAction() : target(-1, -1, -1), targeting(false), value(0), strafe(false), run(false), diff(0), autoShotCounter(0), cameraPosition(0, 0, -1), desperate(false), finalFacing(-1), finalAction(false), number(0), sprayTargeting(false) { }
+	BattleAction() : target(-1, -1, -1), targeting(false), value(0), strafe(false), run(false), ignoreSpottedEnemies(false), diff(0), autoShotCounter(0), cameraPosition(0, 0, -1), desperate(false), finalFacing(-1), finalAction(false), number(0), sprayTargeting(false) { }
 
 	/// Get move type
 	BattleActionMove getMoveType() const
@@ -94,31 +95,41 @@ struct BattleAction : BattleActionCost
 	}
 };
 
-struct BattleActionAttack
-{
-	BattleActionType type;
-	BattleUnit *attacker;
-	BattleItem *weapon_item;
-	BattleItem *damage_item;
-
-	/// Defulat constructor.
-	BattleActionAttack(BattleActionType action = BA_NONE, BattleUnit *unit = nullptr) : type{ action }, attacker{ unit }, weapon_item{ nullptr }, damage_item{ nullptr }
-	{
-
-	}
-
-	/// Constructor.
-	BattleActionAttack(BattleActionType action, BattleUnit *unit, BattleItem *item, BattleItem *ammo);
-
-	/// Constructor.
-	BattleActionAttack(const BattleActionCost &action, BattleItem *ammo);
-};
-
 /**
  * Battlescape game - the core game engine of the battlescape game.
  */
 class BattlescapeGame
 {
+	class SingleRun
+	{
+		bool _done = false;
+
+	public:
+
+		/**
+		 * Check if this function was already ran.
+		 * @return True if this is first time, False if any other until reseted.
+		 */
+		bool tryRun()
+		{
+			if (_done)
+			{
+				return false;
+			}
+
+			_done = true;
+			return true;
+		}
+
+		/**
+		 * Reset stat to starting condition.
+		 */
+		void reset()
+		{
+			_done = false;
+		}
+	};
+
 private:
 	SavedBattleGame *_save;
 	BattlescapeState *_parentState;
@@ -127,14 +138,18 @@ private:
 	int _AIActionCounter;
 	BattleAction _currentAction;
 	bool _AISecondMove, _playedAggroSound;
-	bool _endTurnRequested, _endTurnProcessed;
+	bool _endTurnRequested;
 	bool _endConfirmationHandled;
+	bool _allEnemiesNeutralized;
+
+	SingleRun _endTurnProcessed;
+	SingleRun _triggerProcessed;
 
 	/// Ends the turn.
 	void endTurn();
 	/// Picks the first soldier that is panicking.
 	bool handlePanickingPlayer();
-	/// Common function for hanlding panicking units.
+	/// Common function for handling panicking units.
 	bool handlePanickingUnit(BattleUnit *unit);
 	/// Determines whether there are any actions pending for the given unit.
 	bool noActionsPending(BattleUnit *bu);
@@ -190,6 +205,8 @@ public:
 	bool kneel(BattleUnit *bu);
 	/// Cancels the current action.
 	bool cancelCurrentAction(bool bForce = false);
+	/// Cancels all actions.
+	void cancelAllActions();
 	/// Gets a pointer to access action members directly.
 	BattleAction *getCurrentAction();
 	/// Determines whether there is an action currently going on.
@@ -216,7 +233,7 @@ public:
 	Map *getMap();
 	/// Gets the save.
 	SavedBattleGame *getSave();
-	/// Gets the tilengine.
+	/// Gets the tile engine.
 	TileEngine *getTileEngine();
 	/// Gets the pathfinding.
 	Pathfinding *getPathfinding();
@@ -254,11 +271,17 @@ public:
 	void playSound(int sound, const Position &pos);
 	/// Play sound on battlefield.
 	void playSound(int sound);
+	/// Play unit response sound on battlefield.
+	void playUnitResponseSound(BattleUnit *unit, int type);
 	/// Sets up a mission complete notification.
 	void missionComplete();
 	std::list<BattleState*> getStates();
 	/// Auto end the battle if conditions are met.
 	void autoEndBattle();
+	/// Were all enemies neutralized?
+	bool areAllEnemiesNeutralized() const { return _allEnemiesNeutralized; }
+	/// Resets the flag.
+	void resetAllEnemiesNeutralized() { _allEnemiesNeutralized = false; }
 };
 
 }

@@ -20,6 +20,7 @@
 #include <algorithm>
 #define __STDC_LIMIT_MACROS
 #include <stdint.h>
+#include <random>
 
 namespace OpenXcom
 {
@@ -31,10 +32,44 @@ namespace OpenXcom
  */
 namespace RNG
 {
+	class RandomState
+	{
+		 uint64_t _seedState;
+
+	public:
+		/// Default constructor initializing the seed by time and this type address.
+		RandomState();
+		/// Constructor from predefined seed.
+		explicit RandomState(uint64_t seed);
+		/// Get current seed.
+		uint64_t getSeed() const;
+
+		/// Get next random number.
+		uint64_t next();
+		/// Generates a random integer number, inclusive.
+		int generate(int min, int max);
+		/// Get new random-sub-sequence, that depends on current seed but each time it creates a different sequence.
+		RandomState subSequence()
+		{
+			return RandomState{ next() ^ 0x055e3ac3461280cful}; //random value to have different new seed but still deterministic values when game run again.
+		}
+
+		/// Needed by shuffle
+		using result_type = uint64_t;
+		/// Needed by shuffle
+		constexpr static uint64_t max() { return ~uint64_t{}; }
+		/// Needed by shuffle
+		constexpr static uint64_t min() { return uint64_t{}; }
+		/// Needed by shuffle
+		uint64_t operator()() { return next(); }
+	};
+
 	/// Gets the seed in use.
 	uint64_t getSeed();
 	/// Sets the seed in use.
 	void setSeed(uint64_t n);
+	/// Get state.
+	RandomState& globalRandomState();
 	/// Generates a random integer number, inclusive.
 	int generate(int min, int max);
 	/// Generates a random floating-point number.
@@ -45,8 +80,6 @@ namespace RNG
 	double boxMuller(double m = 0, double s = 1);
 	/// Generates a percentage chance.
 	bool percent(int value);
-	/// Generates a random integer number, exclusive.
-	int generateEx(int max);
 	/// Shuffles a list randomly.
 	/**
 	 * Randomly changes the orders of the elements in a list.
@@ -55,7 +88,7 @@ namespace RNG
 	template <typename T>
 	void shuffle(T &list)
 	{
-		std::random_shuffle(list.begin(), list.end(), generateEx);
+		std::shuffle(list.begin(), list.end(), globalRandomState());
 	}
 }
 

@@ -143,7 +143,7 @@ namespace OpenXcom
 			case UFOPAEDIA_TYPE_TFTD_USO:
 				return new ArticleStateTFTDUso(dynamic_cast<ArticleDefinitionTFTD *>(article), std::move(state));
 			default:
-				throw new Exception("Unknow type for article '" + article->id + "'");
+				throw new Exception("Unknown type for article '" + article->id + "'");
 		}
 	}
 
@@ -271,15 +271,9 @@ namespace OpenXcom
 	 */
 	bool Ufopaedia::isArticleHidden(SavedGame *save, ArticleDefinition *article, Mod *mod)
 	{
-		// show Commendations entries if:
-		if (article->section == UFOPAEDIA_COMMENDATIONS)
+		// show hidden Commendations entries if:
+		if (article->hiddenCommendation)
 		{
-			// 0. hiding feature is disabled
-			if (mod->getShowAllCommendations())
-			{
-				return false;
-			}
-
 			// 1. debug mode is on
 			if (save->getDebugMode())
 			{

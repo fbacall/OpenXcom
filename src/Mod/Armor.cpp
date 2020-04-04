@@ -19,6 +19,7 @@
 #include "Armor.h"
 #include "../Engine/ScriptBind.h"
 #include "Mod.h"
+#include "RuleSoldier.h"
 
 namespace OpenXcom
 {
@@ -119,6 +120,7 @@ void Armor::load(const YAML::Node &node, const ModScript &parsers, Mod *mod)
 	_corpseGeo = node["corpseGeo"].as<std::string>(_corpseGeo);
 	_storeItem = node["storeItem"].as<std::string>(_storeItem);
 	_specWeapon = node["specialWeapon"].as<std::string>(_specWeapon);
+	_requires = node["requires"].as<std::string>(_requires);
 
 	_layersDefaultPrefix = node["layersDefaultPrefix"].as<std::string>(_layersDefaultPrefix);
 	_layersSpecificPrefix = node["layersSpecificPrefix"].as< std::map<int, std::string> >(_layersSpecificPrefix);
@@ -132,10 +134,20 @@ void Armor::load(const YAML::Node &node, const ModScript &parsers, Mod *mod)
 	_drawingRoutine = node["drawingRoutine"].as<int>(_drawingRoutine);
 	_drawBubbles = node["drawBubbles"].as<bool>(_drawBubbles);
 	_movementType = (MovementType)node["movementType"].as<int>(_movementType);
-	if (node["moveSound"])
-	{
-		_moveSound = mod->getSoundOffset(node["moveSound"].as<int>(_moveSound), "BATTLE.CAT");
-	}
+
+	mod->loadSoundOffset(_type, _moveSound, node["moveSound"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _deathSoundMale, node["deathMale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _deathSoundFemale, node["deathFemale"], "BATTLE.CAT");
+
+	mod->loadSoundOffset(_type, _selectUnitSoundMale, node["selectUnitMale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _selectUnitSoundFemale, node["selectUnitFemale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _startMovingSoundMale, node["startMovingMale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _startMovingSoundFemale, node["startMovingFemale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _selectWeaponSoundMale, node["selectWeaponMale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _selectWeaponSoundFemale, node["selectWeaponFemale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _annoyedSoundMale, node["annoyedMale"], "BATTLE.CAT");
+	mod->loadSoundOffset(_type, _annoyedSoundFemale, node["annoyedFemale"], "BATTLE.CAT");
+
 	_weight = node["weight"].as<int>(_weight);
 	_visibilityAtDark = node["visibilityAtDark"].as<int>(_visibilityAtDark);
 	_visibilityAtDay = node["visibilityAtDay"].as<int>(_visibilityAtDay);
@@ -207,6 +219,7 @@ void Armor::load(const YAML::Node &node, const ModScript &parsers, Mod *mod)
 		_energyRecovery.load(_type, rec, parsers.bonusStatsScripts.get<ModScript::EnergyRecoveryStatBonus>());
 		_moraleRecovery.load(_type, rec, parsers.bonusStatsScripts.get<ModScript::MoraleRecoveryStatBonus>());
 		_healthRecovery.load(_type, rec, parsers.bonusStatsScripts.get<ModScript::HealthRecoveryStatBonus>());
+		_manaRecovery.load(_type, rec, parsers.bonusStatsScripts.get<ModScript::ManaRecoveryStatBonus>());
 		_stunRecovery.load(_type, rec, parsers.bonusStatsScripts.get<ModScript::StunRecoveryStatBonus>());
 	}
 	_faceColorGroup = node["spriteFaceGroup"].as<int>(_faceColorGroup);
@@ -222,21 +235,7 @@ void Armor::load(const YAML::Node &node, const ModScript &parsers, Mod *mod)
 
 	_units = node["units"].as< std::vector<std::string> >(_units);
 	_scriptValues.load(node, parsers.getShared());
-	if (const YAML::Node &capi = node["customArmorPreviewIndex"])
-	{
-		_customArmorPreviewIndex.clear();
-		if (capi.IsScalar())
-		{
-			_customArmorPreviewIndex.push_back(mod->getSpriteOffset(capi.as<int>(), "CustomArmorPreviews"));
-		}
-		else
-		{
-			for (YAML::const_iterator i = capi.begin(); i != capi.end(); ++i)
-			{
-				_customArmorPreviewIndex.push_back(mod->getSpriteOffset(i->as<int>(), "CustomArmorPreviews"));
-			}
-		}
-	}
+	mod->loadSpriteOffset(_type, _customArmorPreviewIndex, node["customArmorPreviewIndex"], "CustomArmorPreviews");
 	loadTriBoolHelper(_allowsRunning, node["allowsRunning"]);
 	loadTriBoolHelper(_allowsStrafing, node["allowsStrafing"]);
 	loadTriBoolHelper(_allowsKneeling, node["allowsKneeling"]);
@@ -378,6 +377,15 @@ std::string Armor::getSpecialWeapon() const
 }
 
 /**
+ * Gets the research required to be able to equip this armor.
+ * @return The name of the research topic.
+ */
+const std::string &Armor::getRequiredResearch() const
+{
+	return _requires;
+}
+
+/**
  * Gets the drawing routine ID.
  * @return The drawing routine ID.
  */
@@ -498,41 +506,49 @@ float Armor::getMeleeDodgeBackPenalty() const
 /**
  *  Gets unit TU recovery.
  */
-int Armor::getTimeRecovery(const BattleUnit* unit) const
+int Armor::getTimeRecovery(const BattleUnit* unit, int externalBonuses) const
 {
-	return _timeRecovery.getBonus(unit);
+	return _timeRecovery.getBonus(unit, externalBonuses);
 }
 
 /**
  *  Gets unit Energy recovery.
  */
-int Armor::getEnergyRecovery(const BattleUnit* unit) const
+int Armor::getEnergyRecovery(const BattleUnit* unit, int externalBonuses) const
 {
-	return _energyRecovery.getBonus(unit);
+	return _energyRecovery.getBonus(unit, externalBonuses);
 }
 
 /**
  *  Gets unit Morale recovery.
  */
-int Armor::getMoraleRecovery(const BattleUnit* unit) const
+int Armor::getMoraleRecovery(const BattleUnit* unit, int externalBonuses) const
 {
-	return _moraleRecovery.getBonus(unit);
+	return _moraleRecovery.getBonus(unit, externalBonuses);
 }
 
 /**
  *  Gets unit Health recovery.
  */
-int Armor::getHealthRecovery(const BattleUnit* unit) const
+int Armor::getHealthRecovery(const BattleUnit* unit, int externalBonuses) const
 {
-	return _healthRecovery.getBonus(unit);
+	return _healthRecovery.getBonus(unit, externalBonuses);
+}
+
+/**
+ *  Gets unit Mana recovery.
+ */
+int Armor::getManaRecovery(const BattleUnit* unit, int externalBonuses) const
+{
+	return _manaRecovery.getBonus(unit, externalBonuses);
 }
 
 /**
  *  Gets unit Stun recovery.
  */
-int Armor::getStunRegeneration(const BattleUnit* unit) const
+int Armor::getStunRegeneration(const BattleUnit* unit, int externalBonuses) const
 {
-	return _stunRecovery.getBonus(unit);
+	return _stunRecovery.getBonus(unit, externalBonuses);
 }
 
 /**
@@ -735,7 +751,7 @@ bool Armor::getCreatesMeleeThreat(bool def) const
 }
 
 /**
- * Gets how much negative hp is require to gib unit.
+ * Gets how much damage (over the maximum HP) is needed to vaporize/disintegrate a unit.
  * @return Percent of require hp.
  */
 float Armor::getOverKill() const
@@ -792,10 +808,10 @@ int findWithFallback(const std::vector<int> &vec, size_t pos)
 {
 	//if pos == 31 then we test for 31, 15, 7
 	//if pos == 36 then we test for 36, 4
-	//we stop on p < 8 for comatibility reasons.
-	for (int i = 0; i <= 4; ++i)
+	//we stop on p < 8 for compatibility reasons.
+	for (int i = 0; i <= RuleSoldier::LookVariantBits; ++i)
 	{
-		size_t p = (pos & (127 >> i));
+		size_t p = (pos & (RuleSoldier::LookTotalMask >> i));
 		if (p < vec.size())
 		{
 			return vec[p];
@@ -863,7 +879,7 @@ const std::vector<std::string> &Armor::getUnits() const
 namespace
 {
 
-void getArmorValueScript(Armor *ar, int &ret, int side)
+void getArmorValueScript(const Armor *ar, int &ret, int side)
 {
 	if (ar && 0 <= side && side < SIDE_MAX)
 	{
@@ -912,7 +928,7 @@ void Armor::ScriptRegister(ScriptParserBase* parser)
 	ar.add<&Armor::getPersonalLight>("getPersonalLight");
 	ar.add<&Armor::getSize>("getSize");
 
-	UnitStats::addGetStatsScript<Armor, &Armor::_stats>(ar, "Stats.");
+	UnitStats::addGetStatsScript<&Armor::_stats>(ar, "Stats.");
 
 	ar.add<&getArmorValueScript>("getArmor");
 

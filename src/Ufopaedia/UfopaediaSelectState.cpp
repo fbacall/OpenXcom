@@ -36,21 +36,23 @@
 
 namespace OpenXcom
 {
-	UfopaediaSelectState::UfopaediaSelectState(const std::string &section) : _section(section), _lstScroll(0)
+	UfopaediaSelectState::UfopaediaSelectState(const std::string &section, int heightOffset, int windowOffset) : _section(section), _lstScroll(0)
 	{
 		_screen = false;
 
 		// set background window
-		_window = new Window(this, 256, 180, 32, 10, POPUP_NONE);
-		_btnQuickSearch = new TextEdit(this, 48, 9, 48, 30);
+		_window = new Window(this, 256, 180 + heightOffset, 32, 10 - windowOffset, POPUP_NONE);
+		_window->setInnerColor(239); // almost black = darkest index from backpals.dat
+		_btnQuickSearch = new TextEdit(this, 48, 9, 48, 30 - windowOffset);
 
 		// set title
-		_txtTitle = new Text(224, 17, 48, 26);
+		_txtTitle = new Text(224, 17, 48, 26 - windowOffset);
 
 		// set buttons
-		_btnOk = new TextButton(108, 16, 164, 166);
-		_btnShowOnlyNew = new ToggleTextButton(108, 16, 48, 166);
-		_lstSelection = new TextList(224, 104, 40, 50);
+		_btnOk = new TextButton(108, 16, 164, 166 - windowOffset + heightOffset);
+		_btnShowOnlyNew = new ToggleTextButton(108, 16, 48, 166 - windowOffset + heightOffset);
+		int listHeightOffset = (heightOffset / 8) * 8; // multiple of 8
+		_lstSelection = new TextList(224, 104 + listHeightOffset, 40, 50 - windowOffset);
 
 		// Set palette
 		setInterface("ufopaedia");
@@ -62,9 +64,12 @@ namespace OpenXcom
 		add(_btnShowOnlyNew, "button2", "ufopaedia");
 		add(_lstSelection, "list", "ufopaedia");
 
+		_colorNormal = _lstSelection->getColor();
+		_colorNew = Options::oxceHighlightNewTopicsHidden ? _lstSelection->getSecondaryColor() : _colorNormal;
+
 		centerAllSurfaces();
 
-		_window->setBackground(_game->getMod()->getSurface("BACK01.SCR"));
+		setWindowBackground(_window, "ufopaedia");
 
 		_txtTitle->setBig();
 		_txtTitle->setAlign(ALIGN_CENTER);
@@ -78,11 +83,6 @@ namespace OpenXcom
 		if (_section == UFOPAEDIA_COMMENDATIONS)
 		{
 			_btnShowOnlyNew->setText(tr("STR_NOT_AWARDED_YET"));
-			if (!_game->getMod()->getShowAllCommendations())
-			{
-				// the not-yet-awarded commendations won't be visible anyway, no need to show the button
-				_btnShowOnlyNew->setVisible(false);
-			}
 		}
 		else
 		{
@@ -142,6 +142,9 @@ namespace OpenXcom
 	 */
 	void UfopaediaSelectState::lstSelectionClickRight(Action *)
 	{
+		if (!Options::oxceHighlightNewTopicsHidden)
+			return;
+
 		// change status
 		const std::string rule = _filtered_article_list[_lstSelection->getSelectedRow()]->id;
 		int oldState = _game->getSavedGame()->getUfopediaRuleStatus(rule);
@@ -150,11 +153,11 @@ namespace OpenXcom
 
 		if (newState == ArticleDefinition::PEDIA_STATUS_NEW)
 		{
-			_lstSelection->setRowColor(_lstSelection->getSelectedRow(), _lstSelection->getSecondaryColor());
+			_lstSelection->setRowColor(_lstSelection->getSelectedRow(), _colorNew);
 		}
 		else
 		{
-			_lstSelection->setRowColor(_lstSelection->getSelectedRow(), _lstSelection->getColor());
+			_lstSelection->setRowColor(_lstSelection->getSelectedRow(), _colorNormal);
 		}
 	}
 
@@ -263,7 +266,7 @@ namespace OpenXcom
 			else if (_game->getSavedGame()->getUfopediaRuleStatus((*it)->id) == ArticleDefinition::PEDIA_STATUS_NEW)
 			{
 				// highlight as new
-				_lstSelection->setCellColor(row, 0, _lstSelection->getSecondaryColor());
+				_lstSelection->setCellColor(row, 0, _colorNew);
 				hasUnseen = true;
 			}
 			row++;

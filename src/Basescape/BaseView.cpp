@@ -42,7 +42,7 @@ namespace OpenXcom
  * @param x X position in pixels.
  * @param y Y position in pixels.
  */
-BaseView::BaseView(int width, int height, int x, int y) : InteractiveSurface(width, height, x, y), _base(0), _texture(0), _selFacility(0), _big(0), _small(0), _lang(0), _gridX(0), _gridY(0), _selSize(0), _selector(0), _blink(true)
+BaseView::BaseView(int width, int height, int x, int y) : InteractiveSurface(width, height, x, y), _base(0), _texture(0), _selFacility(0), _big(0), _small(0), _lang(0), _gridX(0), _gridY(0), _selSize(0), _selector(0), _blink(true), _cellColor(0), _selectorColor(0)
 {
 	// Clear grid
 	for (int i = 0; i < BASE_SIZE; ++i)
@@ -211,60 +211,68 @@ void BaseView::setSelectable(int size)
  * 6: trying to upgrade over existing facility, but ruleset disallows it
  * 7: trying to upgrade over existing facility, but all buildings next to it are under construction and build queue is off
  */
-int BaseView::getPlacementError(RuleBaseFacility *rule, BaseFacility *facilityBeingMoved) const
+BasePlacementErrors BaseView::getPlacementError(const RuleBaseFacility *rule, BaseFacility *facilityBeingMoved) const
 {
-	// We'll need to know for the final check if we're upgrading an exisiting facility
+	// We'll need to know for the final check if we're upgrading an existing facility
 	bool buildingOverExisting = false;
 
-	// Check if square isn't occupied
-	for (int y = _gridY; y < _gridY + rule->getSize(); ++y)
+	// Area where we want place new bulding
+	const BaseAreaSubset placementArea = BaseAreaSubset(rule->getSize(), rule->getSize()).offset(_gridX, _gridY);
+	// Whole base
+	const BaseAreaSubset baseArea = BaseAreaSubset(BASE_SIZE, BASE_SIZE);
+
+	// Check if facility do fit base edges
+	if (BaseAreaSubset::intersection(placementArea, baseArea) != placementArea)
 	{
-		for (int x = _gridX; x < _gridX + rule->getSize(); ++x)
+		return BPE_NotConnected;
+	}
+
+	// Check use of facilites in area that will be replaced by new building
+	if (facilityBeingMoved == nullptr)
+	{
+		auto areaUseError = _base->isAreaInUse(placementArea, rule);
+		if (areaUseError != BPE_None)
 		{
-			if (x < 0 || x >= BASE_SIZE || y < 0 || y >= BASE_SIZE)
-			{
-				return 1;
-			}
-			if (_facilities[x][y] != 0)
+			return areaUseError;
+		}
+	}
+
+	// Check if square isn't occupied
+	for (int y = placementArea.beg_y; y < placementArea.end_y; ++y)
+	{
+		for (int x = placementArea.beg_x; x < placementArea.end_x; ++x)
+		{
+			auto facility = _facilities[x][y];
+			if (facility != 0)
 			{
 				// when moving an existing facility, it should not block itself
 				if (facilityBeingMoved == 0)
 				{
 					// Further check to see if the facility already there can be built over and we're not removing an important base function
-					if (_facilities[x][y]->getRules()->getCanBeBuiltOver())
+					auto canBuildOverError = rule->getCanBuildOverOtherFacility(facility->getRules());
+					if (canBuildOverError != BPE_None)
 					{
-						// Make sure this facility is not in use
-						if (_facilities[x][y]->inUse())
-							return 2;
-
-						// Make sure this facility is not already being upgraded
-						if (_facilities[x][y]->getIfHadPreviousFacility() && _facilities[x][y]->getBuildTime() != 0)
-							return 3;
-
-						// Make sure the facility we're building over is entirely within the size of the one we're checking
-						if (_facilities[x][y]->getX() < _gridX || _facilities[x][y]->getX() + _facilities[x][y]->getRules()->getSize() > _gridX + rule->getSize()
-							|| _facilities[x][y]->getY() < _gridY || _facilities[x][y]->getY() + _facilities[x][y]->getRules()->getSize() > _gridY + rule->getSize())
-							return 4;
-
-						const std::vector<std::string> &buildOverFacilities = rule->getBuildOverFacilities();
-						// If the list of base facilities we can build over is empty, then we can build over anything that allows it
-						// otherwise we need to check if the facility we're trying to build over is on the list
-						if (!buildOverFacilities.empty())
-						{
-							if (!std::binary_search(buildOverFacilities.begin(), buildOverFacilities.end(), _facilities[x][y]->getRules()->getType()))
-								return 5;
-						}
-
-						buildingOverExisting = true;
+						return canBuildOverError;
 					}
-					else
+
+					// Make sure the facility we're building over is entirely within the size of the one we're checking
+					const auto removedArea = facility->getPlacement();
+					if (BaseAreaSubset::intersection(placementArea, removedArea) != removedArea)
 					{
-						return 6;
+						return BPE_UpgradeSizeMismatch;
 					}
+
+					// Make sure this facility is not already being upgraded
+					if (facility->getIfHadPreviousFacility() && facility->getBuildTime() != 0)
+					{
+						return BPE_Upgrading;
+					}
+
+					buildingOverExisting = true;
 				}
-				else if (_facilities[x][y] != facilityBeingMoved)
+				else if (facility != facilityBeingMoved)
 				{
-					return 1;
+					return BPE_NotConnected;
 				}
 			}
 		}
@@ -280,36 +288,36 @@ int BaseView::getPlacementError(RuleBaseFacility *rule, BaseFacility *facilityBe
 		{
 			hasConnectingFacility = true;
 			if ((!buildingOverExisting && bq) || _facilities[_gridX - 1][_gridY + i]->getBuildTime() == 0)
-				return 0;
+				return BPE_None;
 		}
 
 		if (_gridY > 0 && _facilities[_gridX + i][_gridY - 1] != 0)
 		{
 			hasConnectingFacility = true;
 			if ((!buildingOverExisting && bq) || _facilities[_gridX + i][_gridY - 1]->getBuildTime() == 0)
-				return 0;
+				return BPE_None;
 		}
 
 		if (_gridX + rule->getSize() < BASE_SIZE && _facilities[_gridX + rule->getSize()][_gridY + i] != 0)
 		{
 			hasConnectingFacility = true;
 			if ((!buildingOverExisting && bq) || _facilities[_gridX + rule->getSize()][_gridY + i]->getBuildTime() == 0)
-				return 0;
+				return BPE_None;
 		}
 
 		if (_gridY + rule->getSize() < BASE_SIZE && _facilities[_gridX + i][_gridY + rule->getSize()] != 0)
 		{
 			hasConnectingFacility = true;
 			if ((!buildingOverExisting && bq) || _facilities[_gridX + i][_gridY + rule->getSize()]->getBuildTime() == 0)
-				return 0;
+				return BPE_None;
 		}
 	}
 
 	// We can assume if we've reached this point that none of the connecting facilities are finished!
 	if (hasConnectingFacility && (!bq || buildingOverExisting))
-		return 7;
+		return BPE_Queue;
 
-	return 1;
+	return BPE_NotConnected;
 }
 
 /**
@@ -317,7 +325,7 @@ int BaseView::getPlacementError(RuleBaseFacility *rule, BaseFacility *facilityBe
  * @param rule Facility type.
  * @return True if queued, False otherwise.
  */
-bool BaseView::isQueuedBuilding(RuleBaseFacility *rule) const
+bool BaseView::isQueuedBuilding(const RuleBaseFacility *rule) const
 {
 	for (int i = 0; i < rule->getSize(); ++i)
 	{
@@ -355,7 +363,7 @@ void BaseView::reCalcQueuedBuildings()
 			if ((*i)->getBuildTime() < (*min)->getBuildTime()) min=i;
 		BaseFacility* facility=(*min);
 		facilities.erase(min);
-		RuleBaseFacility *rule=facility->getRules();
+		const RuleBaseFacility *rule=facility->getRules();
 		int x=facility->getX(), y=facility->getY();
 		for (int i = 0; i < rule->getSize(); ++i)
 		{
@@ -529,6 +537,7 @@ void BaseView::draw()
 		}
 
 		// Draw crafts
+		(*i)->setCraftForDrawing(0);
 		if ((*i)->getBuildTime() == 0 && (*i)->getRules()->getCrafts() > 0)
 		{
 			if (craft != _base->getCrafts()->end())
@@ -541,15 +550,7 @@ void BaseView::draw()
 					frame->blitNShade(this, fx, fy);
 					(*i)->setCraftForDrawing(*craft);
 				}
-				else
-				{
-					(*i)->setCraftForDrawing(0);
-				}
 				++craft;
-			}
-			else
-			{
-				(*i)->setCraftForDrawing(0);
 			}
 		}
 

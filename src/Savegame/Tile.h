@@ -19,6 +19,7 @@
  */
 #include <list>
 #include <vector>
+#include <memory>
 #include "../Engine/Surface.h"
 #include "../Battlescape/Position.h"
 #include "../Mod/MapData.h"
@@ -69,33 +70,65 @@ public:
 
 	static const int NOT_CALCULATED = -1;
 
+	/**
+	 * Cache of ID for tile parts used to save and load.
+	 */
+	struct TileMapDataCache
+	{
+		int ID[O_MAX];
+		int SetID[O_MAX];
+	};
+	/**
+	 * Cached data that belongs to each tile object
+	 */
+	struct TileObjectCache
+	{
+		Sint8 offsetY;
+		Uint8 currentFrame:4;
+		Uint8 discovered:1;
+		Uint8 isUfoDoor:1;
+		Uint8 isDoor:1;
+		Uint8 isBackTileObject:1;
+	};
+	/**
+	 * Cached data that belongs to whole tile
+	 */
+	struct TileCache
+	{
+		Sint8 terrainLevel = 0;
+		Uint8 isNoFloor:1;
+		Uint8 bigWall:1;
+		Uint8 danger:1;
+	};
+
 protected:
 	MapData *_objects[O_MAX];
-	int _mapDataID[O_MAX];
-	int _mapDataSetID[O_MAX];
-	int _currentFrame[O_MAX];
+	std::unique_ptr<TileMapDataCache> _mapData = std::make_unique<TileMapDataCache>();
 	SurfaceRaw<const Uint8> _currentSurface[O_MAX] = { };
-	bool _discovered[3];
-	int _light[LL_MAX];
-	int _smoke;
-	int _fire;
-	int _explosive;
-	int _explosiveType;
+	TileObjectCache _objectsCache[O_MAX] = { };
+	TileCache _cache = { };
+	Uint8 _light[LL_MAX];
+	Uint8 _fire = 0;
+	Uint8 _smoke = 0;
+	Uint8 _markerColor = 0;
+	Uint8 _animationOffset = 0;
+	Uint8 _obstacle = 0;
+	Uint8 _explosiveType = 0;
+	int _explosive = 0;
 	Position _pos;
 	BattleUnit *_unit;
 	std::vector<BattleItem *> _inventory;
-	int _animationOffset;
-	int _markerColor;
 	int _visible;
 	int _preview;
 	int _TUMarker;
 	int _overlaps;
-	bool _danger;
-	std::list<Particle*> _particles;
-	int _obstacle;
+
+
 public:
 	/// Creates a tile.
 	Tile(Position pos);
+	/// Copy constructor.
+	Tile(Tile&&) = default;
 	/// Cleans up a tile.
 	~Tile();
 	/// Load the tile from yaml
@@ -127,10 +160,24 @@ public:
 	int getTUCost(int part, MovementType movementType) const;
 	/// Checks if this tile has a floor.
 	bool hasNoFloor(const SavedBattleGame *savedBattleGame = nullptr) const;
-	/// Checks if this tile is a big wall.
-	bool isBigWall() const;
-	/// Get terrain level.
-	int getTerrainLevel() const;
+
+	/**
+	 * Whether this tile has a big wall.
+	 * @return bool
+	 */
+	bool isBigWall() const
+	{
+		return _cache.bigWall;
+	}
+
+	/**
+	 * Gets the height of the terrain (dirt/stairs/etc.) on this tile.
+	 * @return the height in voxels (more negative values are higher, e.g. -8 = lower stairs, -16 = higher stairs)
+	 */
+	int getTerrainLevel() const
+	{
+		return _cache.terrainLevel;
+	}
 
 	/**
 	 * Gets the tile's position.
@@ -144,7 +191,7 @@ public:
 	/// Gets the floor object footstep sound.
 	int getFootstepSound(Tile *tileBelow) const;
 	/// Open a door, returns the ID, 0(normal), 1(ufo) or -1 if no door opened.
-	int openDoor(TilePart part, BattleUnit *Unit = 0, BattleActionType reserve = BA_NONE);
+	int openDoor(TilePart part, BattleUnit *unit = 0, BattleActionType reserve = BA_NONE, bool rClick = false);
 
 	/**
 	 * Check if the ufo door is open or opening. Used for visibility/light blocking checks.
@@ -154,16 +201,55 @@ public:
 	 */
 	bool isUfoDoorOpen(TilePart tp) const
 	{
-		int part = (int)tp;
-		return (_objects[part] && _objects[part]->isUFODoor() && _currentFrame[part] != 0);
+		return (_objectsCache[tp].isUfoDoor && _objectsCache[tp].currentFrame);
+	}
+
+	/**
+	 * Check if part is ufo door.
+	 * @param tp Part to check
+	 * @return True if part is ufo door.
+	 */
+	bool isUfoDoor(TilePart tp) const
+	{
+		return _objectsCache[tp].isUfoDoor;
+	}
+
+	/**
+	 * Check if part is door.
+	 * @param tp Part to check
+	 * @return True if part is door.
+	 */
+	bool isDoor(TilePart tp) const
+	{
+		return _objectsCache[tp].isDoor;
+	}
+
+	/**
+	 * Check if an object should be drawn behind or in front of a unit.
+	 * @param tp Part to check
+	 * @return True if its back object.
+	 */
+	bool isBackTileObject(TilePart tp) const
+	{
+		return _objectsCache[tp].isBackTileObject;
+	}
+
+	/**
+	 * Gets surface Y offset.
+	 * @param tp Part for offset.
+	 * @return Offset value.
+	 */
+	int getYOffset(TilePart tp) const
+	{
+		return _objectsCache[tp].offsetY;
 	}
 
 	/// Close ufo door.
 	int closeUfoDoor();
 	/// Sets the black fog of war status of this tile.
-	void setDiscovered(bool flag, int part);
+	void setDiscovered(bool flag, TilePart part);
 	/// Gets the black fog of war status of this tile.
-	bool isDiscovered(int part) const;
+	bool isDiscovered(TilePart part) const;
 	/// Reset light to zero for this tile.
 	void resetLight(LightLayers layer);
 	/// Reset light to zero for this tile and multiple layers.
@@ -271,10 +357,6 @@ public:
 	void setDangerous(bool danger);
 	/// check the danger flag on this tile.
 	bool getDangerous() const;
-	/// adds a particle to this tile's array.
-	void addParticle(Particle *particle);
-	/// gets a pointer to this tile's particle array.
-	std::list<Particle *> *getParticleCloud();
 
 	/// sets single obstacle flag.
 	void setObstacle(int part);

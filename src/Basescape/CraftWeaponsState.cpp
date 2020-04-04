@@ -32,6 +32,7 @@
 #include "../Mod/RuleCraftWeapon.h"
 #include "../Savegame/ItemContainer.h"
 #include "../Savegame/Base.h"
+#include "../Savegame/SavedGame.h"
 #include "../Ufopaedia/Ufopaedia.h"
 
 namespace OpenXcom
@@ -73,7 +74,7 @@ CraftWeaponsState::CraftWeaponsState(Base *base, size_t craft, size_t weapon) : 
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK14.SCR"));
+	setWindowBackground(_window, "craftWeapons");
 
 	_btnCancel->setText(tr("STR_CANCEL_UC"));
 	_btnCancel->onMouseClick((ActionHandler)&CraftWeaponsState::btnCancelClick);
@@ -115,7 +116,13 @@ CraftWeaponsState::CraftWeaponsState(Base *base, size_t craft, size_t weapon) : 
 	{
 		RuleCraftWeapon *w = _game->getMod()->getCraftWeapon(*i);
 		const RuleCraft *c = _craft->getRules();
-		if (_base->getStorageItems()->getItem(w->getLauncherItem()) > 0 && c->isValidWeaponSlot(weapon, w->getWeaponType()))
+		bool isResearched = true;
+		if (!w->getClipItem().empty())
+		{
+			RuleItem *clipItem = _game->getMod()->getItem(w->getClipItem(), true);
+			isResearched = _game->getSavedGame()->isResearched(clipItem->getRequirements());
+		}
+		if (isResearched && _base->getStorageItems()->getItem(w->getLauncherItem()) > 0 && c->isValidWeaponSlot(weapon, w->getWeaponType()))
 		{
 			_weapons.push_back(w);
 			std::ostringstream ss, ss2;

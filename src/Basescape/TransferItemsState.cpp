@@ -49,6 +49,7 @@
 #include "../Mod/Armor.h"
 #include "../Interface/ComboBox.h"
 #include "../Ufopaedia/Ufopaedia.h"
+#include "../Battlescape/DebriefingState.h"
 
 namespace OpenXcom
 {
@@ -59,7 +60,9 @@ namespace OpenXcom
  * @param baseFrom Pointer to the source base.
  * @param baseTo Pointer to the destination base.
  */
-TransferItemsState::TransferItemsState(Base *baseFrom, Base *baseTo) : _baseFrom(baseFrom), _baseTo(baseTo), _sel(0), _total(0), _pQty(0), _cQty(0), _aQty(0), _iQty(0.0), _distance(0.0), _ammoColor(0)
+TransferItemsState::TransferItemsState(Base *baseFrom, Base *baseTo, DebriefingState *debriefingState) :
+	_baseFrom(baseFrom), _baseTo(baseTo), _debriefingState(debriefingState),
+	_sel(0), _total(0), _pQty(0), _cQty(0), _aQty(0), _iQty(0.0), _distance(0.0), _ammoColor(0)
 {
 	// Create objects
 	_window = new Window(this, 320, 200, 0, 0);
@@ -92,7 +95,7 @@ TransferItemsState::TransferItemsState(Base *baseFrom, Base *baseTo) : _baseFrom
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK13.SCR"));
+	setWindowBackground(_window, "transferMenu");
 
 	_btnOk->setText(tr("STR_TRANSFER"));
 	_btnOk->onMouseClick((ActionHandler)&TransferItemsState::btnOkClick);
@@ -130,6 +133,7 @@ TransferItemsState::TransferItemsState(Base *baseFrom, Base *baseTo) : _baseFrom
 	_distance = getDistance();
 
 	_cats.push_back("STR_ALL_ITEMS");
+	_cats.push_back("STR_ITEMS_AT_DESTINATION");
 
 	const std::vector<std::string> &cw = _game->getMod()->getCraftWeaponsList();
 	for (std::vector<std::string>::const_iterator i = cw.begin(); i != cw.end(); ++i)
@@ -147,6 +151,7 @@ TransferItemsState::TransferItemsState(Base *baseFrom, Base *baseTo) : _baseFrom
 
 	for (std::vector<Soldier*>::iterator i = _baseFrom->getSoldiers()->begin(); i != _baseFrom->getSoldiers()->end(); ++i)
 	{
+		if (_debriefingState) break;
 		if ((*i)->getCraft() == 0)
 		{
 			TransferRow row = { TRANSFER_SOLDIER, (*i), (*i)->getName(true), (int)(5 * _distance), 1, 0, 0 };
@@ -160,6 +165,7 @@ TransferItemsState::TransferItemsState(Base *baseFrom, Base *baseTo) : _baseFrom
 	}
 	for (std::vector<Craft*>::iterator i = _baseFrom->getCrafts()->begin(); i != _baseFrom->getCrafts()->end(); ++i)
 	{
+		if (_debriefingState) break;
 		if ((*i)->getStatus() != "STR_OUT" || (Options::canTransferCraftsWhileAirborne && (*i)->getFuel() >= (*i)->getFuelLimit(_baseTo)))
 		{
 			TransferRow row = { TRANSFER_CRAFT, (*i), (*i)->getName(_game->getLanguage()),  (int)(25 * _distance), 1, 0, 0 };
@@ -171,7 +177,7 @@ TransferItemsState::TransferItemsState(Base *baseFrom, Base *baseTo) : _baseFrom
 			}
 		}
 	}
-	if (_baseFrom->getAvailableScientists() > 0)
+	if (_baseFrom->getAvailableScientists() > 0 && _debriefingState == 0)
 	{
 		TransferRow row = { TRANSFER_SCIENTIST, 0, tr("STR_SCIENTIST"),  (int)(5 * _distance), _baseFrom->getAvailableScientists(), _baseTo->getAvailableScientists(), 0 };
 		_items.push_back(row);
@@ -181,7 +187,7 @@ TransferItemsState::TransferItemsState(Base *baseFrom, Base *baseTo) : _baseFrom
 			_cats.push_back(cat);
 		}
 	}
-	if (_baseFrom->getAvailableEngineers() > 0)
+	if (_baseFrom->getAvailableEngineers() > 0 && _debriefingState == 0)
 	{
 		TransferRow row = { TRANSFER_ENGINEER, 0, tr("STR_ENGINEER"),  (int)(5 * _distance), _baseFrom->getAvailableEngineers(), _baseTo->getAvailableEngineers(), 0 };
 		_items.push_back(row);
@@ -195,9 +201,13 @@ TransferItemsState::TransferItemsState(Base *baseFrom, Base *baseTo) : _baseFrom
 	for (std::vector<std::string>::const_iterator i = items.begin(); i != items.end(); ++i)
 	{
 		int qty = _baseFrom->getStorageItems()->getItem(*i);
+		RuleItem *rule = _game->getMod()->getItem(*i, true);
+		if (_debriefingState != 0)
+		{
+			qty = _debriefingState->getRecoveredItemCount(rule);
+		}
 		if (qty > 0)
 		{
-			RuleItem *rule = _game->getMod()->getItem(*i);
 			TransferRow row = { TRANSFER_ITEM, rule, tr(*i),  (int)(1 * _distance), qty, _baseTo->getStorageItems()->getItem(*i), 0 };
 			_items.push_back(row);
 			std::string cat = getCategory(_items.size() - 1);
@@ -210,6 +220,8 @@ TransferItemsState::TransferItemsState(Base *baseFrom, Base *baseTo) : _baseFrom
 
 	if (_game->getMod()->getUseCustomCategories())
 	{
+		bool hasUnassigned = false;
+
 		// first find all relevant item categories
 		std::vector<std::string> tempCats;
 		for (std::vector<TransferRow>::iterator i = _items.begin(); i != _items.end(); ++i)
@@ -217,6 +229,10 @@ TransferItemsState::TransferItemsState(Base *baseFrom, Base *baseTo) : _baseFrom
 			if ((*i).type == TRANSFER_ITEM)
 			{
 				RuleItem *rule = (RuleItem*)((*i).rule);
+				if (rule->getCategories().empty())
+				{
+					hasUnassigned = true;
+				}
 				for (std::vector<std::string>::const_iterator j = rule->getCategories().begin(); j != rule->getCategories().end(); ++j)
 				{
 					if (std::find(tempCats.begin(), tempCats.end(), (*j)) == tempCats.end())
@@ -229,6 +245,7 @@ TransferItemsState::TransferItemsState(Base *baseFrom, Base *baseTo) : _baseFrom
 		// then use them nicely in order
 		_cats.clear();
 		_cats.push_back("STR_ALL_ITEMS");
+		_cats.push_back("STR_ITEMS_AT_DESTINATION");
 		const std::vector<std::string> &categories = _game->getMod()->getItemCategoriesList();
 		for (std::vector<std::string>::const_iterator k = categories.begin(); k != categories.end(); ++k)
 		{
@@ -236,6 +253,10 @@ TransferItemsState::TransferItemsState(Base *baseFrom, Base *baseTo) : _baseFrom
 			{
 				_cats.push_back((*k));
 			}
+		}
+		if (hasUnassigned)
+		{
+			_cats.push_back("STR_UNASSIGNED");
 		}
 	}
 
@@ -375,23 +396,43 @@ void TransferItemsState::updateList()
 
 	_lstItems->clearList();
 	_rows.clear();
+
+	std::string cat = _cats[_cbxCategory->getSelected()];
+	bool allItems = (cat == "STR_ALL_ITEMS");
+	bool onlyItemsAtDestination = (cat == "STR_ITEMS_AT_DESTINATION");
+	bool categoryUnassigned = (cat == "STR_UNASSIGNED");
+	bool specialCategory = allItems || onlyItemsAtDestination;
+
 	for (size_t i = 0; i < _items.size(); ++i)
 	{
 		// filter
-		std::string cat = _cats[_cbxCategory->getSelected()];
 		if (_game->getMod()->getUseCustomCategories())
 		{
-			if (cat != "STR_ALL_ITEMS" && !belongsToCategory(i, cat))
+			if (categoryUnassigned && _items[i].type == TRANSFER_ITEM)
+			{
+				RuleItem* rule = (RuleItem*)_items[i].rule;
+				if (!rule->getCategories().empty())
+				{
+					continue;
+				}
+			}
+			else if (!specialCategory && !belongsToCategory(i, cat))
 			{
 				continue;
 			}
 		}
 		else
 		{
-			if (cat != "STR_ALL_ITEMS" && cat != getCategory(i))
+			if (!specialCategory && cat != getCategory(i))
 			{
 				continue;
 			}
+		}
+
+		// "items at destination" filter
+		if (onlyItemsAtDestination && _items[i].qtyDst <= 0)
+		{
+			continue;
 		}
 
 		// quick search
@@ -476,11 +517,8 @@ void TransferItemsState::completeTransfer()
 				{
 					if (*s == i->rule)
 					{
-						 if ((*s)->isInPsiTraining())
-						 {
-							 (*s)->setPsiTraining();
-						 }
-						 (*s)->setTraining(false);
+						(*s)->setPsiTraining(false);
+						(*s)->setTraining(false);
 						t = new Transfer(time);
 						t->setSoldier(*s);
 						_baseTo->getTransfers()->push_back(t);
@@ -496,9 +534,12 @@ void TransferItemsState::completeTransfer()
 				{
 					if ((*s)->getCraft() == craft)
 					{
-						if ((*s)->isInPsiTraining()) (*s)->setPsiTraining();
+						(*s)->setPsiTraining(false);
 						(*s)->setTraining(false);
-						if (craft->getStatus() == "STR_OUT") _baseTo->getSoldiers()->push_back(*s);
+						if (craft->getStatus() == "STR_OUT")
+						{
+							_baseTo->getSoldiers()->push_back(*s);
+						}
 						else
 						{
 							t = new Transfer(time);
@@ -514,45 +555,28 @@ void TransferItemsState::completeTransfer()
 				}
 
 				// Transfer craft
-				for (std::vector<Craft*>::iterator c = _baseFrom->getCrafts()->begin(); c != _baseFrom->getCrafts()->end(); ++c)
+				_baseFrom->removeCraft(craft, false);
+				if (craft->getStatus() == "STR_OUT")
 				{
-					if (*c == craft)
+					bool returning = (craft->getDestination() == (Target*)craft->getBase());
+					_baseTo->getCrafts()->push_back(craft);
+					craft->setBase(_baseTo, false);
+					if (craft->getFuel() <= craft->getFuelLimit(_baseTo))
 					{
-						if (craft->getStatus() == "STR_OUT")
-						{
-							bool returning = (craft->getDestination() == (Target*)craft->getBase());
-							_baseTo->getCrafts()->push_back(craft);
-							craft->setBase(_baseTo, false);
-							if (craft->getFuel() <= craft->getFuelLimit(_baseTo))
-							{
-								craft->setLowFuel(true);
-								craft->returnToBase();
-							}
-							else if (returning)
-							{
-								craft->setLowFuel(false);
-								craft->returnToBase();
-							}
-						}
-						else
-						{
-							t = new Transfer(time);
-							t->setCraft(*c);
-							_baseTo->getTransfers()->push_back(t);
-						}
-						// Clear hangar
-						for (std::vector<BaseFacility*>::iterator f = _baseFrom->getFacilities()->begin(); f != _baseFrom->getFacilities()->end(); ++f)
-						{
-							if ((*f)->getCraftForDrawing() == *c)
-							{
-								(*f)->setCraftForDrawing(0);
-								break;
-							}
-						}
-
-						_baseFrom->getCrafts()->erase(c);
-						break;
+						craft->setLowFuel(true);
+						craft->returnToBase();
 					}
+					else if (returning)
+					{
+						craft->setLowFuel(false);
+						craft->returnToBase();
+					}
+				}
+				else
+				{
+					t = new Transfer(time);
+					t->setCraft(craft);
+					_baseTo->getTransfers()->push_back(t);
 				}
 				break;
 			case TRANSFER_SCIENTIST:
@@ -568,13 +592,24 @@ void TransferItemsState::completeTransfer()
 				_baseTo->getTransfers()->push_back(t);
 				break;
 			case TRANSFER_ITEM:
-				_baseFrom->getStorageItems()->removeItem(((RuleItem*)i->rule)->getType(), i->amount);
+				RuleItem *item = (RuleItem*)i->rule;
+				_baseFrom->getStorageItems()->removeItem(item->getType(), i->amount);
 				t = new Transfer(time);
-				t->setItems(((RuleItem*)i->rule)->getType(), i->amount);
+				t->setItems(item->getType(), i->amount);
 				_baseTo->getTransfers()->push_back(t);
+				if (_debriefingState != 0)
+				{
+					// remember the decreased amount for next sell/transfer
+					_debriefingState->decreaseRecoveredItemCount(item, i->amount);
+				}
 				break;
 			}
 		}
+	}
+
+	if (_debriefingState != 0 && _debriefingState->getTotalRecoveredItemCount() <= 0)
+	{
+		_debriefingState->hideSellTransferButtons();
 	}
 }
 
@@ -778,12 +813,11 @@ void TransferItemsState::increaseByValue(int change)
 		break;
 	case TRANSFER_ITEM:
 		selItem = (RuleItem*)getRow().rule;
-		bool zeroSize = AreSame(selItem->getSize(), 0.0);
-		if (!zeroSize && _baseTo->storesOverfull(selItem->getSize() + _iQty))
+		if (selItem->getSize() > 0.0 && _baseTo->storesOverfull(selItem->getSize() + _iQty))
 		{
 			errorMessage = tr("STR_NOT_ENOUGH_STORE_SPACE");
 		}
-		else if (selItem->isAlien())
+		if (selItem->isAlien())
 		{
 			if (Options::storageLimitsEnforced * _aQty + 1 > _baseTo->getAvailableContainment(selItem->getPrisonType()) - Options::storageLimitsEnforced * _baseTo->getUsedContainment(selItem->getPrisonType()))
 			{

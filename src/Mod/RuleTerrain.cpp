@@ -29,12 +29,12 @@ namespace OpenXcom
 /**
  * RuleTerrain construction.
  */
-RuleTerrain::RuleTerrain(const std::string &name) : _name(name), _script("DEFAULT"), _minDepth(0), _maxDepth(0), _ambience(-1), _ambientVolume(0.5)
+RuleTerrain::RuleTerrain(const std::string &name) : _name(name), _script("DEFAULT"), _minDepth(0), _maxDepth(0), _ambience(-1), _ambientVolume(0.5), _minAmbienceRandomDelay(20), _maxAmbienceRandomDelay(60)
 {
 }
 
 /**
- * Ruleterrain only holds mapblocks. Map datafiles are referenced.
+ * RuleTerrain only holds mapblocks. Map datafiles are referenced.
  */
 RuleTerrain::~RuleTerrain()
 {
@@ -78,7 +78,7 @@ void RuleTerrain::load(const YAML::Node &node, Mod *mod)
 		}
 	}
 	_name = node["name"].as<std::string>(_name);
-	_startingCondition = node["startingCondition"].as<std::string>(_startingCondition);
+	_enviroEffects = node["enviroEffects"].as<std::string>(_enviroEffects);
 	if (const YAML::Node &civs = node["civilianTypes"])
 	{
 		_civilianTypes = civs.as<std::vector<std::string> >(_civilianTypes);
@@ -97,11 +97,14 @@ void RuleTerrain::load(const YAML::Node &node, Mod *mod)
 		_minDepth = node["depth"][0].as<int>(_minDepth);
 		_maxDepth = node["depth"][1].as<int>(_maxDepth);
 	}
-	if (node["ambience"])
-	{
-		_ambience = mod->getSoundOffset(node["ambience"].as<int>(_ambience), "BATTLE.CAT");
-	}
+	mod->loadSoundOffset(_name, _ambience, node["ambience"], "BATTLE.CAT");
 	_ambientVolume = node["ambientVolume"].as<double>(_ambientVolume);
+	mod->loadSoundOffset(_name, _ambienceRandom, node["ambienceRandom"], "BATTLE.CAT");
+	if (node["ambienceRandomDelay"])
+	{
+		_minAmbienceRandomDelay = node["ambienceRandomDelay"][0].as<int>(_minAmbienceRandomDelay);
+		_maxAmbienceRandomDelay = node["ambienceRandomDelay"][1].as<int>(_maxAmbienceRandomDelay);
+	}
 	_script = node["script"].as<std::string>(_script);
 }
 
@@ -133,12 +136,12 @@ std::string RuleTerrain::getName() const
 }
 
 /**
-* Returns the starting condition name for this terrain.
-* @return String ID for starting condition.
-*/
-std::string RuleTerrain::getStartingCondition() const
+ * Returns the enviro effects name for this terrain.
+ * @return String ID for the enviro effects.
+ */
+const std::string& RuleTerrain::getEnviroEffects() const
 {
-	return _startingCondition;
+	return _enviroEffects;
 }
 
 /**
@@ -214,7 +217,7 @@ MapData *RuleTerrain::getMapData(unsigned int *id, int *mapDataSetID) const
 		*id = 0;
 		*mapDataSetID = 0;
 	}
-	return mdf->getObjects()->at(*id);
+	return mdf->getObject(*id);
 }
 
 /**

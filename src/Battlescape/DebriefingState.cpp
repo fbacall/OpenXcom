@@ -57,12 +57,12 @@
 #include "../Savegame/BaseFacility.h"
 #include <sstream>
 #include "../Menu/ErrorMessageState.h"
-#include "../Menu/HelloCommanderState.h"
 #include "../Menu/MainMenuState.h"
 #include "../Interface/Cursor.h"
 #include "../Engine/Options.h"
 #include "../Engine/RNG.h"
 #include "../Basescape/ManageAlienContainmentState.h"
+#include "../Basescape/TransferBaseState.h"
 #include "../Engine/Screen.h"
 #include "../Basescape/SellState.h"
 #include "../Menu/SaveGameState.h"
@@ -96,6 +96,7 @@ DebriefingState::DebriefingState() : _region(0), _country(0), _positiveScore(tru
 	_btnOk = new TextButton(40, 12, 16, 180);
 	_btnStats = new TextButton(60, 12, 244, 180);
 	_btnSell = new TextButton(60, 12, 176, 180);
+	_btnTransfer = new TextButton(80, 12, 88, 180);
 	_txtTitle = new Text(300, 17, 16, 8);
 	_txtItem = new Text(180, 9, 16, 24);
 	_txtQuantity = new Text(60, 9, 200, 24);
@@ -138,6 +139,7 @@ DebriefingState::DebriefingState() : _region(0), _country(0), _positiveScore(tru
 	add(_btnOk, "button", "debriefing");
 	add(_btnStats, "button", "debriefing");
 	add(_btnSell, "button", "debriefing");
+	add(_btnTransfer, "button", "debriefing");
 	add(_txtTitle, "heading", "debriefing");
 	add(_txtItem, "text", "debriefing");
 	add(_txtQuantity, "text", "debriefing");
@@ -168,7 +170,7 @@ DebriefingState::DebriefingState() : _region(0), _country(0), _positiveScore(tru
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK01.SCR"));
+	setWindowBackground(_window, "debriefing");
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&DebriefingState::btnOkClick);
@@ -179,6 +181,8 @@ DebriefingState::DebriefingState() : _region(0), _country(0), _positiveScore(tru
 
 	_btnSell->setText(tr("STR_SELL"));
 	_btnSell->onMouseClick((ActionHandler)&DebriefingState::btnSellClick);
+	_btnTransfer->setText(tr("STR_TRANSFER_UC"));
+	_btnTransfer->onMouseClick((ActionHandler)&DebriefingState::btnTransferClick);
 
 	_txtTitle->setBig();
 
@@ -256,8 +260,16 @@ DebriefingState::DebriefingState() : _region(0), _country(0), _positiveScore(tru
 	_txtStrength->onMouseOut((ActionHandler)&DebriefingState::txtTooltipOut);
 
 	_txtPsiStrength->setAlign(ALIGN_CENTER);
-	_txtPsiStrength->setText(tr("STR_PSIONIC_STRENGTH_ABBREVIATION"));
-	_txtPsiStrength->setTooltip("STR_PSIONIC_STRENGTH");
+	if (_game->getMod()->isManaFeatureEnabled())
+	{
+		_txtPsiStrength->setText(tr("STR_MANA_ABBREVIATION"));
+		_txtPsiStrength->setTooltip("STR_MANA_POOL");
+	}
+	else
+	{
+		_txtPsiStrength->setText(tr("STR_PSIONIC_STRENGTH_ABBREVIATION"));
+		_txtPsiStrength->setTooltip("STR_PSIONIC_STRENGTH");
+	}
 	_txtPsiStrength->onMouseIn((ActionHandler)&DebriefingState::txtTooltipIn);
 	_txtPsiStrength->onMouseOut((ActionHandler)&DebriefingState::txtTooltipOut);
 
@@ -281,6 +293,11 @@ DebriefingState::DebriefingState() : _region(0), _country(0), _positiveScore(tru
 
 	for (std::vector<SoldierStatsEntry>::iterator i = _soldierStats.begin(); i != _soldierStats.end(); ++i)
 	{
+		auto tmp = (*i).second.psiStrength;
+		if (_game->getMod()->isManaFeatureEnabled())
+		{
+			tmp = (*i).second.mana;
+		}
 		_lstSoldierStats->addRow(13, (*i).first.c_str(),
 				makeSoldierString((*i).second.tu).c_str(),
 				makeSoldierString((*i).second.stamina).c_str(),
@@ -291,7 +308,7 @@ DebriefingState::DebriefingState() : _region(0), _country(0), _positiveScore(tru
 				makeSoldierString((*i).second.throwing).c_str(),
 				makeSoldierString((*i).second.melee).c_str(),
 				makeSoldierString((*i).second.strength).c_str(),
-				makeSoldierString((*i).second.psiStrength).c_str(),
+				makeSoldierString(tmp).c_str(),
 				makeSoldierString((*i).second.psiSkill).c_str(),
 				"");
 		// note: final dummy element to cause dot filling until the end of the line
@@ -312,7 +329,7 @@ DebriefingState::DebriefingState() : _region(0), _country(0), _positiveScore(tru
 
 				// IGNORE vehicles and their ammo
 				// Note: because their number in base has been messed up by Base::setupDefenses() already in geoscape :(
-				if (_game->getMod()->getUnit(*i) && !rule->isAlien())
+				if (rule->getVehicleUnit())
 				{
 					// if this vehicle requires ammo, remember to ignore it later too
 					if (!rule->getPrimaryCompatibleAmmo()->empty())
@@ -323,9 +340,10 @@ DebriefingState::DebriefingState() : _region(0), _country(0), _positiveScore(tru
 				}
 
 				qty -= origBaseItems->getItem(*i);
-				_recoveredItems[rule] = qty;
 				if (qty > 0)
 				{
+					_recoveredItems[rule] = qty;
+
 					std::ostringstream ss;
 					ss << Unicode::TOK_COLOR_FLIP << qty << Unicode::TOK_COLOR_FLIP;
 					std::string item = tr(*i);
@@ -403,6 +421,17 @@ DebriefingState::DebriefingState() : _region(0), _country(0), _positiveScore(tru
 		_country->addActivityXcom(total);
 	}
 
+	// Resize (if needed)
+	if (statsY > 80) statsY = 80;
+	if (recoveryY > 80) recoveryY = 80;
+	if (statsY + recoveryY > 120)
+	{
+		recoveryY = 120 - statsY;
+		if (recoveryY < 80) _lstRecovery->setHeight(recoveryY);
+		if (recoveryY > 80) recoveryY = 80;
+	}
+
+	// Reposition to fit the screen
 	if (recoveryY > 0)
 	{
 		if (_txtRecovery->getText().empty())
@@ -586,8 +615,12 @@ DebriefingState::DebriefingState() : _region(0), _country(0), _positiveScore(tru
 			{
 				(*j)->getStatistics()->mercyCross = true;
 			}
-			(*j)->getStatistics()->daysWounded = (*j)->getGeoscapeSoldier()->getWoundRecovery(0.0f, 0.0f);
-			_missionStatistics->injuryList[(*j)->getGeoscapeSoldier()->getId()] = (*j)->getGeoscapeSoldier()->getWoundRecovery(0.0f, 0.0f);
+			int daysWoundedTmp = (*j)->getGeoscapeSoldier()->getWoundRecovery(0.0f, 0.0f);
+			(*j)->getStatistics()->daysWounded = daysWoundedTmp;
+			if (daysWoundedTmp != 0)
+			{
+				_missionStatistics->injuryList[(*j)->getGeoscapeSoldier()->getId()] = daysWoundedTmp;
+			}
 
 			// Award Martyr Medal
 			if ((*j)->getMurdererId() == (*j)->getId() && (*j)->getStatistics()->kills.size() != 0)
@@ -709,6 +742,7 @@ void DebriefingState::applyVisibility()
 
 	// Set text on toggle button accordingly
 	_btnSell->setVisible(showItems && _showSellButton);
+	_btnTransfer->setVisible(showItems && _showSellButton && _game->getSavedGame()->getBases()->size() > 1);
 	if (showScore)
 	{
 		_btnStats->setText(tr("STR_STATS"));
@@ -781,6 +815,18 @@ void DebriefingState::btnSellClick(Action *)
 }
 
 /**
+ * Opens the Transfer UI (for recovered items ONLY).
+ * @param action Pointer to an action.
+ */
+void DebriefingState::btnTransferClick(Action *)
+{
+	if (!_destroyBase)
+	{
+		_game->pushState(new TransferBaseState(_base, this));
+	}
+}
+
+/**
  * Returns to the previous screen.
  * @param action Pointer to an action.
  */
@@ -797,9 +843,6 @@ void DebriefingState::btnOkClick(Action *)
 	}
 	_game->getSavedGame()->setBattleGame(0);
 	_game->popState();
-
-	_game->pushState(new HelloCommanderState);
-
 	if (_game->getSavedGame()->getMonthsPassed() == -1)
 	{
 		_game->setState(new MainMenuState);
@@ -822,7 +865,7 @@ void DebriefingState::btnOkClick(Action *)
 			}
 			if (!_missingItems.empty())
 			{
-				_game->pushState(new CannotReequipState(_missingItems));
+				_game->pushState(new CannotReequipState(_missingItems, _base));
 			}
 
 			// refresh! (we may have sold some prisoners in the meantime; directly from Debriefing)
@@ -901,39 +944,6 @@ void DebriefingState::addStat(const std::string &name, int quantity, int score)
 }
 
 /**
- * Clears the alien base from supply missions that use it.
- */
-class ClearAlienBase: public std::unary_function<AlienMission *, void>
-{
-public:
-	/// Remembers the base.
-	ClearAlienBase(const AlienBase *base) : _base(base) { /* Empty by design. */ }
-	/// Clears the base if required.
-	void operator()(AlienMission *am) const;
-private:
-	const AlienBase *_base;
-};
-
-/**
- * Removes the association between the alien mission and the alien base,
- * if one existed.
- * @param am Pointer to the alien mission.
- */
-void ClearAlienBase::operator()(AlienMission *am) const
-{
-	if (am->getAlienBase() == _base)
-	{
-		am->setAlienBase(0);
-
-		// if this is an Earth-based operation, losing the base means mission cannot continue anymore
-		if (am->getRules().getOperationType() != AMOT_SPACE)
-		{
-			am->setInterrupted(true);
-		}
-	}
-}
-
-/**
  * Prepares debriefing: gathers Aliens, Corpses, Artefacts, UFO Components.
  * Adds the items to the craft.
  * Also calculates the soldiers experience, and possible promotions.
@@ -964,13 +974,14 @@ void DebriefingState::prepareDebriefing()
 	{
 		ruleDeploy = alienCustomMission;
 	}
-	// OXCE+: Don't forget about UFO landings/crash sites
+	// OXCE: Don't forget about UFO landings/crash sites
 	if (!ruleDeploy)
 	{
 		for (std::vector<Ufo*>::iterator ufo = _game->getSavedGame()->getUfos()->begin(); ufo != _game->getSavedGame()->getUfos()->end(); ++ufo)
 		{
 			if ((*ufo)->isInBattlescape())
 			{
+				// Note: fake underwater UFO deployment was already considered above (via alienCustomMission)
 				ruleDeploy = _game->getMod()->getDeployment((*ufo)->getRules()->getType());
 				break;
 			}
@@ -980,7 +991,6 @@ void DebriefingState::prepareDebriefing()
 	bool aborted = battle->isAborted();
 	bool success = !aborted || battle->allObjectivesDestroyed();
 	Craft *craft = 0;
-	std::vector<Craft*>::iterator craftIterator;
 	Base *base = 0;
 	std::string target;
 
@@ -1007,6 +1017,11 @@ void DebriefingState::prepareDebriefing()
 		if (ruleDeploy->getObjectiveFailedInfo(objectiveFailedText, objectiveFailedScore))
 		{
 			_stats.push_back(new DebriefingStat(objectiveFailedText, false));
+		}
+		if (aborted && ruleDeploy->getAbortPenalty() != 0)
+		{
+			_stats.push_back(new DebriefingStat("STR_MISSION_ABORTED", false));
+			addStat("STR_MISSION_ABORTED", 1, -ruleDeploy->getAbortPenalty());
 		}
 	}
 
@@ -1055,11 +1070,10 @@ void DebriefingState::prepareDebriefing()
 				}
 				craft = (*j);
 				base = (*i);
-				craftIterator = j;
 				if (craft->getDestination() != 0)
 				{
 					_missionStatistics->markerName = craft->getDestination()->getMarkerName();
-					_missionStatistics->markerId = craft->getDestination()->getId();
+					_missionStatistics->markerId = craft->getDestination()->getMarkerId();
 					target = craft->getDestination()->getType();
 					// Ignore custom mission names
 					if (dynamic_cast<AlienBase*>(craft->getDestination()))
@@ -1119,7 +1133,7 @@ void DebriefingState::prepareDebriefing()
 			{
 				if (AreSame((*k)->getLongitude(), base->getLongitude()) && AreSame((*k)->getLatitude(), base->getLatitude()))
 				{
-					_missionStatistics->ufo = (*k)->getRules()->getType();
+					_missionStatistics->ufo = (*k)->getRules()->getType(); // no need to check for fake underwater UFOs here
 					_missionStatistics->alienRace = (*k)->getAlienRace();
 					break;
 				}
@@ -1228,7 +1242,7 @@ void DebriefingState::prepareDebriefing()
 	{
 		if ((*i)->isInBattlescape())
 		{
-			_missionStatistics->ufo = (*i)->getRules()->getType();
+			_missionStatistics->ufo = (*i)->getRules()->getType(); // no need to check for fake underwater UFOs here
 			if (save->getMonthsPassed() != -1)
 			{
 				_missionStatistics->alienRace = (*i)->getAlienRace();
@@ -1318,22 +1332,7 @@ void DebriefingState::prepareDebriefing()
 				{
 					addStat(objectiveCompleteText, 1, objectiveCompleteScore);
 				}
-				// Take care to remove supply missions for this base.
-				std::for_each(save->getAlienMissions().begin(), save->getAlienMissions().end(),
-							ClearAlienBase(*i));
-
-				// If there was a pact with this base, cancel it?
-				if (_game->getMod()->getAllowCountriesToCancelAlienPact() && !(*i)->getPactCountry().empty())
-				{
-					for (std::vector<Country*>::iterator cntr = _game->getSavedGame()->getCountries()->begin(); cntr != _game->getSavedGame()->getCountries()->end(); ++cntr)
-					{
-						if ((*cntr)->getRules()->getType() == (*i)->getPactCountry())
-						{
-							(*cntr)->setCancelPact();
-							break;
-						}
-					}
-				}
+				save->clearLinksForAlienBase((*i), _game->getMod());
 				delete *i;
 				save->getAlienBases()->erase(i);
 				break;
@@ -1428,7 +1427,7 @@ void DebriefingState::prepareDebriefing()
 				if ((((*j)->isInExitArea(START_POINT) || (*j)->getStatus() == STATUS_IGNORE_ME) && (battle->getMissionType() != "STR_BASE_DEFENSE" || success)) || !aborted || (aborted && (*j)->isInExitArea(END_POINT)))
 				{ // so game is not aborted or aborted and unit is on exit area
 					StatAdjustment statIncrease;
-					(*j)->postMissionProcedures(save, battle, statIncrease);
+					(*j)->postMissionProcedures(_game->getMod(), save, battle, statIncrease);
 					if ((*j)->getGeoscapeSoldier())
 						_soldierStats.push_back(std::pair<std::string, UnitStats>((*j)->getGeoscapeSoldier()->getName(), statIncrease.statGrowth));
 					playersInExitArea++;
@@ -1451,7 +1450,7 @@ void DebriefingState::prepareDebriefing()
 								const RuleItem *primaryRule = weapon->getRules();
 								const BattleItem *ammoItem = weapon->getAmmoForSlot(0);
 								const auto *compatible = primaryRule->getPrimaryCompatibleAmmo();
-								if (!compatible->empty() && ammoItem != 0 && ammoItem->getAmmoQuantity() > 0)
+								if (primaryRule->getVehicleUnit() && !compatible->empty() && ammoItem != 0 && ammoItem->getAmmoQuantity() > 0)
 								{
 									int total = ammoItem->getAmmoQuantity();
 
@@ -1571,10 +1570,10 @@ void DebriefingState::prepareDebriefing()
 			// all vehicle object in the craft is also referenced by base->getVehicles() !!)
 			_game->getSavedGame()->stopHuntingXcomCraft(craft); // lost during ground mission
 			_game->getSavedGame()->removeAllSoldiersFromXcomCraft(craft); // needed in case some soldiers couldn't spawn
+			base->removeCraft(craft, false);
 			delete craft;
 			craft = 0; // To avoid a crash down there!!
 			lostCraft = true;
-			base->getCrafts()->erase(craftIterator);
 		}
 		playersSurvived = 0; // assuming you aborted and left everyone behind
 		success = false;
@@ -1634,7 +1633,7 @@ void DebriefingState::prepareDebriefing()
 			// we can recover items from the earlier stages as well
 			recoverItems(battle->getConditionalRecoveredItems(), base);
 			size_t nonRecoverType = 0;
-			if (ruleDeploy && ruleDeploy->getObjectiveType())
+			if (ruleDeploy && ruleDeploy->getObjectiveType() && !ruleDeploy->allowObjectiveRecovery())
 			{
 				nonRecoverType = ruleDeploy->getObjectiveType();
 			}
@@ -1794,12 +1793,24 @@ void DebriefingState::prepareDebriefing()
 	for (std::map<const RuleItem*, int>::const_iterator i = _roundsPainKiller.begin(); i != _roundsPainKiller.end(); ++i)
 	{
 		int totalRecovered = INT_MAX;
-		if (i->first->getPainKillerQuantity() > 0)
-			totalRecovered = std::min(totalRecovered, i->second / i->first->getPainKillerQuantity());
-		if (i->first->getStimulantQuantity() > 0)
-			totalRecovered = std::min(totalRecovered, _roundsStimulant[i->first] / i->first->getStimulantQuantity());
-		if (i->first->getHealQuantity() > 0)
-			totalRecovered = std::min(totalRecovered, _roundsHeal[i->first] / i->first->getHealQuantity());
+		if (_game->getMod()->getStatisticalBulletConservation())
+		{
+			if (i->first->getPainKillerQuantity() > 0)
+				totalRecovered = std::min(totalRecovered, (i->second + RNG::generate(0, (i->first->getPainKillerQuantity() - 1))) / i->first->getPainKillerQuantity());
+			if (i->first->getStimulantQuantity() > 0)
+				totalRecovered = std::min(totalRecovered, (_roundsStimulant[i->first] + RNG::generate(0, (i->first->getStimulantQuantity() - 1))) / i->first->getStimulantQuantity());
+			if (i->first->getHealQuantity() > 0)
+				totalRecovered = std::min(totalRecovered, (_roundsHeal[i->first] + RNG::generate(0, (i->first->getHealQuantity() - 1))) / i->first->getHealQuantity());
+		}
+		else
+		{
+			if (i->first->getPainKillerQuantity() > 0)
+				totalRecovered = std::min(totalRecovered, i->second / i->first->getPainKillerQuantity());
+			if (i->first->getStimulantQuantity() > 0)
+				totalRecovered = std::min(totalRecovered, _roundsStimulant[i->first] / i->first->getStimulantQuantity());
+			if (i->first->getHealQuantity() > 0)
+				totalRecovered = std::min(totalRecovered, _roundsHeal[i->first] / i->first->getHealQuantity());
+		}
 
 		if (totalRecovered > 0)
 		{
@@ -1897,6 +1908,19 @@ void DebriefingState::prepareDebriefing()
 		if (research)
 		{
 			_game->getSavedGame()->addFinishedResearch(research, _game->getMod(), base, true);
+
+			// check and interrupt alien missions if necessary (based on unlocked research)
+			for (auto am : _game->getSavedGame()->getAlienMissions())
+			{
+				auto interruptResearchName = am->getRules().getInterruptResearch();
+				if (!interruptResearchName.empty())
+				{
+					if (interruptResearchName == research->getName())
+					{
+						am->setInterrupted(true);
+					}
+				}
+			}
 		}
 
 		// Give bounty item defined in alien deployment, if the mission was a success
@@ -2099,7 +2123,7 @@ void DebriefingState::addItemsToBaseStores(const std::string &itemType, Base *ba
 /**
  * Recovers items from the battlescape.
  *
- * Converts the battlescape inventory into a geoscape itemcontainer.
+ * Converts the battlescape inventory into a geoscape item container.
  * @param from Items recovered from the battlescape.
  * @param base Base to add items to.
  */
@@ -2246,7 +2270,7 @@ void DebriefingState::recoverItems(std::vector<BattleItem*> *from, Base *base)
 				}
 			}
 			// special case of fixed weapons on a soldier's armor, but not HWPs
-			// makes sure we recover the ammuntion from this weapon
+			// makes sure we recover the ammunition from this weapon
 			else if (rule->isFixed() && (*it)->getOwner()->getOriginalFaction() == FACTION_PLAYER && (*it)->getOwner()->getGeoscapeSoldier())
 			{
 				switch (rule->getBattleType())
@@ -2348,8 +2372,19 @@ void DebriefingState::recoverCivilian(BattleUnit *from, Base *base)
  */
 void DebriefingState::recoverAlien(BattleUnit *from, Base *base)
 {
+	// Transform a live alien into one or more recovered items?
+	RuleItem* liveAlienItemRule = _game->getMod()->getItem(from->getType());
+	if (!liveAlienItemRule->getRecoveryTransformations().empty())
+	{
+		addItemsToBaseStores(liveAlienItemRule, base, 1, true);
+
+		// Ignore everything else, e.g. no points for live/dead aliens (since you did NOT recover them)
+		// Also no points or anything else for the recovered items
+		return;
+	}
+
 	// Zombie handling: don't recover a zombie.
-	if (!from->getSpawnUnit().empty())
+	if (from->getSpawnUnit())
 	{
 		// convert it, and mind control the resulting unit.
 		// reason: zombies don't create unconscious bodies... ever.
@@ -2426,22 +2461,53 @@ void DebriefingState::recoverAlien(BattleUnit *from, Base *base)
 }
 
 /**
-* Gets the number of recovered items of certain type.
-* @param rule Type of item.
-*/
+ * Gets the number of recovered items of certain type.
+ * @param rule Type of item.
+ */
 int DebriefingState::getRecoveredItemCount(RuleItem *rule)
 {
-	return _recoveredItems[rule];
+	auto it = _recoveredItems.find(rule);
+	if (it != _recoveredItems.end())
+		return it->second;
+
+	return 0;
 }
 
 /**
-* Sets the visibility of the SELL button.
-* @param showSellButton New value.
-*/
-void DebriefingState::setShowSellButton(bool showSellButton)
+ * Gets the total number of recovered items.
+ */
+int DebriefingState::getTotalRecoveredItemCount()
 {
-	_showSellButton = showSellButton;
+	int total = 0;
+	for (auto item : _recoveredItems)
+	{
+		total += item.second;
+	}
+	return total;
+}
+
+/**
+ * Decreases the number of recovered items by the sold/transferred amount.
+ * @param rule Type of item.
+ * @param amount Number of items sold or transferred.
+ */
+void DebriefingState::decreaseRecoveredItemCount(RuleItem *rule, int amount)
+{
+	auto it = _recoveredItems.find(rule);
+	if (it != _recoveredItems.end())
+	{
+		_recoveredItems[rule] = std::max(0, _recoveredItems[rule] - amount);
+	}
+}
+
+/**
+ * Hides the SELL and TRANSFER buttons.
+ */
+void DebriefingState::hideSellTransferButtons()
+{
+	_showSellButton = false;
 	_btnSell->setVisible(_showSellButton);
+	_btnTransfer->setVisible(_showSellButton);
 }
 
 }

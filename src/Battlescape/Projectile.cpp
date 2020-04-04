@@ -40,7 +40,7 @@ namespace OpenXcom
 /**
  * Sets up a UnitSprite with the specified size and position.
  * @param mod Pointer to mod.
- * @param save Pointer to battlesavegame.
+ * @param save Pointer to battle savegame.
  * @param action An action.
  * @param origin Position the projectile originates from.
  * @param targetVoxel Position the projectile is targeting.
@@ -286,9 +286,11 @@ int Projectile::calculateThrow(double accuracy)
 	if (!forced && test == V_OUTOFBOUNDS) return test; //no line of fire
 
 	test = V_OUTOFBOUNDS;
+	int tries = 0;
 	// finally do a line calculation and store this trajectory, make sure it's valid.
-	while (test == V_OUTOFBOUNDS)
+	while (test == V_OUTOFBOUNDS && tries < 100)
 	{
+		++tries;
 		Position deltas = targetVoxel;
 		// apply some accuracy modifiers
 		_trajectory.clear();
@@ -321,7 +323,7 @@ int Projectile::calculateThrow(double accuracy)
 
 /**
  * Calculates the new target in voxel space, based on the given accuracy modifier.
- * @param origin Startposition of the trajectory in voxels.
+ * @param origin Start position of the trajectory in voxels.
  * @param target Endpoint of the trajectory in voxels.
  * @param accuracy Accuracy modifier.
  * @param keepRange Whether range affects accuracy.
@@ -556,17 +558,18 @@ bool Projectile::isReversed() const
  */
 void Projectile::addVaporCloud()
 {
-	Tile *tile = _save->getTile(_trajectory.at(_position).toTile());
+	auto voxelPos = _trajectory.at(_position);
+	Tile *tile = _save->getTile(voxelPos.toTile());
 	if (tile)
 	{
-		Position tilePos, voxelPos;
-		_save->getBattleGame()->getMap()->getCamera()->convertMapToScreen(_trajectory.at(_position).toTile(), &tilePos);
-		tilePos += _save->getBattleGame()->getMap()->getCamera()->getMapOffset();
-		_save->getBattleGame()->getMap()->getCamera()->convertVoxelToScreen(_trajectory.at(_position), &voxelPos);
+		Position voxelScreenPos;
+		_save->getBattleGame()->getMap()->getCamera()->convertVoxelToScreen(voxelPos, &voxelScreenPos);
+		voxelScreenPos -= _save->getBattleGame()->getMap()->getCamera()->getMapOffset();
 		for (int i = 0; i != _vaporDensity; ++i)
 		{
-			Particle *particle = new Particle(voxelPos.x - tilePos.x + RNG::seedless(0, 4) - 2, voxelPos.y - tilePos.y + RNG::seedless(0, 4) - 2, RNG::seedless(48, 224), _vaporColor, RNG::seedless(32, 44));
-			tile->addParticle(particle);
+			auto offset = RNG::seedless(0, 4) - 2;
+			Particle particle = Particle(voxelPos.z - offset, voxelScreenPos.x + RNG::seedless(0, 4) - 2, voxelScreenPos.y + offset, RNG::seedless(48, 224), _vaporColor, RNG::seedless(32, 44));
+			_save->getBattleGame()->getMap()->addVaporParticle(tile, particle);
 		}
 	}
 }

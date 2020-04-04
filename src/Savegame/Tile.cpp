@@ -50,23 +50,24 @@ Tile::SerializationKey Tile::serializationKey =
  * constructor
  * @param pos Position.
  */
-Tile::Tile(Position pos): _smoke(0), _fire(0), _explosive(0), _explosiveType(0), _pos(pos), _unit(0), _animationOffset(0), _markerColor(0), _visible(false), _preview(-1), _TUMarker(-1), _overlaps(0), _danger(false), _obstacle(0)
+Tile::Tile(Position pos): _pos(pos), _unit(0), _visible(false), _preview(-1), _TUMarker(-1), _overlaps(0)
 {
-	for (int i = 0; i < 4; ++i)
+	for (int i = 0; i < O_MAX; ++i)
 	{
 		_objects[i] = 0;
-		_mapDataID[i] = -1;
-		_mapDataSetID[i] = -1;
-		_currentFrame[i] = 0;
+		_mapData->ID[i] = -1;
+		_mapData->SetID[i] = -1;
+		_objectsCache[i].currentFrame = 0;
 	}
 	for (int layer = 0; layer < LL_MAX; layer++)
 	{
 		_light[layer] = 0;
 	}
-	for (int i = 0; i < 3; ++i)
+	for (int i = 0; i < O_MAX; ++i)
 	{
-		_discovered[i] = false;
+		_objectsCache[i].discovered = 0;
 	}
+	_cache.isNoFloor = 1;
 }
 
 /**
@@ -75,11 +76,6 @@ Tile::Tile(Position pos): _smoke(0), _fire(0), _explosive(0), _explosiveType(0),
 Tile::~Tile()
 {
 	_inventory.clear();
-	for (std::list<Particle*>::iterator i = _particles.begin(); i != _particles.end(); ++i)
-	{
-		delete *i;
-	}
-	_particles.clear();
 }
 
 /**
@@ -91,8 +87,8 @@ void Tile::load(const YAML::Node &node)
 	//_position = node["position"].as<Position>(_position);
 	for (int i = 0; i < 4; i++)
 	{
-		_mapDataID[i] = node["mapDataID"][i].as<int>(_mapDataID[i]);
-		_mapDataSetID[i] = node["mapDataSetID"][i].as<int>(_mapDataSetID[i]);
+		_mapData->ID[i] = node["mapDataID"][i].as<int>(_mapData->ID[i]);
+		_mapData->SetID[i] = node["mapDataSetID"][i].as<int>(_mapData->SetID[i]);
 	}
 	_fire = node["fire"].as<int>(_fire);
 	_smoke = node["smoke"].as<int>(_smoke);
@@ -100,16 +96,17 @@ void Tile::load(const YAML::Node &node)
 	{
 		for (int i = 0; i < 3; i++)
 		{
-			_discovered[i] = node["discovered"][i].as<bool>();
+			auto realTilePart = (i == 2 ? 0 : i - 1); //convert old convention to new one
+			_objectsCache[realTilePart].discovered = (Uint8)node["discovered"][i].as<bool>();
 		}
 	}
 	if (node["openDoorWest"])
 	{
-		_currentFrame[1] = 7;
+		_objectsCache[1].currentFrame = 7;
 	}
 	if (node["openDoorNorth"])
 	{
-		_currentFrame[2] = 7;
+		_objectsCache[2].currentFrame = 7;
 	}
 	if (_fire || _smoke)
 	{
@@ -124,24 +121,24 @@ void Tile::load(const YAML::Node &node)
  */
 void Tile::loadBinary(Uint8 *buffer, Tile::SerializationKey& serKey)
 {
-	_mapDataID[0] = unserializeInt(&buffer, serKey._mapDataID);
-	_mapDataID[1] = unserializeInt(&buffer, serKey._mapDataID);
-	_mapDataID[2] = unserializeInt(&buffer, serKey._mapDataID);
-	_mapDataID[3] = unserializeInt(&buffer, serKey._mapDataID);
-	_mapDataSetID[0] = unserializeInt(&buffer, serKey._mapDataSetID);
-	_mapDataSetID[1] = unserializeInt(&buffer, serKey._mapDataSetID);
-	_mapDataSetID[2] = unserializeInt(&buffer, serKey._mapDataSetID);
-	_mapDataSetID[3] = unserializeInt(&buffer, serKey._mapDataSetID);
+	_mapData->ID[0] = unserializeInt(&buffer, serKey._mapDataID);
+	_mapData->ID[1] = unserializeInt(&buffer, serKey._mapDataID);
+	_mapData->ID[2] = unserializeInt(&buffer, serKey._mapDataID);
+	_mapData->ID[3] = unserializeInt(&buffer, serKey._mapDataID);
+	_mapData->SetID[0] = unserializeInt(&buffer, serKey._mapDataSetID);
+	_mapData->SetID[1] = unserializeInt(&buffer, serKey._mapDataSetID);
+	_mapData->SetID[2] = unserializeInt(&buffer, serKey._mapDataSetID);
+	_mapData->SetID[3] = unserializeInt(&buffer, serKey._mapDataSetID);
 
 	_smoke = unserializeInt(&buffer, serKey._smoke);
 	_fire = unserializeInt(&buffer, serKey._fire);
 
 	Uint8 boolFields = unserializeInt(&buffer, serKey.boolFields);
-	_discovered[0] = (boolFields & 1) ? true : false;
-	_discovered[1] = (boolFields & 2) ? true : false;
-	_discovered[2] = (boolFields & 4) ? true : false;
-	_currentFrame[1] = (boolFields & 8) ? 7 : 0;
-	_currentFrame[2] = (boolFields & 0x10) ? 7 : 0;
+	_objectsCache[O_WESTWALL].discovered = (boolFields & 1) ? 1 : 0;
+	_objectsCache[O_NORTHWALL].discovered = (boolFields & 2) ? 1 : 0;
+	_objectsCache[O_FLOOR].discovered = (boolFields & 4) ? 1 : 0;
+	_objectsCache[O_WESTWALL].currentFrame = (boolFields & 8) ? 7 : 0;
+	_objectsCache[O_NORTHWALL].currentFrame = (boolFields & 0x10) ? 7 : 0;
 	if (_fire || _smoke)
 	{
 		_animationOffset = RNG::seedless(0, 3);
@@ -159,19 +156,20 @@ YAML::Node Tile::save() const
 	node["position"] = _pos;
 	for (int i = 0; i < 4; i++)
 	{
-		node["mapDataID"].push_back(_mapDataID[i]);
-		node["mapDataSetID"].push_back(_mapDataSetID[i]);
+		node["mapDataID"].push_back(_mapData->ID[i]);
+		node["mapDataSetID"].push_back(_mapData->SetID[i]);
 	}
 	if (_smoke)
 		node["smoke"] = _smoke;
 	if (_fire)
 		node["fire"] = _fire;
-	if (_discovered[O_FLOOR] || _discovered[O_WESTWALL] || _discovered[O_NORTHWALL])
+	if (_objectsCache[O_FLOOR].discovered || _objectsCache[O_WESTWALL].discovered || _objectsCache[O_NORTHWALL].discovered)
 	{
-		for (int i = O_FLOOR; i <= O_NORTHWALL; i++)
-		{
-			node["discovered"].push_back(_discovered[i]);
-		}
+		throw Exception("Obsolete code");
+//		for (int i = O_FLOOR; i <= O_NORTHWALL; i++)
+//		{
+//			node["discovered"].push_back(_objectsCache[i].discovered);
+//		}
 	}
 	if (isUfoDoorOpen(O_WESTWALL))
 	{
@@ -190,19 +188,19 @@ YAML::Node Tile::save() const
  */
 void Tile::saveBinary(Uint8** buffer) const
 {
-	serializeInt(buffer, serializationKey._mapDataID, _mapDataID[0]);
-	serializeInt(buffer, serializationKey._mapDataID, _mapDataID[1]);
-	serializeInt(buffer, serializationKey._mapDataID, _mapDataID[2]);
-	serializeInt(buffer, serializationKey._mapDataID, _mapDataID[3]);
-	serializeInt(buffer, serializationKey._mapDataSetID, _mapDataSetID[0]);
-	serializeInt(buffer, serializationKey._mapDataSetID, _mapDataSetID[1]);
-	serializeInt(buffer, serializationKey._mapDataSetID, _mapDataSetID[2]);
-	serializeInt(buffer, serializationKey._mapDataSetID, _mapDataSetID[3]);
+	serializeInt(buffer, serializationKey._mapDataID, _mapData->ID[0]);
+	serializeInt(buffer, serializationKey._mapDataID, _mapData->ID[1]);
+	serializeInt(buffer, serializationKey._mapDataID, _mapData->ID[2]);
+	serializeInt(buffer, serializationKey._mapDataID, _mapData->ID[3]);
+	serializeInt(buffer, serializationKey._mapDataSetID, _mapData->SetID[0]);
+	serializeInt(buffer, serializationKey._mapDataSetID, _mapData->SetID[1]);
+	serializeInt(buffer, serializationKey._mapDataSetID, _mapData->SetID[2]);
+	serializeInt(buffer, serializationKey._mapDataSetID, _mapData->SetID[3]);
 
 	serializeInt(buffer, serializationKey._smoke, _smoke);
 	serializeInt(buffer, serializationKey._fire, _fire);
 
-	Uint8 boolFields = (_discovered[0]?1:0) + (_discovered[1]?2:0) + (_discovered[2]?4:0);
+	Uint8 boolFields = (_objectsCache[O_WESTWALL].discovered?1:0) + (_objectsCache[O_NORTHWALL].discovered?2:0) + (_objectsCache[O_FLOOR].discovered?4:0);
 	boolFields |= isUfoDoorOpen(O_WESTWALL) ? 8 : 0; // west
 	boolFields |= isUfoDoorOpen(O_NORTHWALL) ? 0x10 : 0; // north?
 	serializeInt(buffer, serializationKey.boolFields, boolFields);
@@ -218,8 +216,37 @@ void Tile::saveBinary(Uint8** buffer) const
 void Tile::setMapData(MapData *dat, int mapDataID, int mapDataSetID, TilePart part)
 {
 	_objects[part] = dat;
-	_mapDataID[part] = mapDataID;
-	_mapDataSetID[part] = mapDataSetID;
+	_mapData->ID[part] = mapDataID;
+	_mapData->SetID[part] = mapDataSetID;
+	_objectsCache[part].isDoor = dat ? dat->isDoor() : 0;
+	_objectsCache[part].isUfoDoor = dat ? dat->isUFODoor() : 0;
+	_objectsCache[part].offsetY = dat ? dat->getYOffset() : 0;
+	_objectsCache[part].isBackTileObject = dat ? dat->isBackTileObject() : 0;
+	if (part == O_FLOOR || part == O_OBJECT)
+	{
+		int level = 0;
+
+		if (_objects[O_FLOOR])
+		{
+			level = _objects[O_FLOOR]->getTerrainLevel();
+			_cache.isNoFloor = _objects[O_FLOOR]->isNoFloor();
+		}
+		else
+		{
+			_cache.isNoFloor = 1;
+		}
+		// whichever's higher, but not the sum.
+		if (_objects[O_OBJECT])
+		{
+			level = std::min(_objects[O_OBJECT]->getTerrainLevel(), level);
+			_cache.bigWall = _objects[O_OBJECT]->getBigWall() != 0;
+		}
+		else
+		{
+			_cache.bigWall = 0;
+		}
+		_cache.terrainLevel = level;
+	}
 	updateSprite(part);
 }
 
@@ -232,8 +259,8 @@ void Tile::setMapData(MapData *dat, int mapDataID, int mapDataSetID, TilePart pa
  */
 void Tile::getMapData(int *mapDataID, int *mapDataSetID, TilePart part) const
 {
-	*mapDataID = _mapDataID[part];
-	*mapDataSetID = _mapDataSetID[part];
+	*mapDataID = _mapData->ID[part];
+	*mapDataSetID = _mapData->SetID[part];
 }
 
 /**
@@ -255,7 +282,7 @@ int Tile::getTUCost(int part, MovementType movementType) const
 {
 	if (_objects[part])
 	{
-		if (_objects[part]->isUFODoor() && _currentFrame[part] > 1)
+		if (_objectsCache[part].isUfoDoor && _objectsCache[part].currentFrame > 1)
 			return 0;
 		if (part == O_OBJECT && _objects[part]->getBigWall() >= 4)
 			return 0;
@@ -272,45 +299,18 @@ int Tile::getTUCost(int part, MovementType movementType) const
  */
 bool Tile::hasNoFloor(const SavedBattleGame *savedBattleGame) const
 {
-	if (_pos.z > 0 && savedBattleGame)
+	//There's no point in checking for "floor" below if we have floor in this tile already.
+	if (_cache.isNoFloor)
 	{
-		const Tile* tileBelow = savedBattleGame->getBelowTile(this);
-		if (tileBelow != 0 && tileBelow->getTerrainLevel() == -24)
-			return false;
+		if (_pos.z > 0 && savedBattleGame)
+		{
+			const Tile* tileBelow = savedBattleGame->getBelowTile(this);
+			if (tileBelow != 0 && tileBelow->getTerrainLevel() == -24)
+				return false;
+		}
 	}
-	if (_objects[O_FLOOR])
-		return _objects[O_FLOOR]->isNoFloor();
-	else
-		return true;
-}
 
-/**
- * Whether this tile has a big wall.
- * @return bool
- */
-bool Tile::isBigWall() const
-{
-	if (_objects[O_OBJECT])
-		return (_objects[O_OBJECT]->getBigWall() != 0);
-	else
-		return false;
-}
-
-/**
- * If an object stand on this tile, this returns how high the unit is it standing.
- * @return the level in pixels (so negative values are higher)
- */
-int Tile::getTerrainLevel() const
-{
-	int level = 0;
-
-	if (_objects[O_FLOOR])
-		level = _objects[O_FLOOR]->getTerrainLevel();
-	// whichever's higher, but not the sum.
-	if (_objects[O_OBJECT])
-		level = std::min(_objects[O_OBJECT]->getTerrainLevel(), level);
-
-	return level;
+	return _cache.isNoFloor;
 }
 
 /**
@@ -338,9 +338,10 @@ int Tile::getFootstepSound(Tile *tileBelow) const
  * @param part
  * @param unit
  * @param reserve
+ * @param rClick
  * @return a value: 0(normal door), 1(ufo door) or -1 if no door opened or 3 if ufo door(=animated) is still opening 4 if not enough TUs
  */
-int Tile::openDoor(TilePart part, BattleUnit *unit, BattleActionType reserve)
+int Tile::openDoor(TilePart part, BattleUnit *unit, BattleActionType reserve, bool rClick)
 {
 	if (!_objects[part]) return -1;
 
@@ -350,29 +351,34 @@ int Tile::openDoor(TilePart part, BattleUnit *unit, BattleActionType reserve)
 		int tuCost = _objects[part]->getTUCost(unit->getMovementType());
 		cost = BattleActionCost(reserve, unit, unit->getMainHandWeapon(false));
 		cost.Time += tuCost;
-		cost.Energy += tuCost / 2;
+		if (!rClick)
+		{
+			cost.Energy += tuCost / 2;
+		}
 	}
 
-	if (_objects[part]->isDoor() && unit->getArmor()->getSize() == 1) // don't allow double-wide units to open swinging doors due to engine limitations
+	if (_objectsCache[part].isDoor)
 	{
+		if (unit && unit->getArmor()->getSize() > 1) // don't allow double-wide units to open swinging doors due to engine limitations
+			return -1;
 		if (unit && cost.Time && !cost.haveTU())
 			return 4;
 		if (_unit && _unit != unit && _unit->getPosition() != getPosition())
 			return -1;
-		setMapData(_objects[part]->getDataset()->getObjects()->at(_objects[part]->getAltMCD()), _objects[part]->getAltMCD(), _mapDataSetID[part],
-				   _objects[part]->getDataset()->getObjects()->at(_objects[part]->getAltMCD())->getObjectType());
+		setMapData(_objects[part]->getDataset()->getObject(_objects[part]->getAltMCD()), _objects[part]->getAltMCD(), _mapData->SetID[part],
+				   _objects[part]->getDataset()->getObject(_objects[part]->getAltMCD())->getObjectType());
 		setMapData(0, -1, -1, part);
 		return 0;
 	}
-	if (_objects[part]->isUFODoor() && _currentFrame[part] == 0) // ufo door part 0 - door is closed
+	if (_objectsCache[part].isUfoDoor && _objectsCache[part].currentFrame == 0) // ufo door part 0 - door is closed
 	{
 		if (unit && cost.Time && !cost.haveTU())
 			return 4;
-		_currentFrame[part] = 1; // start opening door
+		_objectsCache[part].currentFrame = 1; // start opening door
 		updateSprite((TilePart)part);
 		return 1;
 	}
-	if (_objects[part]->isUFODoor() && _currentFrame[part] != 7) // ufo door != part 7 - door is still opening
+	if (_objectsCache[part].isUfoDoor && _objectsCache[part].currentFrame != 7) // ufo door != part 7 - door is still opening
 	{
 		return 3;
 	}
@@ -387,7 +393,7 @@ int Tile::closeUfoDoor()
 	{
 		if (isUfoDoorOpen((TilePart)part))
 		{
-			_currentFrame[part] = 0;
+			_objectsCache[part].currentFrame = 0;
 			retval = 1;
 			updateSprite((TilePart)part);
 		}
@@ -399,29 +405,29 @@ int Tile::closeUfoDoor()
 /**
  * Sets the tile's cache flag. - TODO: set this for each object separately?
  * @param flag true/false
- * @param part 0-2 westwall/northwall/content+floor
+ * @param part Tile part
  */
-void Tile::setDiscovered(bool flag, int part)
+void Tile::setDiscovered(bool flag, TilePart part)
 {
-	if (_discovered[part] != flag)
+	if (_objectsCache[part].discovered != flag)
 	{
-		_discovered[part] = flag;
-		if (part == 2 && flag == true)
+		_objectsCache[part].discovered = flag;
+		if (part == O_FLOOR && flag == true)
 		{
-			_discovered[0] = true;
-			_discovered[1] = true;
+			_objectsCache[O_WESTWALL].discovered = true;
+			_objectsCache[O_NORTHWALL].discovered = true;
 		}
 	}
 }
 
 /**
  * Get the black fog of war state of this tile.
- * @param part 0-2 westwall/northwall/content+floor
+ * @param part Tile part
  * @return bool True = discovered the tile.
  */
-bool Tile::isDiscovered(int part) const
+bool Tile::isDiscovered(TilePart part) const
 {
-	return _discovered[part];
+	return _objectsCache[part].discovered;
 }
 
 
@@ -516,11 +522,11 @@ bool Tile::destroy(TilePart part, SpecialTileType type)
 			return false;
 		_objective = _objects[part]->getSpecialType() == type;
 		MapData *originalPart = _objects[part];
-		int originalMapDataSetID = _mapDataSetID[part];
+		int originalMapDataSetID = _mapData->SetID[part];
 		setMapData(0, -1, -1, part);
 		if (originalPart->getDieMCD())
 		{
-			MapData *dead = originalPart->getDataset()->getObjects()->at(originalPart->getDieMCD());
+			MapData *dead = originalPart->getDataset()->getObject(originalPart->getDieMCD());
 			setMapData(dead, originalPart->getDieMCD(), originalMapDataSetID, dead->getObjectType());
 		}
 		if (originalPart->getExplosive())
@@ -674,12 +680,12 @@ void Tile::animate()
 	{
 		if (_objects[i])
 		{
-			if (_objects[i]->isUFODoor() && (_currentFrame[i] == 0 || _currentFrame[i] == 7)) // ufo door is static
+			if (_objectsCache[i].isUfoDoor && (_objectsCache[i].currentFrame == 0 || _objectsCache[i].currentFrame == 7)) // ufo door is static
 			{
 				continue;
 			}
-			newframe = _currentFrame[i] + 1;
-			if (_objects[i]->isUFODoor() && _objects[i]->getSpecialType() == START_POINT && newframe == 3)
+			newframe = _objectsCache[i].currentFrame + 1;
+			if (_objectsCache[i].isUfoDoor && _objects[i]->getSpecialType() == START_POINT && newframe == 3)
 			{
 				newframe = 7;
 			}
@@ -687,21 +693,9 @@ void Tile::animate()
 			{
 				newframe = 0;
 			}
-			_currentFrame[i] = newframe;
+			_objectsCache[i].currentFrame = newframe;
 		}
 		updateSprite((TilePart)i);
-	}
-	for (std::list<Particle*>::iterator i = _particles.begin(); i != _particles.end();)
-	{
-		if (!(*i)->animate())
-		{
-			delete *i;
-			i = _particles.erase(i);
-		}
-		else
-		{
-			++i;
-		}
 	}
 }
 
@@ -712,7 +706,7 @@ void Tile::updateSprite(TilePart part)
 {
 	if (_objects[part])
 	{
-		_currentSurface[part] = _objects[part]->getDataset()->getSurfaceset()->getFrame(_objects[part]->getSprite(_currentFrame[part]));
+		_currentSurface[part] = _objects[part]->getDataset()->getSurfaceset()->getFrame(_objects[part]->getSprite(_objectsCache[part].currentFrame));
 	}
 	else
 	{
@@ -746,7 +740,7 @@ BattleUnit *Tile::getOverlappingUnit(const SavedBattleGame *saveBattleGame, Tile
  */
 void Tile::setFire(int fire)
 {
-	_fire = fire;
+	_fire = Clamp(fire, 0, 255);
 	_animationOffset = RNG::generate(0,3);
 }
 
@@ -786,7 +780,7 @@ void Tile::addSmoke(int smoke)
  */
 void Tile::setSmoke(int smoke)
 {
-	_smoke = smoke;
+	_smoke = Clamp(smoke, 0, 255);
 	_animationOffset = RNG::generate(0,3);
 }
 
@@ -913,7 +907,7 @@ void Tile::prepareNewTurn(bool smokeDamage)
 
 /**
  * Get the inventory on this tile.
- * @return pointer to a vector of battleitems.
+ * @return pointer to a vector of battle items.
  */
 std::vector<BattleItem *> *Tile::getInventory()
 {
@@ -1015,7 +1009,7 @@ void Tile::addOverlap()
  */
 void Tile::setDangerous(bool danger)
 {
-	_danger = danger;
+	_cache.danger = danger;
 }
 
 /**
@@ -1024,25 +1018,7 @@ void Tile::setDangerous(bool danger)
  */
 bool Tile::getDangerous() const
 {
-	return _danger;
-}
-
-/**
- * adds a particle to this tile's internal storage buffer.
- * @param particle the particle to add.
- */
-void Tile::addParticle(Particle *particle)
-{
-	_particles.push_back(particle);
-}
-
-/**
- * gets a pointer to this tile's particle array.
- * @return a pointer to the internal array of particles.
- */
-std::list<Particle *> *Tile::getParticleCloud()
-{
-	return &_particles;
+	return _cache.danger;
 }
 
 /**

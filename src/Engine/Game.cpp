@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Game.h"
+#include "../resource.h"
 #include <algorithm>
 #include <cmath>
 #include <sstream>
@@ -52,7 +53,7 @@ const double Game::VOLUME_GRADIENT = 10.0;
  * creates the display screen and sets up the cursor.
  * @param title Title of the game window.
  */
-Game::Game(const std::string &title) : _screen(0), _cursor(0), _lang(0), _save(0), _mod(0), _quit(false), _init(false), _mouseActive(true)
+Game::Game(const std::string &title) : _screen(0), _cursor(0), _lang(0), _save(0), _mod(0), _quit(false), _init(false), _update(false),  _mouseActive(true), _timeUntilNextFrame(0)
 {
 	Options::reload = false;
 	Options::mute = false;
@@ -73,7 +74,7 @@ Game::Game(const std::string &title) : _screen(0), _cursor(0), _lang(0), _save(0
 	SDL_WM_GrabInput(Options::captureMouse);
 
 	// Set the window icon
-	CrossPlatform::setWindowIcon(103, "openxcom.png");
+	CrossPlatform::setWindowIcon(IDI_ICON1, "openxcom.png");
 
 	// Set the window caption
 	SDL_WM_SetCaption(title.c_str(), 0);
@@ -98,6 +99,8 @@ Game::Game(const std::string &title) : _screen(0), _cursor(0), _lang(0), _save(0
 
 	// Create blank language
 	_lang = new Language();
+
+	_timeOfLastFrame = 0;
 }
 
 /**
@@ -141,7 +144,6 @@ void Game::run()
 	bool startupEvent = Options::allowResize;
 	while (!_quit)
 	{
-		Uint32 timeFrameStarted = SDL_GetTicks();
 		// Clean up states
 		while (!_deleted.empty())
 		{
@@ -180,17 +182,37 @@ void Game::run()
 					quit();
 					break;
 				case SDL_ACTIVEEVENT:
-					switch (reinterpret_cast<SDL_ActiveEvent*>(&_event)->state)
+					// An event other than SDL_APPMOUSEFOCUS change happened.
+					if (reinterpret_cast<SDL_ActiveEvent*>(&_event)->state & ~SDL_APPMOUSEFOCUS)
 					{
-						case SDL_APPACTIVE:
-							runningState = reinterpret_cast<SDL_ActiveEvent*>(&_event)->gain ? RUNNING : stateRun[Options::pauseMode];
-							break;
-						case SDL_APPMOUSEFOCUS:
-							// We consciously ignore it.
-							break;
-						case SDL_APPINPUTFOCUS:
-							runningState = reinterpret_cast<SDL_ActiveEvent*>(&_event)->gain ? RUNNING : kbFocusRun[Options::pauseMode];
-							break;
+						Uint8 currentState = SDL_GetAppState();
+						// Game is minimized
+						if (!(currentState & SDL_APPACTIVE))
+						{
+							runningState = stateRun[Options::pauseMode];
+							if (Options::backgroundMute)
+							{
+								setVolume(0, 0, 0);
+							}
+						}
+						// Game is not minimized but has no keyboard focus.
+						else if (!(currentState & SDL_APPINPUTFOCUS))
+						{
+							runningState = kbFocusRun[Options::pauseMode];
+							if (Options::backgroundMute)
+							{
+								setVolume(0, 0, 0);
+							}
+						}
+						// Game has keyboard focus.
+						else
+						{
+							runningState = RUNNING;
+							if (Options::backgroundMute)
+							{
+								setVolume(Options::soundVolume, Options::musicVolume, Options::uiVolume);
+							}
+						}
 					}
 					break;
 				case SDL_VIDEORESIZE:
@@ -254,6 +276,12 @@ void Game::run()
 					_states.back()->handle(&action);
 					break;
 			}
+			if (!_init)
+			{
+				// States stack was changed, break the loop so new state
+				// can be initialized before processing new events
+				break;
+			}
 		}
 
 		// Process rendering
@@ -262,8 +290,22 @@ void Game::run()
 			// Process logic
 			_states.back()->think();
 			_fpsCounter->think();
-			if (_init)
+			if (Options::FPS > 0 && !(Options::useOpenGL && Options::vSyncForOpenGL))
 			{
+				// Update our FPS delay time based on the time of the last draw.
+				int fps = SDL_GetAppState() & SDL_APPINPUTFOCUS ? Options::FPS : Options::FPSInactive;
+
+				_timeUntilNextFrame = (1000.0f / fps) - (SDL_GetTicks() - _timeOfLastFrame);
+			}
+			else
+			{
+				_timeUntilNextFrame = 0;
+			}
+
+			if (_init && _timeUntilNextFrame <= 0)
+			{
+				// make a note of when this frame update occurred.
+				_timeOfLastFrame = SDL_GetTicks();
 				_fpsCounter->addFrame();
 				_screen->clear();
 				std::list<State*>::iterator i = _states.end();
@@ -283,29 +325,14 @@ void Game::run()
 			}
 		}
 
-		// Calculate how long we are to sleep
-		Uint32 idleTime = 0;
-		if (Options::FPS > 0 && !(Options::useOpenGL && Options::vSyncForOpenGL))
-		{
-			// Uint32 milliseconds do wrap around in about 49.7 days
-			Uint32 timeFrameEnded = SDL_GetTicks();
-			Uint32 elapsedFrameTime =  timeFrameEnded > timeFrameStarted ? timeFrameEnded - timeFrameStarted : 0;
-			Uint32 nominalFPS = SDL_GetAppState() & SDL_APPINPUTFOCUS ? Options::FPS : Options::FPSInactive;
-			Uint32 nominalFrameTime = Options::FPS > 0 ? 1000.0f / nominalFPS : 1;
-			idleTime = elapsedFrameTime > nominalFrameTime ? 0 : nominalFrameTime - elapsedFrameTime;
-			idleTime = idleTime > 100 ? 100 : idleTime;
-		}
-
 		// Save on CPU
 		switch (runningState)
 		{
 			case RUNNING:
-				SDL_Delay(idleTime); 	// Save CPU from going 100%
+				SDL_Delay(1); //Save CPU from going 100%
 				break;
-			case SLOWED:
-			case PAUSED:
-				SDL_Delay(100); 		// More slowing down.
-				break;
+			case SLOWED: case PAUSED:
+				SDL_Delay(100); break; //More slowing down.
 		}
 	}
 
@@ -350,6 +377,8 @@ void Game::setVolume(int sound, int music, int ui)
 				// channel 3: reserved for ambient sound effect.
 				Mix_Volume(3, sound / 2);
 			}
+			// channel 4: reserved for unit responses
+			Mix_Volume(4, sound);
 		}
 		if (music >= 0)
 		{
@@ -368,33 +397,6 @@ void Game::setVolume(int sound, int music, int ui)
 double Game::volumeExponent(int volume)
 {
 	return (exp(log(Game::VOLUME_GRADIENT + 1.0) * volume / (double)SDL_MIX_MAXVOLUME) -1.0 ) / Game::VOLUME_GRADIENT;
-}
-
-/**
- * Returns the display screen used by the game.
- * @return Pointer to the screen.
- */
-Screen *Game::getScreen() const
-{
-	return _screen;
-}
-
-/**
- * Returns the mouse cursor used by the game.
- * @return Pointer to the cursor.
- */
-Cursor *Game::getCursor() const
-{
-	return _cursor;
-}
-
-/**
- * Returns the FpsCounter used by the game.
- * @return Pointer to the FpsCounter.
- */
-FpsCounter *Game::getFpsCounter() const
-{
-	return _fpsCounter;
 }
 
 /**
@@ -438,24 +440,6 @@ void Game::popState()
 }
 
 /**
- * Returns the language currently in use by the game.
- * @return Pointer to the language.
- */
-Language *Game::getLanguage() const
-{
-	return _lang;
-}
-
-/**
- * Returns the saved game currently in use by the game.
- * @return Pointer to the saved game.
- */
-SavedGame *Game::getSavedGame() const
-{
-	return _save;
-}
-
-/**
  * Sets a new saved game for the game to use.
  * @param save Pointer to the saved game.
  */
@@ -463,15 +447,6 @@ void Game::setSavedGame(SavedGame *save)
 {
 	delete _save;
 	_save = save;
-}
-
-/**
- * Returns the mod currently in use by the game.
- * @return Pointer to the mod.
- */
-Mod *Game::getMod() const
-{
-	return _mod;
 }
 
 /**
@@ -639,8 +614,12 @@ void Game::initAudio()
 	else
 	{
 		Mix_AllocateChannels(16);
-		// Set up UI channels
-		Mix_ReserveChannels(4);
+		// Set up reserved channels:
+		// 0 = not used?
+		// 1-2 = UI
+		// 3 = ambient
+		// 4 = unit responses (OXCE only)
+		Mix_ReserveChannels(5);
 		Mix_GroupChannels(1, 2, 0);
 		Log(LOG_INFO) << "SDL_mixer initialized successfully.";
 		setVolume(Options::soundVolume, Options::musicVolume, Options::uiVolume);

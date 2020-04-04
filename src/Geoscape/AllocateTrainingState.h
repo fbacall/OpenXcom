@@ -1,3 +1,4 @@
+#pragma once
 /*
  * Copyright 2010-2015 OpenXcom Developers.
  *
@@ -16,9 +17,6 @@
  * You should have received a copy of the GNU General Public License
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef OPENXCOM_ALLOCATETRAININGSTATE_H
-#define OPENXCOM_ALLOCATETRAININGSTATE_H
-
 #include "../Engine/State.h"
 #include <vector>
 
@@ -78,8 +76,8 @@ public:
 	void lstSoldiersClick(Action *action);
 	/// Handler for pressing-down a mouse-button in the list.
 	void lstSoldiersMousePress(Action *action);
+	/// Handler for clicking the De-assign All Soldiers button.
+	void btnDeassignAllSoldiersClick(Action* action);
 };
 
 }
-
-#endif

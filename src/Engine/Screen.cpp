@@ -71,7 +71,7 @@ void Screen::makeVideoFlags()
 	{
 		std::ostringstream ss;
 		ss << "SDL_VIDEO_WINDOW_POS=" << std::dec << Options::windowedModePositionX << "," << Options::windowedModePositionY;
-		SDL_putenv(const_cast<char*>(ss.str().c_str()));
+		SDL_putenv(const_cast<char*>(strdup(ss.str().c_str())));
 		SDL_putenv(const_cast<char*>("SDL_VIDEO_CENTERED="));
 	}
 	else if (Options::borderless)
@@ -534,11 +534,35 @@ void Screen::screenshot(const std::string &filename) const
 	{
 		SDL_BlitSurface(_screen, 0, screenshot, 0);
 	}
-    std::vector<unsigned char> out;
-	unsigned error = lodepng::encode(out, (const unsigned char *)(screenshot->pixels), getWidth() - getWidth()%4, getHeight(), LCT_RGB);
-	if (error)
+	std::vector<unsigned char> out;
+	if (_screen->format->BitsPerPixel == 8 && Options::rawScreenShots)
 	{
-		Log(LOG_ERROR) << "Saving to PNG failed: " << lodepng_error_text(error);
+		SDL_Color *palette = getPalette();
+		lodepng::State state;
+		for (size_t i = 0; i < 256; ++i)
+		{
+			SDL_Color color = palette[i];
+			lodepng_palette_add(&state.info_png.color, color.r, color.g, color.b, 255);
+			lodepng_palette_add(&state.info_raw, color.r, color.g, color.b, 255);
+		}
+		state.info_png.color.colortype = LCT_PALETTE; //if you comment this line, and create the above palette in info_raw instead, then you get the same image in a RGBA PNG.
+		state.info_png.color.bitdepth = 8;
+		state.info_raw.colortype = LCT_PALETTE;
+		state.info_raw.bitdepth = 8;
+		state.encoder.auto_convert = 0; //we specify ourselves exactly what output PNG color mode we want
+		unsigned error = lodepng::encode(out, (const unsigned char *)(_surface->pixels), _surface->w, _surface->h, state);
+		if (error)
+		{
+			Log(LOG_ERROR) << "Saving to PNG failed: " << lodepng_error_text(error);
+		}
+	}
+	else
+	{
+		unsigned error = lodepng::encode(out, (const unsigned char *)(screenshot->pixels), getWidth() - getWidth()%4, getHeight(), LCT_RGB);
+		if (error)
+		{
+			Log(LOG_ERROR) << "Saving to PNG failed: " << lodepng_error_text(error);
+		}
 	}
 
 	SDL_FreeSurface(screenshot);

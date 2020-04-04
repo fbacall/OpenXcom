@@ -108,12 +108,12 @@ CraftEquipmentState::CraftEquipmentState(Base *base, size_t craft) : _lstScroll(
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK04.SCR"));
+	setWindowBackground(_window, "craftEquipment");
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&CraftEquipmentState::btnOkClick);
 	_btnOk->onKeyboardPress((ActionHandler)&CraftEquipmentState::btnOkClick, Options::keyCancel);
-	_btnOk->onKeyboardPress((ActionHandler)&CraftEquipmentState::btnClearClick, Options::keyDeselectAll);
+	_btnOk->onKeyboardPress((ActionHandler)&CraftEquipmentState::btnClearClick, Options::keyRemoveEquipmentFromCraft);
 	_btnOk->onKeyboardPress((ActionHandler)&CraftEquipmentState::btnLoadClick, Options::keyCraftLoadoutLoad);
 	_btnOk->onKeyboardPress((ActionHandler)&CraftEquipmentState::btnSaveClick, Options::keyCraftLoadoutSave);
 
@@ -149,9 +149,10 @@ CraftEquipmentState::CraftEquipmentState(Base *base, size_t craft) : _lstScroll(
 	for (std::vector<std::string>::const_iterator i = items.begin(); i != items.end(); ++i)
 	{
 		RuleItem *rule = _game->getMod()->getItem(*i);
-		int cQty = rule->getVehicleUnit() ? c->getVehicleCount(*i) : c->getItems()->getItem(*i);
+		auto isVehicle = rule->getVehicleUnit();
+		int cQty = isVehicle ? c->getVehicleCount(*i) : c->getItems()->getItem(*i);
 
-		if (rule->getBigSprite() > -1 && rule->getBattleType() != BT_NONE && rule->getBattleType() != BT_CORPSE &&
+		if ((isVehicle || rule->isInventoryItem()) && rule->canBeEquippedToCraftInventory() &&
 			_game->getSavedGame()->isResearched(rule->getRequirements()) &&
 			(_base->getStorageItems()->getItem(*i) > 0 || cQty > 0))
 		{
@@ -296,6 +297,7 @@ void CraftEquipmentState::initList()
 	bool categoryFilterEnabled = (selectedCategory != "STR_ALL");
 	bool categoryUnassigned = (selectedCategory == "STR_UNASSIGNED");
 	bool categoryEquipped = (selectedCategory == "STR_EQUIPPED");
+	bool shareAmmoCategories = _game->getMod()->getShareAmmoCategories();
 
 	Craft *c = _base->getCrafts()->at(_craft);
 
@@ -310,8 +312,9 @@ void CraftEquipmentState::initList()
 	{
 		RuleItem *rule = _game->getMod()->getItem(*i);
 
+		auto isVehicle = rule->getVehicleUnit();
 		int cQty = 0;
-		if (rule->getVehicleUnit())
+		if (isVehicle)
 		{
 			cQty = c->getVehicleCount(*i);
 		}
@@ -321,7 +324,7 @@ void CraftEquipmentState::initList()
 			_totalItems += cQty;
 		}
 
-		if (rule->getBigSprite() > -1 && rule->getBattleType() != BT_NONE && rule->getBattleType() != BT_CORPSE &&
+		if ((isVehicle || rule->isInventoryItem()) && rule->canBeEquippedToCraftInventory() &&
 			(_base->getStorageItems()->getItem(*i) > 0 || cQty > 0))
 		{
 			// check research requirements
@@ -347,9 +350,25 @@ void CraftEquipmentState::initList()
 						continue;
 					}
 				}
-				else if (!rule->belongsToCategory(selectedCategory))
+				else
 				{
-					continue;
+					bool isOK = rule->belongsToCategory(selectedCategory);
+					if (shareAmmoCategories && !isOK && rule->getBattleType() == BT_FIREARM)
+					{
+						for (auto& compatibleAmmoName : *rule->getPrimaryCompatibleAmmo())
+						{
+							if (_base->getStorageItems()->getItem(compatibleAmmoName) > 0 || c->getItems()->getItem(compatibleAmmoName) > 0)
+							{
+								RuleItem *ammoRule = _game->getMod()->getItem(compatibleAmmoName);
+								if (ammoRule && ammoRule->isInventoryItem() && ammoRule->canBeEquippedToCraftInventory() && _game->getSavedGame()->isResearched(ammoRule->getRequirements()))
+								{
+									isOK = ammoRule->belongsToCategory(selectedCategory);
+									if (isOK) break;
+								}
+							}
+						}
+					}
+					if (!isOK) continue;
 				}
 			}
 
@@ -636,7 +655,7 @@ void CraftEquipmentState::moveLeftByValue(int change)
 			{
 				ammoPerVehicle = ammo->getClipSize();
 			}
-			// Put the vehicles and their ammo back as seperate items.
+			// Put the vehicles and their ammo back as separate items.
 			if (_game->getSavedGame()->getMonthsPassed() != -1)
 			{
 				_base->getStorageItems()->addItem(_items[_sel], change);
@@ -814,7 +833,7 @@ void CraftEquipmentState::btnInventoryClick(Action *)
 	Craft *craft = _base->getCrafts()->at(_craft);
 	if (craft->getNumSoldiers() != 0)
 	{
-		SavedBattleGame *bgame = new SavedBattleGame(_game->getMod());
+		SavedBattleGame *bgame = new SavedBattleGame(_game->getMod(), _game->getLanguage());
 		_game->getSavedGame()->setBattleGame(bgame);
 
 		if ((SDL_GetModState() & KMOD_CTRL) && (SDL_GetModState() & KMOD_ALT))
@@ -916,7 +935,7 @@ void CraftEquipmentState::loadGlobalLoadout(int index)
 				return a.listOrder < b.listOrder;
 			}
 		);
-		_game->pushState(new CannotReequipState(_missingItems));
+		_game->pushState(new CannotReequipState(_missingItems, _base));
 		_reload = false;
 	}
 }

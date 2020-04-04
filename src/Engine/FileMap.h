@@ -44,8 +44,13 @@ namespace FileMap
 		size_t findex;       	// file index in the zipfile.
 
 		FileRecord();
+
+		/// Open file warped in RWops.
 		SDL_RWops *getRWops() const;
-		std::unique_ptr<std::istream>getIStream() const;
+		/// Read the whole file to memory and warp in RWops.
+		SDL_RWops *getRWopsReadAll() const;
+
+		std::unique_ptr<std::istream> getIStream() const;
 		YAML::Node getYAML() const;
 		std::vector<YAML::Node> getAllYAML() const;
 	};
@@ -58,6 +63,9 @@ namespace FileMap
 
 	/// Gets SDL_RWops for the file data of a data file blah blah read above.
 	SDL_RWops *getRWops(const std::string &relativeFilePath);
+
+	/// Gets SDL_RWops for the file data of a data file blah blah read above. Reads the whole file to memory.
+	SDL_RWops *getRWopsReadAll(const std::string &relativeFilePath);
 
 	/// Gets an std::istream interface to the file data. Has to be deleted on the caller's end.
 	std::unique_ptr<std::istream>getIStream(const std::string &relativeFilePath);
@@ -94,14 +102,14 @@ namespace FileMap
 	/// absolutely clears FileMap state and maps common resources (dataDir/common)
 	void clear(bool clearOnly, bool embeddedOnly);
 
-	/// sets up VFS according to the modsequence given (rescans common resources). does call clear().
+	/// sets up VFS according to the mod sequence given (rescans common resources). does call clear().
 	void setup(const std::vector<const ModInfo *>& active, bool embeddedOnly);
 
 	/// lowercase it
 	std::string canonicalize(const std::string& fname);
 
 	/// scans a moddir for mods, (privately) maps them.
-	void scanModDir(const std::string& dirname, const std::string& basename);
+	void scanModDir(const std::string& dirname, const std::string& basename, bool protectedLocation);
 
 	/// scans a .zip from the rwops for mods
 	void scanModZipRW(SDL_RWops *rwops, const std::string& fullpath);
@@ -111,7 +119,14 @@ namespace FileMap
 	void checkModsDependencies();
 
 	/// returns a list of mods that are loadable.
-	std::unordered_map<std::string, ModInfo> getModInfos();
+	std::map<std::string, ModInfo> getModInfos();
+
+	/// Get mod file based on mod info.
+	const FileRecord* getModRuleFile(const ModInfo* modInfo, const std::string& relpath);
+
+	/// Unzip a file from a .zip into memory.
+	SDL_RWops *zipGetFileByName(const std::string& zipfile, const std::string& fullpath);
+
 }
 
 }

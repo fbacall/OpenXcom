@@ -49,8 +49,12 @@
 namespace OpenXcom
 {
 
-struct compareItemName : public std::binary_function<StoredItem&, StoredItem&, bool>
+struct compareItemName
 {
+	typedef StoredItem& first_argument_type;
+	typedef StoredItem& second_argument_type;
+	typedef bool result_type;
+
 	bool _reverse;
 
 	compareItemName(bool reverse) : _reverse(reverse) {}
@@ -61,8 +65,12 @@ struct compareItemName : public std::binary_function<StoredItem&, StoredItem&, b
 	}
 };
 
-struct compareItemQuantity : public std::binary_function<StoredItem&, StoredItem&, bool>
+struct compareItemQuantity
 {
+	typedef StoredItem& first_argument_type;
+	typedef StoredItem& second_argument_type;
+	typedef bool result_type;
+
 	bool _reverse;
 
 	compareItemQuantity(bool reverse) : _reverse(reverse) {}
@@ -73,8 +81,12 @@ struct compareItemQuantity : public std::binary_function<StoredItem&, StoredItem
 	}
 };
 
-struct compareItemSize : public std::binary_function<StoredItem&, StoredItem&, bool>
+struct compareItemSize
 {
+	typedef StoredItem& first_argument_type;
+	typedef StoredItem& second_argument_type;
+	typedef bool result_type;
+
 	bool _reverse;
 
 	compareItemSize(bool reverse) : _reverse(reverse) {}
@@ -85,8 +97,12 @@ struct compareItemSize : public std::binary_function<StoredItem&, StoredItem&, b
 	}
 };
 
-struct compareItemSpaceUsed : public std::binary_function<StoredItem&, StoredItem&, bool>
+struct compareItemSpaceUsed
 {
+	typedef StoredItem& first_argument_type;
+	typedef StoredItem& second_argument_type;
+	typedef bool result_type;
+
 	bool _reverse;
 
 	compareItemSpaceUsed(bool reverse) : _reverse(reverse) {}
@@ -142,7 +158,7 @@ StoresState::StoresState(Base *base) : _base(base)
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK13.SCR"));
+	setWindowBackground(_window, "storesInfo");
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&StoresState::btnOkClick);

@@ -41,6 +41,8 @@ class SoldierDeath;
 class SoldierDiary;
 class SavedGame;
 class RuleSoldierTransformation;
+class RuleSoldierBonus;
+struct BaseSumDailyRecovery;
 
 /**
  * Represents a soldier hired by the player.
@@ -58,16 +60,19 @@ public:
 
 private:
 	std::string _name;
+	std::string _callsign;
 	int _id, _nationality, _improvement, _psiStrImprovement;
 	RuleSoldier *_rules;
-	UnitStats _initialStats, _currentStats;
+	UnitStats _initialStats, _currentStats, _tmpStatsWithSoldierBonuses, _tmpStatsWithAllBonuses;
 	SoldierRank _rank;
 	Craft *_craft;
 	SoldierGender _gender;
 	SoldierLook _look;
 	int _lookVariant;
 	int _missions, _kills;
-	float _recovery; // amount of HP missing until full recovery... used to calculate recovery time
+	int _healthMissing = 0; // amount of health missing until full health recovery, this is less serious than wound recovery.
+	int _manaMissing = 0;   // amount of mana missing until full mana recovery
+	float _recovery = 0.0;  // amount of hospital attention soldier needs... used to calculate recovery time
 	bool _recentlyPromoted, _psiTraining, _training, _returnToTrainingWhenHealed;
 	Armor *_armor;
 	Armor *_replacedArmor;
@@ -77,7 +82,8 @@ private:
 	SoldierDiary *_diary;
 	std::string _statString;
 	bool _corpseRecovered;
-	std::map<std::string, int> _previousTransformations;
+	std::map<std::string, int> _previousTransformations, _transformationBonuses;
+	std::vector<const RuleSoldierBonus*> _bonusCache;
 	ScriptValues<Soldier> _scriptValues;
 public:
 	/// Creates a new soldier.
@@ -92,6 +98,12 @@ public:
 	std::string getName(bool statstring = false, unsigned int maxLength = 20) const;
 	/// Sets the soldier's name.
 	void setName(const std::string &name);
+	/// Gets the soldier's callsign.
+	std::string getCallsign(unsigned int maxLength = 20) const;
+	/// Sets the soldier's callsign.
+	void setCallsign(const std::string &callsign);
+	/// Check for callsign assignment.
+	bool hasCallsign() const;
 	/// Gets the soldier's nationality.
 	int getNationality() const;
 	/// Sets the soldier's nationality.
@@ -101,7 +113,7 @@ public:
 	/// Sets the soldier's craft.
 	void setCraft(Craft *craft);
 	/// Gets the soldier's craft string.
-	std::string getCraftString(Language *lang, float absBonus, float relBonus) const;
+	std::string getCraftString(Language *lang, const BaseSumDailyRecovery& recovery) const;
 	/// Gets a string version of the soldier's rank.
 	std::string getRankString() const;
 	/// Gets a sprite version of the soldier's rank. Used for BASEBITS.PCK.
@@ -160,19 +172,49 @@ public:
 	Armor *getTransformedArmor() const;
 	/// Backs up the soldier's original armor (before transformation).
 	void setTransformedArmor(Armor *armor);
+
+
 	/// Is the soldier wounded or not?.
 	bool isWounded() const;
 	/// Is the soldier wounded or not?.
 	bool hasFullHealth() const;
 	/// Is the soldier capable of defending a base?.
 	bool canDefendBase() const;
+
+	/// Gets the amount of missing mana.
+	int getManaMissing() const;
+	/// Sets the amount of missing mana.
+	void setManaMissing(int manaMissing);
+	/// Gets the soldier's mana recovery time.
+	int getManaRecovery(int manaRecoveryPerDay) const;
+
+	/// Gets the amount of missing health.
+	int getHealthMissing() const;
+	/// Sets the amount of missing health.
+	void setHealthMissing(int healthMissing);
+	/// Gets the soldier's health recovery time.
+	int getHealthRecovery(int healthRecoveryPerDay) const;
+
 	/// Gets the soldier's wound recovery time.
 	int getWoundRecoveryInt() const;
-	int getWoundRecovery(float absBonus, float relBonus) const;
 	/// Sets the soldier's wound recovery time.
 	void setWoundRecovery(int recovery);
+	/// Gets ther soldier's wound recovery.
+	int getWoundRecovery(float absBonus, float relBonus) const;
+
 	/// Heals wound recoveries.
-	void heal(float absBonus, float relBonus);
+	void healWound(float absBonus, float relBonus);
+	/// Replenishes mana.
+	void replenishMana(int manaRecoveryPerDay);
+	/// Replenishes health.
+	void replenishHealth(int healthRecoveryPerDay);
+
+	/// Daily stat replenish and healing of the soldier based on the facilities available in the base.
+	void replenishStats(const BaseSumDailyRecovery& recovery);
+	/// Gets number of days until the soldier is ready for action again.
+	int getNeededRecoveryTime(const BaseSumDailyRecovery& recovery) const;
+
+
 	/// Gets the soldier's equipment-layout.
 	std::vector<EquipmentLayoutItem*> *getEquipmentLayout();
 	/// Trains a soldier's psychic stats
@@ -182,7 +224,7 @@ public:
 	/// Returns whether the unit is in psi training or not
 	bool isInPsiTraining() const;
 	/// set the psi training status
-	void setPsiTraining();
+	void setPsiTraining(bool psi);
 	/// returns this soldier's psionic skill improvement score for this month.
 	int getImprovement() const;
 	/// returns this soldier's psionic strength improvement score for this month.
@@ -220,7 +262,18 @@ public:
 	/// Performs a transformation on this soldier
 	void transform(const Mod *mod, RuleSoldierTransformation *transformationRule, Soldier *sourceSoldier);
 	/// Calculates how this project changes the soldier's stats
-	UnitStats calculateStatChanges(const Mod *mod, RuleSoldierTransformation *transformationRule, Soldier *sourceSoldier);
+	UnitStats calculateStatChanges(const Mod *mod, RuleSoldierTransformation *transformationRule, Soldier *sourceSoldier, int mode);
+	/// Gets all the soldier bonuses
+	const std::vector<const RuleSoldierBonus*> *getBonuses(const Mod *mod);
+	/// Get pointer to current stats with soldier bonuses, but without armor bonuses.
+	UnitStats *getStatsWithSoldierBonusesOnly();
+	/// Get pointer to current stats with armor and soldier bonuses.
+	UnitStats *getStatsWithAllBonuses();
+	/// Pre-calculates soldier stats with various bonuses.
+	bool prepareStatsWithBonuses(const Mod *mod);
+
+private:
+	std::string generateCallsign(const std::vector<SoldierNamePool*> &names);
 
 };
 

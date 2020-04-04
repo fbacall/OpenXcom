@@ -67,7 +67,7 @@ StatisticsState::StatisticsState()
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK01.SCR"));
+	setWindowBackground(_window, "endGameStatistics");
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&StatisticsState::btnOkClick);
@@ -122,7 +122,7 @@ void StatisticsState::listStats()
 	ss << Unicode::TOK_NL_SMALL << time->getDayString(_game->getLanguage()) << " " << tr(time->getMonthString()) << " " << time->getYear();
 	_txtTitle->setText(ss.str());
 
-	int monthlyScore = sumVector(save->getResearchScores()) / save->getResearchScores().size();
+	int monthlyScore = sumVector(save->getResearchScores()) / (int)save->getResearchScores().size();
 	int64_t totalIncome = sumVector(save->getIncomes());
 	int64_t totalExpenses = sumVector(save->getExpenditures());
 
@@ -141,7 +141,7 @@ void StatisticsState::listStats()
 		}
 		bestScore = std::max(bestScore, (*i)->score);
 		worstScore = std::min(worstScore, (*i)->score);
-		if ((*i)->daylight > 5)
+		if ((*i)->isDarkness(_game->getMod()))
 		{
 			nightMissions++;
 		}

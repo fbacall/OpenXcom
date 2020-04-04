@@ -42,6 +42,13 @@ namespace OpenXcom
 {
 
 /**
+ * Default constructor, used by SkillMenuState.
+ */
+ActionMenuState::ActionMenuState(BattleAction *action) : _action(action)
+{
+}
+
+/**
  * Initializes all the elements in the Action Menu window.
  * @param game Pointer to the core game.
  * @param action Pointer to the action.
@@ -78,21 +85,30 @@ ActionMenuState::ActionMenuState(BattleAction *action, int x, int y) : _action(a
 		return;
 	}
 
+	if (weapon->isManaRequired() && _action->actor->getOriginalFaction() == FACTION_PLAYER)
+	{
+		if (!_game->getMod()->isManaFeatureEnabled() || !_game->getSavedGame()->isManaUnlocked(_game->getMod()))
+		{
+			return;
+		}
+	}
+
 	// priming
 	if (weapon->getFuseTimerDefault() >= 0 )
 	{
+		auto normalWeapon = weapon->getBattleType() != BT_GRENADE && weapon->getBattleType() != BT_FLARE && weapon->getBattleType() != BT_PROXIMITYGRENADE;
 		if (_action->weapon->getFuseTimer() == -1)
 		{
 			if (weapon->getCostPrime().Time > 0)
 			{
-				addItem(BA_PRIME, weapon->getPrimeActionName(), &id, Options::keyBattleActionItem1); // FIXME: hotkey safety?!
+				addItem(BA_PRIME, weapon->getPrimeActionName(), &id, normalWeapon ? SDLK_UNKNOWN : Options::keyBattleActionItem1);
 			}
 		}
 		else
 		{
 			if (weapon->getCostUnprime().Time > 0 && !weapon->getUnprimeActionName().empty())
 			{
-				addItem(BA_UNPRIME, weapon->getUnprimeActionName(), &id, Options::keyBattleActionItem2); // FIXME: hotkey safety?!
+				addItem(BA_UNPRIME, weapon->getUnprimeActionName(), &id, normalWeapon ? SDLK_UNKNOWN : Options::keyBattleActionItem2);
 			}
 		}
 	}
@@ -146,7 +162,7 @@ ActionMenuState::ActionMenuState(BattleAction *action, int x, int y) : _action(a
 	// special items
 	if (weapon->getBattleType() == BT_MEDIKIT)
 	{
-		addItem(BA_USE, "STR_USE_MEDI_KIT", &id, Options::keyBattleActionItem1);
+		addItem(BA_USE, weapon->getMedikitActionName(), &id, Options::keyBattleActionItem1);
 	}
 	else if (weapon->getBattleType() == BT_SCANNER)
 	{
@@ -203,7 +219,7 @@ void ActionMenuState::init()
 void ActionMenuState::addItem(BattleActionType ba, const std::string &name, int *id, SDLKey key)
 {
 	std::string s1, s2;
-	int acc = _action->actor->getFiringAccuracy(ba, _action->weapon, _game->getMod());
+	int acc = BattleUnit::getFiringAccuracy(BattleActionAttack::GetBeforeShoot(ba, _action->actor, _action->weapon), _game->getMod());
 	int tu = _action->actor->getActionTUs(ba, _action->weapon).Time;
 
 	if (ba == BA_THROW || ba == BA_AIMEDSHOT || ba == BA_SNAPSHOT || ba == BA_AUTOSHOT || ba == BA_LAUNCH || ba == BA_HIT)
@@ -211,7 +227,10 @@ void ActionMenuState::addItem(BattleActionType ba, const std::string &name, int 
 	s2 = tr("STR_TIME_UNITS_SHORT").arg(tu);
 	_actionMenu[*id]->setAction(ba, tr(name), s1, s2, tu);
 	_actionMenu[*id]->setVisible(true);
-	_actionMenu[*id]->onKeyboardPress((ActionHandler)&ActionMenuState::btnActionMenuItemClick, key);
+	if (key != SDLK_UNKNOWN)
+	{
+		_actionMenu[*id]->onKeyboardPress((ActionHandler)&ActionMenuState::btnActionMenuItemClick, key);
+	}
 	(*id)++;
 }
 
@@ -244,10 +263,9 @@ void ActionMenuState::btnActionMenuItemClick(Action *action)
 	_game->getSavedGame()->getSavedBattle()->getPathfinding()->removePreview();
 
 	int btnID = -1;
-	const RuleItem *weapon = _action->weapon->getRules();
 
 	// got to find out which button was pressed
-	for (size_t i = 0; i < sizeof(_actionMenu)/sizeof(_actionMenu[0]) && btnID == -1; ++i)
+	for (size_t i = 0; i < std::size(_actionMenu) && btnID == -1; ++i)
 	{
 		if (action->getSender() == _actionMenu[i])
 		{
@@ -257,10 +275,21 @@ void ActionMenuState::btnActionMenuItemClick(Action *action)
 
 	if (btnID != -1)
 	{
-		bool newHitLog = false;
-
 		_action->type = _actionMenu[btnID]->getAction();
+		_action->skillRules = nullptr;
 		_action->updateTU();
+
+		handleAction();
+	}
+}
+
+void ActionMenuState::handleAction()
+{
+	{
+		const RuleItem *weapon = _action->weapon->getRules();
+		bool newHitLog = false;
+		std::string actionResult = "STR_UNKNOWN"; // needs a non-empty default/fall-back !
+
 		if (_action->type != BA_THROW &&
 			_action->actor->getOriginalFaction() == FACTION_PLAYER &&
 			!_game->getSavedGame()->isResearched(weapon->getRequirements()))
@@ -269,25 +298,9 @@ void ActionMenuState::btnActionMenuItemClick(Action *action)
 			_game->popState();
 		}
 		else if (_action->type != BA_THROW &&
-			!_game->getSavedGame()->getSavedBattle()->canUseWeapon(_action->weapon, _action->actor, false))
+			!_game->getSavedGame()->getSavedBattle()->canUseWeapon(_action->weapon, _action->actor, false, _action->type, &actionResult))
 		{
-			if (weapon->isBlockingBothHands())
-			{
-				_action->result = "STR_MUST_USE_BOTH_HANDS";
-			}
-			else if (weapon->isWaterOnly())
-			{
-				_action->result = "STR_UNDERWATER_EQUIPMENT";
-			}
-			else if (weapon->isLandOnly())
-			{
-				_action->result = "STR_LAND_EQUIPMENT";
-			}
-			else
-			{
-				// Needs a default! Otherwise expect nasty side effects and crashes, if someone changes the validation and forgets to add an action result
-				_action->result = "STR_UNKNOWN";
-			}
+			_action->result = actionResult;
 			_game->popState();
 		}
 		else if (_action->type == BA_PRIME)
@@ -315,12 +328,22 @@ void ActionMenuState::btnActionMenuItemClick(Action *action)
 			for (std::vector<BattleUnit*>::const_iterator i = units->begin(); i != units->end() && !targetUnit; ++i)
 			{
 				// we can heal a unit that is at the same position, unconscious and healable(=woundable)
-				if ((*i)->getPosition() == _action->actor->getPosition() && *i != _action->actor && (*i)->getStatus() == STATUS_UNCONSCIOUS && (*i)->isWoundable())
+				if ((*i)->getPosition() == _action->actor->getPosition() && *i != _action->actor && (*i)->getStatus() == STATUS_UNCONSCIOUS && ((*i)->isWoundable() || weapon->getAllowTargetImmune()) && weapon->getAllowTargetGround())
 				{
-					targetUnit = *i;
+					if ((*i)->getArmor()->getSize() != 1)
+					{
+						// never EVER apply anything to 2x2 units on the ground
+						continue;
+					}
+					if ((weapon->getAllowTargetFriendGround() && (*i)->getOriginalFaction() == FACTION_PLAYER) ||
+						(weapon->getAllowTargetNeutralGround() && (*i)->getOriginalFaction() == FACTION_NEUTRAL) ||
+						(weapon->getAllowTargetHostileGround() && (*i)->getOriginalFaction() == FACTION_HOSTILE))
+					{
+						targetUnit = *i;
+					}
 				}
 			}
-			if (!targetUnit)
+			if (!targetUnit && weapon->getAllowTargetStanding())
 			{
 				if (tileEngine->validMeleeRange(
 					_action->actor->getPosition(),
@@ -329,13 +352,18 @@ void ActionMenuState::btnActionMenuItemClick(Action *action)
 					0, &_action->target, false))
 				{
 					Tile *tile = _game->getSavedGame()->getSavedBattle()->getTile(_action->target);
-					if (tile != 0 && tile->getUnit() && tile->getUnit()->isWoundable())
+					if (tile != 0 && tile->getUnit() && (tile->getUnit()->isWoundable() || weapon->getAllowTargetImmune()))
 					{
-						targetUnit = tile->getUnit();
+						if ((weapon->getAllowTargetFriendStanding() && tile->getUnit()->getOriginalFaction() == FACTION_PLAYER) ||
+							(weapon->getAllowTargetNeutralStanding() && tile->getUnit()->getOriginalFaction() == FACTION_NEUTRAL) ||
+							(weapon->getAllowTargetHostileStanding() && tile->getUnit()->getOriginalFaction() == FACTION_HOSTILE))
+						{
+							targetUnit = tile->getUnit();
+						}
 					}
 				}
 			}
-			if (!targetUnit && weapon->getAllowSelfHeal())
+			if (!targetUnit && weapon->getAllowTargetSelf())
 			{
 				targetUnit = _action->actor;
 			}
@@ -360,7 +388,7 @@ void ActionMenuState::btnActionMenuItemClick(Action *action)
 									{
 										if (targetUnit->getFatalWound(i))
 										{
-											tileEngine->medikitHeal(_action, targetUnit, i);
+											tileEngine->medikitUse(_action, targetUnit, BMA_HEAL, i);
 											tileEngine->medikitRemoveIfEmpty(_action);
 											break;
 										}
@@ -368,16 +396,16 @@ void ActionMenuState::btnActionMenuItemClick(Action *action)
 								}
 								else
 								{
-									tileEngine->medikitHeal(_action, targetUnit, BODYPART_TORSO);
+									tileEngine->medikitUse(_action, targetUnit, BMA_HEAL, BODYPART_TORSO);
 									tileEngine->medikitRemoveIfEmpty(_action);
 								}
 								break;
 							case BMT_STIMULANT:
-								tileEngine->medikitStimulant(_action, targetUnit);
+								tileEngine->medikitUse(_action, targetUnit, BMA_STIMULANT, BODYPART_TORSO);
 								tileEngine->medikitRemoveIfEmpty(_action);
 								break;
 							case BMT_PAINKILLER:
-								tileEngine->medikitPainKiller(_action, targetUnit);
+								tileEngine->medikitUse(_action, targetUnit, BMA_PAINKILLER, BODYPART_TORSO);
 								tileEngine->medikitRemoveIfEmpty(_action);
 								break;
 							case BMT_NORMAL:
@@ -462,11 +490,7 @@ void ActionMenuState::btnActionMenuItemClick(Action *action)
 
 		if (newHitLog)
 		{
-			// start new hit log
-			_game->getSavedGame()->getSavedBattle()->hitLog.str("");
-			_game->getSavedGame()->getSavedBattle()->hitLog.clear();
-			// log weapon
-			_game->getSavedGame()->getSavedBattle()->hitLog << tr("STR_HIT_LOG_WEAPON") << ": " << tr(weapon->getType()) << "\n\n";
+			_game->getSavedGame()->getSavedBattle()->appendToHitLog(HITLOG_PLAYER_FIRING, FACTION_PLAYER, tr(weapon->getType()));
 		}
 	}
 }

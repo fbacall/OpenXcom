@@ -39,7 +39,7 @@ namespace OpenXcom
 	class UfopaediaSelectState : public State
 	{
 	public:
-		UfopaediaSelectState(const std::string &section);
+		UfopaediaSelectState(const std::string &section, int heightOffset, int windowOffset);
 		virtual ~UfopaediaSelectState();
 		void init() override;
 	protected:
@@ -52,6 +52,7 @@ namespace OpenXcom
 		TextList *_lstSelection;
 		ArticleDefinitionList _article_list, _filtered_article_list;
 		size_t _lstScroll;
+		Uint8 _colorNormal, _colorNew;
 
 		/// Handler for clicking the OK button
 		void btnOkClick(Action *action);

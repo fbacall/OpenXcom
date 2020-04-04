@@ -95,7 +95,7 @@ PurchaseState::PurchaseState(Base *base) : _base(base), _sel(0), _total(0), _pQt
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK13.SCR"));
+	setWindowBackground(_window, "buyMenu");
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&PurchaseState::btnOkClick);
@@ -152,13 +152,13 @@ PurchaseState::PurchaseState(Base *base) : _base(base), _sel(0), _total(0), _pQt
 		_armors.insert(rule->getStoreItem());
 	}
 
-	const std::vector<std::string> &providedBaseFunc = _base->getProvidedBaseFunc();
+	auto providedBaseFunc = _base->getProvidedBaseFunc({});
 	const std::vector<std::string> &soldiers = _game->getMod()->getSoldiersList();
 	for (std::vector<std::string>::const_iterator i = soldiers.begin(); i != soldiers.end(); ++i)
 	{
 		RuleSoldier *rule = _game->getMod()->getSoldier(*i);
-		const std::vector<std::string> &purchaseBaseFunc = rule->getRequiresBuyBaseFunc();
-		if (rule->getBuyCost() != 0 && _game->getSavedGame()->isResearched(rule->getRequirements()) && std::includes(providedBaseFunc.begin(), providedBaseFunc.end(), purchaseBaseFunc.begin(), purchaseBaseFunc.end()))
+		auto purchaseBaseFunc = rule->getRequiresBuyBaseFunc();
+		if (rule->getBuyCost() != 0 && _game->getSavedGame()->isResearched(rule->getRequirements()) && (~providedBaseFunc & purchaseBaseFunc).none())
 		{
 			TransferRow row = { TRANSFER_SOLDIER, rule, tr(rule->getType()), rule->getBuyCost(), _base->getSoldierCountAndSalary(rule->getType()).first, 0, 0 };
 			_items.push_back(row);
@@ -191,8 +191,8 @@ PurchaseState::PurchaseState(Base *base) : _base(base), _sel(0), _total(0), _pQt
 	for (std::vector<std::string>::const_iterator i = crafts.begin(); i != crafts.end(); ++i)
 	{
 		RuleCraft *rule = _game->getMod()->getCraft(*i);
-		const std::vector<std::string> &purchaseBaseFunc = rule->getRequiresBuyBaseFunc();
-		if (rule->getBuyCost() != 0 && _game->getSavedGame()->isResearched(rule->getRequirements()) && std::includes(providedBaseFunc.begin(), providedBaseFunc.end(), purchaseBaseFunc.begin(), purchaseBaseFunc.end()))
+		auto purchaseBaseFunc = rule->getRequiresBuyBaseFunc();
+		if (rule->getBuyCost() != 0 && _game->getSavedGame()->isResearched(rule->getRequirements()) && (~providedBaseFunc & purchaseBaseFunc).none())
 		{
 			TransferRow row = { TRANSFER_CRAFT, rule, tr(rule->getType()), rule->getBuyCost(), _base->getCraftCount(rule), 0, 0 };
 			_items.push_back(row);
@@ -207,8 +207,8 @@ PurchaseState::PurchaseState(Base *base) : _base(base), _sel(0), _total(0), _pQt
 	for (std::vector<std::string>::const_iterator i = items.begin(); i != items.end(); ++i)
 	{
 		RuleItem *rule = _game->getMod()->getItem(*i);
-		const std::vector<std::string> &purchaseBaseFunc = rule->getRequiresBuyBaseFunc();
-		if (rule->getBuyCost() != 0 && _game->getSavedGame()->isResearched(rule->getRequirements()) && _game->getSavedGame()->isResearched(rule->getBuyRequirements()) && std::includes(providedBaseFunc.begin(), providedBaseFunc.end(), purchaseBaseFunc.begin(), purchaseBaseFunc.end()))
+		auto purchaseBaseFunc = rule->getRequiresBuyBaseFunc();
+		if (rule->getBuyCost() != 0 && _game->getSavedGame()->isResearched(rule->getRequirements()) && _game->getSavedGame()->isResearched(rule->getBuyRequirements()) && (~providedBaseFunc & purchaseBaseFunc).none())
 		{
 			TransferRow row = { TRANSFER_ITEM, rule, tr(rule->getType()), rule->getBuyCost(), _base->getStorageItems()->getItem(rule->getType()), 0, 0 };
 			_items.push_back(row);
@@ -222,6 +222,8 @@ PurchaseState::PurchaseState(Base *base) : _base(base), _sel(0), _total(0), _pQt
 
 	if (_game->getMod()->getUseCustomCategories())
 	{
+		bool hasUnassigned = false;
+
 		// first find all relevant item categories
 		std::vector<std::string> tempCats;
 		for (std::vector<TransferRow>::iterator i = _items.begin(); i != _items.end(); ++i)
@@ -229,6 +231,10 @@ PurchaseState::PurchaseState(Base *base) : _base(base), _sel(0), _total(0), _pQt
 			if ((*i).type == TRANSFER_ITEM)
 			{
 				RuleItem *rule = (RuleItem*)((*i).rule);
+				if (rule->getCategories().empty())
+				{
+					hasUnassigned = true;
+				}
 				for (std::vector<std::string>::const_iterator j = rule->getCategories().begin(); j != rule->getCategories().end(); ++j)
 				{
 					if (std::find(tempCats.begin(), tempCats.end(), (*j)) == tempCats.end())
@@ -249,6 +255,10 @@ PurchaseState::PurchaseState(Base *base) : _base(base), _sel(0), _total(0), _pQt
 			{
 				_cats.push_back((*k));
 			}
+		}
+		if (hasUnassigned)
+		{
+			_cats.push_back("STR_UNASSIGNED");
 		}
 	}
 
@@ -443,12 +453,17 @@ void PurchaseState::updateList()
 
 	_lstItems->clearList();
 	_rows.clear();
+
+	const std::string selectedCategory = _cats[_cbxCategory->getSelected()];
+	bool categoryFilterEnabled = (selectedCategory != "STR_ALL_ITEMS");
+	bool categoryUnassigned = (selectedCategory == "STR_UNASSIGNED");
+	bool categoryHidden = (selectedCategory == "STR_FILTER_HIDDEN");
+
 	for (size_t i = 0; i < _items.size(); ++i)
 	{
 		// filter
-		std::string cat = _cats[_cbxCategory->getSelected()];
 		bool hidden = isHidden(i);
-		if (cat == "STR_FILTER_HIDDEN")
+		if (categoryHidden)
 		{
 			if (!hidden)
 			{
@@ -461,14 +476,22 @@ void PurchaseState::updateList()
 		}
 		else if (_game->getMod()->getUseCustomCategories())
 		{
-			if (cat != "STR_ALL_ITEMS" && !belongsToCategory(i, cat))
+			if (categoryUnassigned && _items[i].type == TRANSFER_ITEM)
+			{
+				RuleItem* rule = (RuleItem*)_items[i].rule;
+				if (!rule->getCategories().empty())
+				{
+					continue;
+				}
+			}
+			else if (categoryFilterEnabled && !belongsToCategory(i, selectedCategory))
 			{
 				continue;
 			}
 		}
 		else
 		{
-			if (cat != "STR_ALL_ITEMS" && cat != getCategory(i))
+			if (categoryFilterEnabled && selectedCategory != getCategory(i))
 			{
 				continue;
 			}

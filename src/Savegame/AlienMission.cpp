@@ -57,8 +57,11 @@ AlienMission::~AlienMission()
 	// Empty by design.
 }
 
-class matchById: public std::unary_function<const AlienBase *, bool>
+class matchById
 {
+	typedef const AlienBase* argument_type;
+	typedef bool result_type;
+
 public:
 	/// Remember ID.
 	matchById(int id, std::string type) : _id(id), _type(type) { /* Empty by design. */ }
@@ -158,8 +161,11 @@ bool AlienMission::isOver() const
 /**
  * Find an XCOM base in this region that is marked for retaliation.
  */
-class FindMarkedXCOMBase: public std::unary_function<const Base *, bool>
+class FindMarkedXCOMBase
 {
+	typedef const Base* argument_type;
+	typedef bool result_type;
+
 public:
 	FindMarkedXCOMBase(const RuleRegion &region) : _region(region) { /* Empty by design. */ }
 	bool operator()(const Base *base) const { return (_region.insideRegion(base->getLongitude(), base->getLatitude()) && base->getRetaliationTarget()); }
@@ -286,7 +292,7 @@ void AlienMission::think(Game &engine, const Globe &globe)
 			++tries;
 		}
 		while (!(globe.insideLand(pos.first, pos.second)
-			&& region->insideRegion(pos.first, pos.second))
+			&& region->insideRegion(pos.first, pos.second, true))
 			&& tries < 100);
 		spawnAlienBase(0, engine, area, pos, 0);
 	}
@@ -337,7 +343,7 @@ Ufo *AlienMission::spawnUfo(SavedGame &game, const Mod &mod, const Globe &globe,
 	{
 		const RuleRegion &regionRules = *mod.getRegion(_region, true);
 		std::vector<Base *>::const_iterator found =
-		    std::find_if (game.getBases()->begin(), game.getBases()->end(),
+			std::find_if (game.getBases()->begin(), game.getBases()->end(),
 				 FindMarkedXCOMBase(regionRules));
 		if (found != game.getBases()->end())
 		{
@@ -579,7 +585,7 @@ void AlienMission::start(Game &engine, const Globe &globe, size_t initialCount)
 					pos.second = RNG::generate(std::min(area.latMin, area.latMax), std::max(area.latMin, area.latMax));
 					++tries;
 				} while (!(globe.insideLand(pos.first, pos.second)
-					&& region->insideRegion(pos.first, pos.second))
+					&& region->insideRegion(pos.first, pos.second, true))
 					&& tries < 100);
 				auto operationBaseType = mod.getDeployment(_rule.getOperationBaseType(), true);
 				auto newAlienOperationBase = spawnAlienBase(0, engine, area, pos, operationBaseType);
@@ -600,8 +606,11 @@ void AlienMission::start(Game &engine, const Globe &globe, size_t initialCount)
 /** @brief Match a base from it's coordinates.
  * This function object uses coordinates to match a base.
  */
-class MatchBaseCoordinates: public std::unary_function<const Base *, bool>
+class MatchBaseCoordinates
 {
+	typedef const Base* argument_type;
+	typedef bool result_type;
+
 public:
 	/// Remember the query coordinates.
 	MatchBaseCoordinates(double lon, double lat) : _lon(lon), _lat(lat) { /* Empty by design. */ }
@@ -687,7 +696,7 @@ void AlienMission::ufoReachedWaypoint(Ufo &ufo, Game &engine, const Globe &globe
 			// Remove UFO, replace with Base defense.
 			ufo.setDetected(false);
 			std::vector<Base *>::const_iterator found =
-			    std::find_if (game.getBases()->begin(), game.getBases()->end(),
+				std::find_if (game.getBases()->begin(), game.getBases()->end(),
 					 MatchBaseCoordinates(ufo.getLongitude(), ufo.getLatitude()));
 			if (found == game.getBases()->end())
 			{
@@ -942,7 +951,7 @@ std::pair<double, double> AlienMission::getWaypoint(const MissionWave &wave, con
 
 	if (_missionSiteZone != -1 && wave.objective && trajectory.getZone(nextWaypoint) == (size_t)(_rule.getSpawnZone()))
 	{
-		const MissionArea *area = &region.getMissionZones().at(_rule.getObjective()).areas.at(_missionSiteZone);
+		const MissionArea *area = &region.getMissionZones().at(_rule.getSpawnZone()).areas.at(_missionSiteZone);
 		return std::make_pair(area->lonMin, area->latMin);
 	}
 
@@ -968,30 +977,43 @@ std::pair<double, double> AlienMission::getWaypoint(const MissionWave &wave, con
 
 /**
  * Get a random point inside the given region zone.
- * The point will be used to land a UFO, so it HAS to be on land.
+ * The point will be used to land a UFO, so it HAS to be on land (UNLESS it's landing on a city).
+ * @param globe reference to the globe data.
+ * @param region reference to the region we want a land point in.
+ * @param zone the missionZone set within the region to find a landing zone in.
+ * @return a set of longitudinal and latitudinal coordinates.
  */
 std::pair<double, double> AlienMission::getLandPoint(const Globe &globe, const RuleRegion &region, size_t zone)
 {
-	if (zone >= region.getMissionZones().size())
+	if (zone >= region.getMissionZones().size() || region.getMissionZones().at(zone).areas.size() == 0)
 	{
 		logMissionError(zone, region);
 	}
-	int tries = 0;
+
 	std::pair<double, double> pos;
-	do
+
+	if (region.getMissionZones().at(zone).areas.at(0).isPoint()) // if a UFO wants to land on a city, let it.
 	{
 		pos = region.getRandomPoint(zone);
-		++tries;
 	}
-	while (!(globe.insideLand(pos.first, pos.second)
-		&& region.insideRegion(pos.first, pos.second))
-		&& tries < 100);
-	if (tries == 100)
+	else
 	{
-		Log(LOG_DEBUG) << "Region: " << region.getType() << " Longitude: " << pos.first << " Latitude: " << pos.second << " invalid zone: " << zone << " ufo forced to land on water!";
+		int tries = 0;
+		do
+		{
+			pos = region.getRandomPoint(zone);
+			++tries;
+		}
+		while (!(globe.insideLand(pos.first, pos.second)
+			&& region.insideRegion(pos.first, pos.second))
+			&& tries < 100);
+
+		if (tries == 100)
+		{
+			Log(LOG_DEBUG) << "Region: " << region.getType() << " Longitude: " << pos.first << " Latitude: " << pos.second << " invalid zone: " << zone << " ufo forced to land on water!";
+		}
 	}
 	return pos;
-
 }
 
 /**

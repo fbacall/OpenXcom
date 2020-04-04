@@ -31,7 +31,7 @@
 #include "../Engine/Options.h"
 #include "../Savegame/SavedGame.h"
 #include "../Savegame/SavedBattleGame.h"
-#include "../Mod/RuleStartingCondition.h"
+#include "../Mod/RuleEnviroEffects.h"
 #include "../Engine/SurfaceSet.h"
 #include "../Savegame/BattleItem.h"
 #include "../Mod/RuleItem.h"
@@ -89,12 +89,12 @@ Inventory::Inventory(Game *game, int width, int height, int x, int y, bool base)
 	const SavedBattleGame *battleSave = _game->getSavedGame()->getSavedBattle();
 	if (battleSave)
 	{
-		auto startingCondition = battleSave->getStartingCondition();
-		if (startingCondition)
+		auto enviro = battleSave->getEnviroEffects();
+		if (enviro)
 		{
-			if (!startingCondition->getInventoryShockIndicator().empty())
+			if (!enviro->getInventoryShockIndicator().empty())
 			{
-				_shockIndicator = _game->getMod()->getSurface(startingCondition->getInventoryShockIndicator(), false);
+				_shockIndicator = _game->getMod()->getSurface(enviro->getInventoryShockIndicator(), false);
 			}
 		}
 	}
@@ -104,6 +104,10 @@ Inventory::Inventory(Game *game, int width, int height, int x, int y, bool base)
 	_inventorySlotBackPack = _game->getMod()->getInventory("STR_BACK_PACK", true);
 	_inventorySlotBelt = _game->getMod()->getInventory("STR_BELT", true);
 	_inventorySlotGround = _game->getMod()->getInventory("STR_GROUND", true);
+
+	_groundSlotsX = (Screen::ORIGINAL_WIDTH - _inventorySlotGround->getX()) / RuleInventory::SLOT_W;
+	_groundSlotsY = (Screen::ORIGINAL_HEIGHT - _inventorySlotGround->getY()) / RuleInventory::SLOT_H;
+	_occupiedSlotsCache.resize(_groundSlotsY, std::vector<char>(_groundSlotsX * 2, false));
 }
 
 /**
@@ -159,11 +163,14 @@ BattleUnit *Inventory::getSelectedUnit() const
  * Changes the unit to display the inventory of.
  * @param unit Pointer to battle unit.
  */
-void Inventory::setSelectedUnit(BattleUnit *unit)
+void Inventory::setSelectedUnit(BattleUnit *unit, bool resetGroundOffset)
 {
 	_selUnit = unit;
-	_groundOffset = 999;
-	arrangeGround(1);
+	if (resetGroundOffset)
+	{
+		_groundOffset = 999;
+		arrangeGround(1);
+	}
 }
 
 /**
@@ -343,7 +350,7 @@ void Inventory::drawItems()
 			}
 
 			// grenade primer indicators
-			if ((*i)->getFuseTimer() >= 0)
+			if ((*i)->getFuseTimer() >= 0 && (*i)->getRules()->getInventoryWidth() > 0)
 			{
 				primers(x, y, (*i)->isFuseEnabled());
 			}
@@ -352,12 +359,28 @@ void Inventory::drawItems()
 		stackLayer.setPalette(getPalette());
 		// Ground items
 		int fatalWounds = 0;
+		auto& occupiedSlots = *clearOccupiedSlotsCache();
 		for (std::vector<BattleItem*>::iterator i = _selUnit->getTile()->getInventory()->begin(); i != _selUnit->getTile()->getInventory()->end(); ++i)
 		{
 			Surface *frame = (*i)->getBigSprite(texture, _animFrame);
 			// note that you can make items invisible by setting their width or height to 0 (for example used with tank corpse items)
-			if ((*i) == _selItem || (*i)->getSlotX() < _groundOffset || (*i)->getRules()->getInventoryHeight() == 0 || (*i)->getRules()->getInventoryWidth() == 0 || !frame)
+			if ((*i) == _selItem || (*i)->getRules()->getInventoryHeight() == 0 || (*i)->getRules()->getInventoryWidth() == 0 || !frame)
 				continue;
+
+			// check if item is in visible range
+			if ((*i)->getSlotX() < _groundOffset || (*i)->getSlotX() >= _groundOffset + _groundSlotsX)
+				continue;
+
+			// check if something was draw here before
+			auto& pos = occupiedSlots[(*i)->getSlotY()][(*i)->getSlotX() - _groundOffset];
+			if (pos)
+			{
+				continue;
+			}
+			else
+			{
+				pos = true;
+			}
 
 			int x, y;
 			x = ((*i)->getSlot()->getX() + ((*i)->getSlotX() - _groundOffset) * RuleInventory::SLOT_W);
@@ -366,7 +389,7 @@ void Inventory::drawItems()
 			work.executeBlit(frame, _items, x, y, 0);
 
 			// grenade primer indicators
-			if ((*i)->getFuseTimer() >= 0)
+			if ((*i)->getFuseTimer() >= 0 && (*i)->getRules()->getInventoryWidth() > 0)
 			{
 				primers(x, y, (*i)->isFuseEnabled());
 			}
@@ -441,6 +464,21 @@ void Inventory::drawSelectedItem()
 		_selection->clear();
 		_selItem->getRules()->drawHandSprite(_game->getMod()->getSurfaceSet("BIGOBS.PCK"), _selection, _selItem, _animFrame);
 	}
+}
+
+/**
+ * Clear all occupied slots markers.
+ */
+std::vector<std::vector<char>>* Inventory::clearOccupiedSlotsCache()
+{
+	for (auto& v : _occupiedSlotsCache)
+	{
+		for (auto& b : v)
+		{
+			b = false;
+		}
+	}
+	return &_occupiedSlotsCache;
 }
 
 /**
@@ -664,9 +702,43 @@ void Inventory::mouseClick(Action *action, State *state)
 					x += _groundOffset;
 				}
 				BattleItem *item = _selUnit->getItem(slot, x, y);
-				if (item != 0 && !item->getRules()->isFixed())
+				if (item != 0)
 				{
-					if ((SDL_GetModState() & KMOD_CTRL))
+					if ((SDL_GetModState() & KMOD_SHIFT))
+					{
+						bool quickUnload = false;
+						bool allowed = true;
+						// Quick-unload check
+						if (!_tu)
+						{
+							// Outside of the battlescape, quick-unload:
+							// - the weapon is never moved from its original slot
+							// - the ammo always drops on the ground
+							quickUnload = true;
+						}
+						else
+						{
+							if (item->getSlot()->getType() != INV_HAND)
+							{
+								// During the battle, only weapons held in hand can be shift-unloaded
+								allowed = false;
+							}
+						}
+						if (allowed)
+						{
+							_selItem = item; // don't worry, we'll unselect it later!
+							if (unload(quickUnload))
+							{
+								_game->getMod()->getSoundByDepth(_depth, Mod::ITEM_DROP)->play();
+							}
+							_selItem = 0; // see, I told you!
+						}
+					}
+					else if (item->getRules()->isFixed())
+					{
+						// do nothing!
+					}
+					else if ((SDL_GetModState() & KMOD_CTRL))
 					{
 						RuleInventory *newSlot = _inventorySlotGround;
 						std::string warning = "STR_NOT_ENOUGH_SPACE";
@@ -818,35 +890,57 @@ void Inventory::mouseClick(Action *action, State *state)
 					}
 					else
 					{
+						// 4. the cost of loading the weapon with the new ammo (from the offhand)
 						int tuCost = item->getRules()->getTULoad(slotAmmo);
 
-						if (_selItem->getSlot()->getType() != INV_HAND)
+						if (Mod::EXTENDED_ITEM_RELOAD_COST && _selItem->getSlot()->getType() != INV_HAND)
 						{
+							// 3. the cost of moving the new ammo from the current slot to the offhand
+							// Note: the cost for left/right hand might *NOT* be the same, but using the right hand "by definition"
 							tuCost += _selItem->getSlot()->getCost(_inventorySlotRightHand);
 						}
 
 						BattleItem *weaponRightHand = _selUnit->getRightHandWeapon();
 						BattleItem *weaponLeftHand = _selUnit->getLeftHandWeapon();
 
+						auto oldAmmoGoesTo = _inventorySlotGround;
+						if (!weaponRightHand || _selItem == weaponRightHand)
+						{
+							oldAmmoGoesTo = _inventorySlotRightHand;
+						}
+						else if (!weaponLeftHand || _selItem == weaponLeftHand)
+						{
+							oldAmmoGoesTo = _inventorySlotLeftHand;
+						}
+
 						auto canLoad = true;
 						if (item->getAmmoForSlot(slotAmmo) != 0)
 						{
 							auto tuUnload = item->getRules()->getTUUnload(slotAmmo);
-							if ((SDL_GetModState() & KMOD_SHIFT) && (!_tu || tuUnload) && (item == weaponRightHand || item == weaponLeftHand))
+							if ((SDL_GetModState() & KMOD_SHIFT) && (!_tu || tuUnload))
 							{
-								auto checkBoth = [&](BattleItem *i)
+								// Quick-swap check
+								if (!_tu)
 								{
-									return nullptr == i || item == i || _selItem == i;
-								};
-
-								if (checkBoth(weaponRightHand) && checkBoth(weaponLeftHand))
-								{
-									tuCost += tuUnload;
+									// Outside of the battlescape, the old ammo always drops on the ground
+									oldAmmoGoesTo = _inventorySlotGround;
 								}
 								else
 								{
-									canLoad = false;
-									_warning->showMessage(_game->getLanguage()->getString("STR_BOTH_HANDS_MUST_BE_EMPTY"));
+									// During the battle, only weapons held in hand can use ammo quick-swap
+									if (item->getSlot()->getType() != INV_HAND)
+									{
+										canLoad = false;
+									}
+								}
+
+								// 1. the cost of unloading the old ammo (to the offhand)
+								tuCost += tuUnload;
+								if (oldAmmoGoesTo == _inventorySlotGround)
+								{
+									// 2. the cost of dropping the old ammo on the ground (from the offhand)
+									// Note: the cost for left/right hand is (should be) the same, so just using the right hand
+									tuCost += _inventorySlotRightHand->getCost(_inventorySlotGround);
 								}
 							}
 							else
@@ -859,14 +953,19 @@ void Inventory::mouseClick(Action *action, State *state)
 						{
 							if (!_tu || _selUnit->spendTimeUnits(tuCost))
 							{
+								auto arrangeFloor = false;
 								auto oldAmmo = item->setAmmoForSlot(slotAmmo, _selItem);
 								if (oldAmmo)
 								{
-									moveItem(oldAmmo, (item == weaponRightHand ? _inventorySlotLeftHand : _inventorySlotRightHand), 0, 0);
+									moveItem(oldAmmo, oldAmmoGoesTo, 0, 0);
+									if (oldAmmoGoesTo == _inventorySlotGround)
+									{
+										arrangeFloor = true;
+									}
 								}
 								setSelectedItem(0);
 								_game->getMod()->getSoundByDepth(_depth, item->getRules()->getReloadSound())->play();
-								if (item->getSlot()->getType() == INV_GROUND)
+								if (arrangeFloor || item->getSlot()->getType() == INV_GROUND)
 								{
 									arrangeGround();
 								}
@@ -1001,9 +1100,10 @@ void Inventory::mouseClick(Action *action, State *state)
  * on the right hand and the ammo on the left hand.
  * Or if only one hand is free, the gun is placed
  * in the hand and the ammo is placed on the ground.
+ * @param quickUnload Quick unload using specific rules (the rules are different in and outside of the battlescape)
  * @return The success of the weapon being unloaded.
  */
-bool Inventory::unload()
+bool Inventory::unload(bool quickUnload)
 {
 	// Must be holding an item
 	if (_selItem == 0)
@@ -1056,19 +1156,11 @@ bool Inventory::unload()
 				return false;
 			}
 		};
-		if (!(SDL_GetModState() & KMOD_SHIFT))
+		// History lesson:
+		// The old shift-unload logic by Yankes (i.e. unload ammo slots in reverse order) was removed from here,
+		// because the new shift-unload logic by Fonzo/Ohartenstein now has a completely different meaning (i.e. quick-unload)
 		{
 			for (int slot = 0; slot < RuleItem::AmmoSlotMax; ++slot)
-			{
-				if (checkSlot(slot))
-				{
-					break;
-				}
-			}
-		}
-		else
-		{
-			for (int slot = RuleItem::AmmoSlotMax - 1; slot >= 0; --slot)
 			{
 				if (checkSlot(slot))
 				{
@@ -1089,6 +1181,25 @@ bool Inventory::unload()
 	{
 		// not weapon or grenade, can't use unload button
 		return false;
+	}
+
+	// Simplified logic for quick-unload outside of the battlescape
+	if (quickUnload && !_tu)
+	{
+		// noop(); // 1. do not move the weapon at all!
+		if (grenade)
+		{
+			_selItem->setFuseTimer(-1);
+			_warning->showMessage(_game->getLanguage()->getString(_selItem->getRules()->getUnprimeActionMessage()));
+		}
+		else
+		{
+			auto oldAmmo = _selItem->setAmmoForSlot(slotForAmmoUnload, nullptr);
+			moveItem(oldAmmo, _inventorySlotGround, 0, 0); // 2. + 3. always drop the ammo on the ground
+			arrangeGround();
+		}
+		setSelectedItem(0);
+		return true;
 	}
 
 	// Check which hands are free.
@@ -1129,18 +1240,26 @@ bool Inventory::unload()
 	}
 	else
 	{
+		// 2. unload (= move the ammo to the second free hand)
 		cost.Time += toForAmmoUnload;
+
+		if (SecondFreeHand == nullptr)
+		{
+			// 3. drop the ammo on the ground (if the second hand is not free)
+			cost.Time += FirstFreeHand->getCost(_inventorySlotGround);
+		}
 	}
 
 	if (cost.haveTU() && _selItem->getSlot()->getType() != INV_HAND)
 	{
+		// 1. move the weapon to the first free hand
 		cost.Time += _selItem->getSlot()->getCost(FirstFreeHand);
 	}
 
 	std::string err;
 	if (!_tu || cost.spendTU(&err))
 	{
-		moveItem(_selItem, FirstFreeHand, 0, 0);
+		moveItem(_selItem, FirstFreeHand, 0, 0); // 1.
 		if (grenade)
 		{
 			_selItem->setFuseTimer(-1);
@@ -1151,11 +1270,11 @@ bool Inventory::unload()
 			auto oldAmmo = _selItem->setAmmoForSlot(slotForAmmoUnload, nullptr);
 			if (SecondFreeHand != nullptr)
 			{
-				moveItem(oldAmmo, SecondFreeHand, 0, 0);
+				moveItem(oldAmmo, SecondFreeHand, 0, 0); // 2.
 			}
 			else
 			{
-				moveItem(oldAmmo, _inventorySlotGround, 0, 0);
+				moveItem(oldAmmo, _inventorySlotGround, 0, 0); // 2. + 3.
 				arrangeGround();
 			}
 		}
@@ -1249,8 +1368,8 @@ void Inventory::arrangeGround(int alterOffset)
 {
 	RuleInventory *ground = _inventorySlotGround;
 
-	int slotsX = (Screen::ORIGINAL_WIDTH - ground->getX()) / RuleInventory::SLOT_W;
-	int slotsY = (Screen::ORIGINAL_HEIGHT - ground->getY()) / RuleInventory::SLOT_H;
+	int slotsX = _groundSlotsX;
+	int slotsY = _groundSlotsY;
 	int x = 0;
 	int y = 0;
 	bool donePlacing = false;
@@ -1264,8 +1383,7 @@ void Inventory::arrangeGround(int alterOffset)
 		std::vector<BattleItem*> itemListOrder; // Placement order of item type stacks.
 		std::vector< std::vector<int> > startIndexCacheX; // Cache for skipping to last known available position of a given size.
 		// Create chart of free slots for later rapid lookup.
-		std::vector< std::vector<bool> > occupiedSlots;
-		occupiedSlots.resize(slotsY, std::vector<bool>(slotsX * 2, false));
+		auto& occupiedSlots = *clearOccupiedSlotsCache();
 
 		// Move items out of the way and find which stack they'll end up in within the inventory.
 		for (auto& i : *(_selUnit->getTile()->getInventory()))
@@ -1362,8 +1480,8 @@ void Inventory::arrangeGround(int alterOffset)
 						{
 							// Filled enough for the widest item to potentially request occupancy checks outside of current cache. Expand slot cache.
 							size_t newCacheSize = occupiedSlots[0].size() * 2;
-							for (std::vector< std::vector<bool> >::iterator j = occupiedSlots.begin(); j != occupiedSlots.end(); ++j) {
-								j->resize(newCacheSize, false);
+							for (auto j = occupiedSlots.begin(); j != occupiedSlots.end(); ++j) {
+								j->resize(newCacheSize, 0);
 							}
 						}
 						// Reserve the slots this item will occupy.
@@ -1371,7 +1489,7 @@ void Inventory::arrangeGround(int alterOffset)
 						{
 							for (int yd = 0; yd < itemTypeSample->getRules()->getInventoryHeight() && canPlace; yd++)
 							{
-								occupiedSlots[y + yd][x + xd] = true;
+								occupiedSlots[y + yd][x + xd] = 1;
 							}
 						}
 
@@ -1519,7 +1637,7 @@ bool Inventory::canBeStacked(BattleItem *itemA, BattleItem *itemB)
 		itemA->getFuseTimer() == -1 && itemB->getFuseTimer() == -1 &&
 		// and neither is a corpse or unconscious unit
 		itemA->getUnit() == 0 && itemB->getUnit() == 0 &&
-		// and if it's a medkit, it has the same number of charges
+		// and if it's a medikit, it has the same number of charges
 		itemA->getPainKillerQuantity() == itemB->getPainKillerQuantity() &&
 		itemA->getHealQuantity() == itemB->getHealQuantity() &&
 		itemA->getStimulantQuantity() == itemB->getStimulantQuantity());

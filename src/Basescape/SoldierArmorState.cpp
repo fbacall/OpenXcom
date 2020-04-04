@@ -43,8 +43,12 @@
 namespace OpenXcom
 {
 
-struct compareArmorName : public std::binary_function<ArmorItem&, ArmorItem&, bool>
+struct compareArmorName
 {
+	typedef ArmorItem& first_argument_type;
+	typedef ArmorItem& second_argument_type;
+	typedef bool result_type;
+
 	bool _reverse;
 
 	compareArmorName(bool reverse) : _reverse(reverse) {}
@@ -96,7 +100,7 @@ SoldierArmorState::SoldierArmorState(Base *base, size_t soldier, SoldierArmorOri
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK14.SCR"));
+	setWindowBackground(_window, "soldierArmor");
 
 	_btnCancel->setText(tr("STR_CANCEL_UC"));
 	_btnCancel->onMouseClick((ActionHandler)&SoldierArmorState::btnCancelClick);
@@ -122,6 +126,8 @@ SoldierArmorState::SoldierArmorState(Base *base, size_t soldier, SoldierArmorOri
 	for (std::vector<std::string>::const_iterator i = armors.begin(); i != armors.end(); ++i)
 	{
 		Armor *a = _game->getMod()->getArmor(*i);
+		if (!a->getRequiredResearch().empty() && !_game->getSavedGame()->isResearched(a->getRequiredResearch()))
+			continue;
 		if (!a->getUnits().empty() &&
 			std::find(a->getUnits().begin(), a->getUnits().end(), s->getRules()->getType()) == a->getUnits().end())
 			continue;

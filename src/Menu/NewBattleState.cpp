@@ -136,7 +136,7 @@ NewBattleState::NewBattleState() : _craft(0)
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK01.SCR"));
+	setWindowBackground(_window, "newBattleMenu");
 
 	_txtTitle->setAlign(ALIGN_CENTER);
 	_txtTitle->setBig();
@@ -166,7 +166,22 @@ NewBattleState::NewBattleState() : _craft(0)
 
 	_txtAlienTech->setText(tr("STR_ALIEN_TECH_LEVEL"));
 
-	_missionTypes = _game->getMod()->getDeploymentsList();
+	if (Options::debug)
+	{
+		_missionTypes = _game->getMod()->getDeploymentsList();
+	}
+	else
+	{
+		_missionTypes.reserve(_game->getMod()->getDeploymentsList().size());
+		for (auto &deploymentName : _game->getMod()->getDeploymentsList())
+		{
+			auto depl = _game->getMod()->getDeployment(deploymentName);
+			if (depl && !depl->isHidden())
+			{
+				_missionTypes.push_back(deploymentName);
+			}
+		}
+	}
 	_cbxMission->setOptions(_missionTypes, true);
 	_cbxMission->onChange((ActionHandler)&NewBattleState::cbxMissionChange);
 
@@ -379,7 +394,7 @@ void NewBattleState::initSave()
 	const Mod *mod = _game->getMod();
 	SavedGame *save = new SavedGame();
 	Base *base = new Base(mod);
-	const YAML::Node &starter = _game->getMod()->getStartingBase();
+	const YAML::Node &starter = _game->getMod()->getDefaultStartingBase();
 	base->load(starter, save, true, true);
 	save->getBases()->push_back(base);
 
@@ -406,7 +421,7 @@ void NewBattleState::initSave()
 			soldier->promoteRank();
 
 			UnitStats* stats = soldier->getCurrentStats();
-			stats->tu 			+= RNG::generate(0, 5);
+			stats->tu			+= RNG::generate(0, 5);
 			stats->stamina		+= RNG::generate(0, 5);
 			stats->health		+= RNG::generate(0, 5);
 			stats->bravery		+= RNG::generate(0, 5);
@@ -414,12 +429,16 @@ void NewBattleState::initSave()
 			stats->firing		+= RNG::generate(0, 5);
 			stats->throwing		+= RNG::generate(0, 5);
 			stats->strength		+= RNG::generate(0, 5);
+			stats->mana			+= RNG::generate(0, 5);
 			stats->psiStrength	+= RNG::generate(0, 5);
 			stats->melee		+= RNG::generate(0, 5);
 			stats->psiSkill		+= RNG::generate(0, 20);
 		}
 		UnitStats* stats = soldier->getCurrentStats();
 		stats->bravery = (int)ceil(stats->bravery / 10.0) * 10; // keep it a multiple of 10
+
+		// update again, could have been changed since soldier creation
+		soldier->calcStatString(mod->getStatStrings(), (Options::psiStrengthEval && save->isResearched(mod->getPsiRequirements())));
 
 		base->getSoldiers()->push_back(soldier);
 		if (i < _craft->getRules()->getSoldiers())
@@ -435,7 +454,7 @@ void NewBattleState::initSave()
 		{
 			int howMany = rule->getBattleType() == BT_AMMO ? 2 : 1;
 			base->getStorageItems()->addItem(*i, howMany);
-			if (rule->getBattleType() != BT_NONE && !rule->isFixed() && rule->getBigSprite() > -1)
+			if (rule->getBattleType() != BT_NONE && rule->isInventoryItem())
 			{
 				_craft->getItems()->addItem(*i, howMany);
 			}
@@ -464,7 +483,7 @@ void NewBattleState::btnOkClick(Action *)
 		return;
 	}
 
-	SavedBattleGame *bgame = new SavedBattleGame(_game->getMod());
+	SavedBattleGame *bgame = new SavedBattleGame(_game->getMod(), _game->getLanguage());
 	_game->getSavedGame()->setBattleGame(bgame);
 	bgame->setMissionType(_missionTypes[_cbxMission->getSelected()]);
 	BattlescapeGenerator bgen = BattlescapeGenerator(_game);

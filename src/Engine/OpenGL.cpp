@@ -10,11 +10,10 @@
 
 #ifndef __NO_OPENGL
 
+#include "OpenGL.h"
 #include <SDL.h>
-#include <SDL_opengl.h>
 #include <yaml-cpp/yaml.h>
 
-#include "OpenGL.h"
 #include "Logger.h"
 #include "Surface.h"
 #include "FileMap.h"
@@ -254,7 +253,7 @@ bool OpenGL::set_shader(const char *source_yaml_filename)
 		glprogram = 0;
 	}
 
-	if (source_yaml_filename && strlen(source_yaml_filename))
+	if (source_yaml_filename && source_yaml_filename[0] != '\0')
 	{
 		glprogram = glCreateProgram();
 		if (glprogram == 0)
@@ -491,7 +490,7 @@ void OpenGL::term()
 	}
 }
 
-  OpenGL::OpenGL() : gltexture(0), glprogram(0), linear(false),
+  OpenGL::OpenGL() : gltexture(0), glprogram(0), linear(false), shader_support(false),
                      buffer(NULL), iwidth(0), iheight(0),
                      iformat(GL_UNSIGNED_INT_8_8_8_8_REV), // this didn't seem to be set anywhere before...
                      ibpp(32)                              // ...nor this

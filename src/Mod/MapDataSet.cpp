@@ -18,10 +18,12 @@
  */
 #include "MapDataSet.h"
 #include "MapData.h"
+#include <sstream>
 #include <SDL_endian.h>
 #include "../Engine/Exception.h"
 #include "../Engine/SurfaceSet.h"
 #include "../Engine/FileMap.h"
+#include "../Engine/Logger.h"
 
 namespace OpenXcom
 {
@@ -42,18 +44,6 @@ MapDataSet::MapDataSet(const std::string &name) : _name(name), _surfaceSet(0), _
 MapDataSet::~MapDataSet()
 {
 	unloadData();
-}
-
-/**
- * Loads the map data set from a YAML file.
- * @param node YAML node.
- */
-void MapDataSet::load(const YAML::Node &node)
-{
-	for (YAML::const_iterator i = node.begin(); i != node.end(); ++i)
-	{
-		_name = i->as<std::string>(_name);
-	}
 }
 
 /**
@@ -78,9 +68,25 @@ size_t MapDataSet::getSize() const
  * Gets the objects in this dataset.
  * @return Pointer to the objects.
  */
-std::vector<MapData*> *MapDataSet::getObjects()
+std::vector<MapData*> *MapDataSet::getObjectsRaw()
 {
 	return &_objects;
+}
+
+/**
+ * Gets an object in this dataset.
+ * @param i Object index.
+ * @return Pointer to the object.
+ */
+MapData *MapDataSet::getObject(size_t i)
+{
+	if (i >= _objects.size())
+	{
+		std::ostringstream ss;
+		ss << "MCD " << _name << " has no object " << i;
+		throw Exception(ss.str());
+	}
+	return _objects[i];
 }
 
 /**
@@ -96,7 +102,7 @@ SurfaceSet *MapDataSet::getSurfaceset() const
  * Loads terrain data in XCom format (MCD & PCK files).
  * @sa http://www.ufopaedia.org/index.php?title=MCD
  */
-void MapDataSet::loadData()
+void MapDataSet::loadData(MCDPatch *patch, bool validate)
 {
 	// prevents loading twice
 	if (_loaded) return;
@@ -157,14 +163,15 @@ void MapDataSet::loadData()
 	MCD mcd;
 
 	// Load Terrain Data from MCD file
-	auto mapFile = FileMap::getIStream("TERRAIN/" + _name + ".MCD");
+	std::string fname = "TERRAIN/" + _name + ".MCD";
+	auto mapFile = FileMap::getIStream(fname);
 
 	while (mapFile->read((char*)&mcd, sizeof(MCD)))
 	{
 		MapData *to = new MapData(this);
 		_objects.push_back(to);
 
-		// set all the terrainobject properties:
+		// set all the terrain object properties:
 		for (int frame = 0; frame < 8; frame++)
 		{
 			to->setSprite(frame,(int)mcd.Frame[frame]);
@@ -206,7 +213,33 @@ void MapDataSet::loadData()
 
 	if (!mapFile->eof())
 	{
-		throw Exception("Invalid MCD file");
+		throw Exception("Invalid MCD file " + fname);
+	}
+
+	// apply any ruleset patches before validation
+	if (patch)
+	{
+		patch->modifyData(this);
+	}
+
+	// Validate MCD references
+	if (validate)
+	{
+		for (size_t i = 0; i < _objects.size(); ++i)
+		{
+			if ((size_t)_objects[i]->getDieMCD() >= _objects.size())
+			{
+				Log(LOG_INFO) << "MCD " << _name << " object " << i << " has invalid DieMCD: " << _objects[i]->getDieMCD();
+			}
+			if ((size_t)_objects[i]->getAltMCD() >= _objects.size())
+			{
+				Log(LOG_INFO) << "MCD " << _name << " object " << i << " has invalid AltMCD: " << _objects[i]->getAltMCD();
+			}
+			if (_objects[i]->getArmor() == 0)
+			{
+				Log(LOG_INFO) << "MCD " << _name << " object " << i << " has 0 armor";
+			}
+		}
 	}
 
 	// Load terrain sprites/surfaces/PCK files into a surfaceset
@@ -221,11 +254,11 @@ void MapDataSet::unloadData()
 {
 	if (_loaded)
 	{
-		for (std::vector<MapData*>::iterator i = _objects.begin(); i != _objects.end();)
+		for (std::vector<MapData*>::iterator i = _objects.begin(); i != _objects.end(); ++i)
 		{
 			delete *i;
-			i = _objects.erase(i);
 		}
+		_objects.clear();
 		delete _surfaceSet;
 		_loaded = false;
 	}

@@ -40,6 +40,7 @@
 #include "../Mod/RuleSoldier.h"
 #include "../Ufopaedia/Ufopaedia.h"
 #include <algorithm>
+#include "../Engine/Unicode.h"
 
 namespace OpenXcom
 {
@@ -77,12 +78,13 @@ CraftArmorState::CraftArmorState(Base *base, size_t craft) : _base(base), _craft
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK14.SCR"));
+	setWindowBackground(_window, "craftArmor");
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&CraftArmorState::btnOkClick);
 	_btnOk->onKeyboardPress((ActionHandler)&CraftArmorState::btnOkClick, Options::keyCancel);
-	_btnOk->onKeyboardPress((ActionHandler)&CraftArmorState::btnDeequipAllArmorClick, Options::keyResetAll);
+	_btnOk->onKeyboardPress((ActionHandler)&CraftArmorState::btnDeequipAllArmorClick, Options::keyRemoveArmorFromAllCrafts);
+	_btnOk->onKeyboardPress((ActionHandler)&CraftArmorState::btnDeequipCraftArmorClick, Options::keyRemoveArmorFromCraft);
 
 	_txtTitle->setBig();
 	_txtTitle->setText(tr("STR_SELECT_ARMOR"));
@@ -103,12 +105,16 @@ CraftArmorState::CraftArmorState(Base *base, size_t craft) : _base(base), _craft
 	_sortFunctors.push_back(new SortFunctor(_game, functor));
 
 	PUSH_IN("STR_ID", idStat);
-	PUSH_IN("STR_FIRST_LETTER", nameStat);
+	PUSH_IN("STR_NAME_UC", nameStat);
 	PUSH_IN("STR_SOLDIER_TYPE", typeStat);
 	PUSH_IN("STR_RANK", rankStat);
 	PUSH_IN("STR_MISSIONS2", missionsStat);
 	PUSH_IN("STR_KILLS2", killsStat);
 	PUSH_IN("STR_WOUND_RECOVERY2", woundRecoveryStat);
+	if (_game->getMod()->isManaFeatureEnabled() && !_game->getMod()->getReplenishManaAfterMission())
+	{
+		PUSH_IN("STR_MANA_MISSING", manaMissingStat);
+	}
 	PUSH_IN("STR_TIME_UNITS", tuStat);
 	PUSH_IN("STR_STAMINA", staminaStat);
 	PUSH_IN("STR_HEALTH", healthStat);
@@ -118,6 +124,11 @@ CraftArmorState::CraftArmorState(Base *base, size_t craft) : _base(base), _craft
 	PUSH_IN("STR_THROWING_ACCURACY", throwingStat);
 	PUSH_IN("STR_MELEE_ACCURACY", meleeStat);
 	PUSH_IN("STR_STRENGTH", strengthStat);
+	if (_game->getMod()->isManaFeatureEnabled())
+	{
+		// "unlock" is checked later
+		PUSH_IN("STR_MANA_POOL", manaStat);
+	}
 	PUSH_IN("STR_PSIONIC_STRENGTH", psiStrengthStat);
 	PUSH_IN("STR_PSIONIC_SKILL", psiSkillStat);
 
@@ -165,12 +176,30 @@ void CraftArmorState::cbxSortByChange(Action *action)
 	}
 
 	SortFunctor *compFunc = _sortFunctors[selIdx];
+	_dynGetter = NULL;
 	if (compFunc)
 	{
+		if (selIdx != 2)
+		{
+			_dynGetter = compFunc->getGetter();
+		}
+
 		// if CTRL is pressed, we only want to show the dynamic column, without actual sorting
 		if (!ctrlPressed)
 		{
-			std::stable_sort(_base->getSoldiers()->begin(), _base->getSoldiers()->end(), *compFunc);
+			if (selIdx == 2)
+			{
+				std::stable_sort(_base->getSoldiers()->begin(), _base->getSoldiers()->end(),
+					[](const Soldier* a, const Soldier* b)
+					{
+						return Unicode::naturalCompare(a->getName(), b->getName());
+					}
+				);
+			}
+			else
+			{
+				std::stable_sort(_base->getSoldiers()->begin(), _base->getSoldiers()->end(), *compFunc);
+			}
 			bool shiftPressed = SDL_GetModState() & KMOD_SHIFT;
 			if (shiftPressed)
 			{
@@ -180,7 +209,6 @@ void CraftArmorState::cbxSortByChange(Action *action)
 	}
 	else
 	{
-		_dynGetter = NULL;
 		// restore original ordering, ignoring (of course) those
 		// soldiers that have been sacked since this state started
 		for (std::vector<Soldier *>::const_iterator it = _origSoldierOrder.begin();
@@ -197,10 +225,6 @@ void CraftArmorState::cbxSortByChange(Action *action)
 		}
 	}
 
-	if (compFunc)
-	{
-		_dynGetter = compFunc->getGetter();
-	}
 	initList(_lstSoldiers->getScroll());
 }
 
@@ -211,6 +235,7 @@ void CraftArmorState::cbxSortByChange(Action *action)
 void CraftArmorState::init()
 {
 	State::init();
+	_base->prepareSoldierStatsWithBonuses(); // refresh stats for sorting
 	initList(_savedScrollPosition);
 
 	int row = 0;
@@ -242,8 +267,7 @@ void CraftArmorState::initList(size_t scrl)
 	}
 
 	Craft *c = _base->getCrafts()->at(_craft);
-	float absBonus = _base->getSickBayAbsoluteBonus();
-	float relBonus = _base->getSickBayRelativeBonus();
+	auto recovery = _base->getSumRecoveryPerDay();
 	for (std::vector<Soldier*>::iterator i = _base->getSoldiers()->begin(); i != _base->getSoldiers()->end(); ++i)
 	{
 		if (_dynGetter != NULL)
@@ -252,11 +276,11 @@ void CraftArmorState::initList(size_t scrl)
 			int dynStat = (*_dynGetter)(_game, *i);
 			std::ostringstream ss;
 			ss << dynStat;
-			_lstSoldiers->addRow(4, (*i)->getName(true).c_str(), (*i)->getCraftString(_game->getLanguage(), absBonus, relBonus).c_str(), tr((*i)->getArmor()->getType()).c_str(), ss.str().c_str());
+			_lstSoldiers->addRow(4, (*i)->getName(true).c_str(), (*i)->getCraftString(_game->getLanguage(), recovery).c_str(), tr((*i)->getArmor()->getType()).c_str(), ss.str().c_str());
 		}
 		else
 		{
-			_lstSoldiers->addRow(3, (*i)->getName(true).c_str(), (*i)->getCraftString(_game->getLanguage(), absBonus, relBonus).c_str(), tr((*i)->getArmor()->getType()).c_str());
+			_lstSoldiers->addRow(3, (*i)->getName(true).c_str(), (*i)->getCraftString(_game->getLanguage(), recovery).c_str(), tr((*i)->getArmor()->getType()).c_str());
 		}
 
 		Uint8 color;
@@ -435,12 +459,14 @@ void CraftArmorState::lstSoldiersClick(Action *action)
 						}
 
 						s->setArmor(a);
+						s->prepareStatsWithBonuses(_game->getMod()); // refresh stats for sorting
 						_lstSoldiers->setCellText(_lstSoldiers->getSelectedRow(), 2, tr(a->getType()));
 					}
 				}
 				else
 				{
 					s->setArmor(a);
+					s->prepareStatsWithBonuses(_game->getMod()); // refresh stats for sorting
 					_lstSoldiers->setCellText(_lstSoldiers->getSelectedRow(), 2, tr(a->getType()));
 				}
 			}
@@ -508,6 +534,41 @@ void CraftArmorState::btnDeequipAllArmorClick(Action *action)
 				}
 
 				(*i)->setArmor(a);
+				(*i)->prepareStatsWithBonuses(_game->getMod()); // refresh stats for sorting
+				_lstSoldiers->setCellText(row, 2, tr(a->getType()));
+			}
+		}
+		row++;
+	}
+}
+
+/**
+ * De-equip armor of all soldiers on the current craft, and also all soldiers not assigned to any craft.
+ * @param action Pointer to an action.
+ */
+void CraftArmorState::btnDeequipCraftArmorClick(Action *action)
+{
+	Craft *c = _base->getCrafts()->at(_craft);
+	int row = 0;
+	for (auto s : *_base->getSoldiers())
+	{
+		if (s->getCraft() == c || s->getCraft() == 0)
+		{
+			Armor *a = _game->getMod()->getArmor(s->getRules()->getArmor());
+
+			if (_base->getStorageItems()->getItem(a->getStoreItem()) > 0 || a->getStoreItem() == Armor::NONE)
+			{
+				if (s->getArmor()->getStoreItem() != Armor::NONE)
+				{
+					_base->getStorageItems()->addItem(s->getArmor()->getStoreItem());
+				}
+				if (a->getStoreItem() != Armor::NONE)
+				{
+					_base->getStorageItems()->removeItem(a->getStoreItem());
+				}
+
+				s->setArmor(a);
+				s->prepareStatsWithBonuses(_game->getMod()); // refresh stats for sorting
 				_lstSoldiers->setCellText(row, 2, tr(a->getType()));
 			}
 		}

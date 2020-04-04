@@ -120,7 +120,12 @@ void BattleItem::load(const YAML::Node &node, Mod *mod, const ScriptGlobal *shar
 	_painKiller = node["painKiller"].as<int>(_painKiller);
 	_heal = node["heal"].as<int>(_heal);
 	_stimulant = node["stimulant"].as<int>(_stimulant);
-	_fuseTimer = node["fuseTimer"].as<int>(_fuseTimer);
+	//_fuseTimer = node["fuseTimer"].as<int>(_fuseTimer);
+	if (node["fuseTimer"])
+	{
+		// needed for compatibility with OXC
+		setFuseTimer(node["fuseTimer"].as<int>());
+	}
 	_fuseEnabled = node["fuseEnabed"].as<bool>(_fuseEnabled);
 	_droppedOnAlienTurn = node["droppedOnAlienTurn"].as<bool>(_droppedOnAlienTurn);
 	_XCOMProperty = node["XCOMProperty"].as<bool>(_XCOMProperty);
@@ -174,7 +179,8 @@ YAML::Node BattleItem::save(const ScriptGlobal *shared) const
 	}
 	if (_fuseTimer != -1)
 		node["fuseTimer"] = _fuseTimer;
-	node["fuseEnabed"] = _fuseEnabled;
+	if (_fuseEnabled)
+		node["fuseEnabed"] = _fuseEnabled;
 	if (_droppedOnAlienTurn)
 		node["droppedOnAlienTurn"] = _droppedOnAlienTurn;
 	if (_XCOMProperty)
@@ -237,6 +243,17 @@ void BattleItem::setFuseTimer(int turns)
 bool BattleItem::isFuseEnabled() const
 {
 	return _fuseEnabled;
+}
+
+/**
+ * Set fuse trigger.
+ */
+void BattleItem::setFuseEnabled(bool enable)
+{
+	if (getFuseTimer() > -1)
+	{
+		_fuseEnabled = enable;
+	}
 }
 
 /**
@@ -420,6 +437,21 @@ bool BattleItem::spendBullet()
 		return true;
 }
 
+void BattleItem::spendHealingItemUse(BattleMediKitAction mediKitAction)
+{
+	if (mediKitAction == BMA_PAINKILLER)
+	{
+		setPainKillerQuantity(getPainKillerQuantity() - 1);
+	}
+	else if (mediKitAction == BMA_STIMULANT)
+	{
+		setStimulantQuantity(getStimulantQuantity() - 1);
+	}
+	else if (mediKitAction == BMA_HEAL)
+	{
+		setHealQuantity(getHealQuantity() - 1);
+	}
+}
 /**
  * Gets the item's owner.
  * @return Pointer to Battleunit.
@@ -602,14 +634,15 @@ Surface *BattleItem::getFloorSprite(SurfaceSet *set, int animFrame, int shade) c
 		//enforce compatibility with basic version
 		if (surf == nullptr)
 		{
-			throw Exception("Invlid surface set 'FLOOROB.PCK' for item '" + _rules->getType() + "': not enough frames");
+			throw Exception("Image missing in 'FLOOROB.PCK' for item '" + _rules->getType() + "'");
 		}
 
-		ModScript::SelectItemSprite::Output arg{ i, 0 };
-		ModScript::SelectItemSprite::Worker work{ this, BODYPART_ITEM_FLOOR, animFrame, shade };
-		work.execute(_rules->getScript<ModScript::SelectItemSprite>(), arg);
-
-		auto newSurf = set->getFrame(arg.getFirst());
+		i = ModScript::scriptFunc2<ModScript::SelectItemSprite>(
+			_rules,
+			i, 0,
+			this, BODYPART_ITEM_FLOOR, animFrame, shade
+		);
+		auto newSurf = set->getFrame(i);
 		if (newSurf == nullptr)
 		{
 			newSurf = surf;
@@ -629,20 +662,22 @@ Surface *BattleItem::getFloorSprite(SurfaceSet *set, int animFrame, int shade) c
 Surface *BattleItem::getBigSprite(SurfaceSet *set, int animFrame) const
 {
 	int i = _rules->getBigSprite();
-	if (i != -999)
+	if (i != -1)
 	{
 		Surface *surf = set->getFrame(i);
 		//enforce compatibility with basic version
 		if (surf == nullptr)
 		{
-			throw Exception("Invlid surface set 'BIGOBS.PCK' for item '" + _rules->getType() + "': not enough frames");
+			throw Exception("Image missing in 'BIGOBS.PCK' for item '" + _rules->getType() + "'");
 		}
 
-		ModScript::SelectItemSprite::Output arg{ i, 0 };
-		ModScript::SelectItemSprite::Worker work{ this, BODYPART_ITEM_INVENTORY, animFrame, 0 };
-		work.execute(_rules->getScript<ModScript::SelectItemSprite>(), arg);
+		i = ModScript::scriptFunc2<ModScript::SelectItemSprite>(
+			_rules,
+			i, 0,
+			this, BODYPART_ITEM_INVENTORY, animFrame, 0
+		);
 
-		auto newSurf = set->getFrame(arg.getFirst());
+		auto newSurf = set->getFrame(i);
 		if (newSurf == nullptr)
 		{
 			newSurf = surf;
@@ -665,8 +700,8 @@ bool BattleItem::isWeaponWithAmmo() const
 }
 
 /**
- * Check if weapon have enought ammo to shoot.
- * @return True if have ammo.
+ * Check if weapon has enough ammo to shoot.
+ * @return True if has enough ammo.
  */
 bool BattleItem::haveAnyAmmo() const
 {
@@ -832,7 +867,7 @@ BattleItem *BattleItem::getAmmoForAction(BattleActionType action, std::string* m
 }
 
 /**
- * Spend weapon ammo, if depleded remove clip.
+ * Spend weapon ammo, if depleted remove clip.
  * @param action Battle Action done using this item.
  * @param save Save game.
  */
@@ -961,7 +996,7 @@ int BattleItem::getTotalWeight() const
 }
 
 /**
- * Get wayponts count of weapon or from ammo.
+ * Get waypoints count of weapon or from ammo.
  * @return Maximum waypoints count or -1 if unlimited.
  */
 int BattleItem::getCurrentWaypoints() const
@@ -1156,7 +1191,7 @@ bool BattleItem::getGlow() const
 int BattleItem::getGlowRange() const
 {
 	auto owner = _unit ? _unit : _previousOwner;
-	return owner ? _rules->getPowerBonus(owner) : _rules->getPower();
+	return _rules->getPowerBonus({ BA_NONE, owner, this, this });
 }
 
 /**
@@ -1301,11 +1336,36 @@ std::string debugDisplayScript(const BattleItem* bt)
 	}
 }
 
+void getActionTUsScript(const BattleItem* bt, int& i, const BattleUnit* bu, const int battle_action)
+{
+	BattleActionType bat = (BattleActionType)battle_action;
+	if (bt && bu)
+	{
+		i = bu->getActionTUs(bat, bt).Time;
+	}
+	else
+	{
+		i = -1;
+	}
+}
+
+void getFuseTimerDefaultScript(const BattleItem* bt, int& i)
+{
+	if (bt)
+	{
+		i = bt->getRules()->getFuseTimerDefault();
+	}
+	else
+	{
+		i = -1;
+	}
+}
+
 void setFuseTimerScript(BattleItem* bt, int i)
 {
 	if (bt)
 	{
-		bt->setFuseTimer(Clamp(i, 1, 100));
+		bt->setFuseTimer(Clamp(i, -1, 100));
 	}
 }
 
@@ -1374,9 +1434,11 @@ void BattleItem::ScriptRegister(ScriptParserBase* parser)
 	bi.add<&setAmmoQuantityScript>("setAmmoQuantity");
 
 	bi.add<&BattleItem::getFuseTimer>("getFuseTimer");
-	bi.add<&setFuseTimerScript>("setFuseTimer");
+	bi.add<&getFuseTimerDefaultScript>("getFuseTimerDefault", "get default fuse timer");
+	bi.add<&setFuseTimerScript>("setFuseTimer", "set item fuse timer, -1 mean disable it");
 
-	bi.add<&BattleItem::isFuseEnabled>("isFuseEnabled");
+	bi.add<&BattleItem::isFuseEnabled>("isFuseEnabled", "check if fuse is triggered (like throw or proxy unit)");
+	bi.add<&BattleItem::setFuseEnabled>("setFuseEnabled", "force set or unset fuse trigger state");
 
 	bi.add<&BattleItem::getHealQuantity>("getHealQuantity");
 	bi.add<&setHealQuantityScript>("setHealQuantity");
@@ -1387,6 +1449,8 @@ void BattleItem::ScriptRegister(ScriptParserBase* parser)
 	bi.add<&BattleItem::getStimulantQuantity>("getStimulantQuantity");
 	bi.add<&setStimulantQuantityScript>("setStimulantQuantity");
 
+	bi.add<&getActionTUsScript>("getActionCost.getTimeUnits");
+
 	bi.addScriptValue<&BattleItem::_scriptValues>();
 	bi.addDebugDisplay<&debugDisplayScript>();
 
@@ -1395,6 +1459,12 @@ void BattleItem::ScriptRegister(ScriptParserBase* parser)
 	bi.addCustomConst("BA_AIMEDSHOT", BA_AIMEDSHOT);
 	bi.addCustomConst("BA_LAUNCH", BA_LAUNCH);
 	bi.addCustomConst("BA_HIT", BA_HIT);
+	bi.addCustomConst("BA_USE", BA_USE);
+	bi.addCustomConst("BA_THROW", BA_THROW);
+	bi.addCustomConst("BA_MINDCONTROL", BA_MINDCONTROL);
+	bi.addCustomConst("BA_PANIC", BA_PANIC);
+	bi.addCustomConst("BA_PRIME", BA_PRIME);
+	bi.addCustomConst("BA_UNPRIME", BA_UNPRIME);
 	bi.addCustomConst("BA_NONE", BA_NONE);
 }
 
@@ -1437,7 +1507,7 @@ ModScript::SelectItemParser::SelectItemParser(ScriptGlobal* shared, const std::s
 	setDefault("add sprite_index sprite_offset; return sprite_index;");
 }
 
-ModScript::CreateItemParser::CreateItemParser(ScriptGlobal* shared, const std::string& name, Mod* mod) : ScriptParserEvents{ shared, name, "item", "battle_game", "turn", }
+ModScript::CreateItemParser::CreateItemParser(ScriptGlobal* shared, const std::string& name, Mod* mod) : ScriptParserEvents{ shared, name, "item", "unit", "battle_game", "turn", }
 {
 	BindBase b { this };
 
@@ -1449,6 +1519,26 @@ ModScript::NewTurnItemParser::NewTurnItemParser(ScriptGlobal* shared, const std:
 	BindBase b { this };
 
 	b.addCustomPtr<const Mod>("rules", mod);
+}
+
+ModScript::TryPsiAttackItemParser::TryPsiAttackItemParser(ScriptGlobal* shared, const std::string& name, Mod* mod) : ScriptParserEvents{ shared, name,
+	"psi_attack_success",
+
+	"item",
+	"attacker",
+	"victim",
+	"attack_strength",
+	"defense_strength",
+	"battle_action",
+	"random",
+	"distance",
+	"distance_strength_reduction" }
+{
+	BindBase b { this };
+
+	b.addCustomPtr<const Mod>("rules", mod);
+
+	setDefault("var int r; random.randomRange r 0 55; add psi_attack_success attack_strength; add psi_attack_success r; sub psi_attack_success defense_strength; sub psi_attack_success distance_strength_reduction; return psi_attack_success;");
 }
 
 /**

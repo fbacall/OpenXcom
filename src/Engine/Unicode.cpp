@@ -187,10 +187,10 @@ std::string convWcToMb(const std::wstring &src, unsigned int cp)
 	(void)cp;
 	assert(sizeof(wchar_t) == sizeof(Uint16));
 	UString ustr(src.size(), 0);
-    std::transform(src.begin(), src.end(), ustr.begin(),
+	std::transform(src.begin(), src.end(), ustr.begin(),
 		[](wchar_t c) -> UCode
 		{
-			//TODO: droping surrogates, do proper implemetation when someone will need that range
+			//TODO: dropping surrogates, do proper implementation when someone will need that range
 			if (c <= 0xD7FF || c >= 0xE000)
 			{
 				return c;
@@ -233,10 +233,10 @@ std::wstring convMbToWc(const std::string &src, unsigned int cp)
 	const UString ustr = convUtf8ToUtf32(src);
 
 	std::wstring wstr(ustr.size(), 0);
-    std::transform(ustr.begin(), ustr.end(), wstr.begin(),
+	std::transform(ustr.begin(), ustr.end(), wstr.begin(),
 		[](UCode c) -> wchar_t
 		{
-			//TODO: droping surrogates, do proper implemetation when someone will need that range
+			//TODO: dropping surrogates, do proper implementation when someone will need that range
 			if (c <= 0xD7FF || (c >= 0xE000 && c <= 0xFFFF))
 			{
 				return c;
@@ -328,7 +328,7 @@ bool naturalCompare(const std::string &a, const std::string &b)
 	else
 #endif
 	{
-		// fallback to lexographical sort
+		// fallback to lexical sort
 		return caseCompare(a, b);
 	}
 }

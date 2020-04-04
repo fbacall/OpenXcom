@@ -19,8 +19,10 @@
  */
 #include "../Engine/InteractiveSurface.h"
 #include "../Engine/Options.h"
+#include "../Engine/Collections.h"
 #include "../Mod/MapData.h"
 #include "Position.h"
+#include "Particle.h"
 #include <vector>
 
 namespace OpenXcom
@@ -41,6 +43,16 @@ class UnitSprite;
 
 enum CursorType { CT_NONE, CT_NORMAL, CT_AIM, CT_PSI, CT_WAYPOINT, CT_THROW };
 enum TilePart : int;
+
+/**
+ * Helper class that returns all important data about the unit movement
+ */
+struct UnitWalkingOffset
+{
+	Position ScreenOffset;
+	int NormalizedMovePhase;
+	int TerrainLevelOffset;
+};
 
 /**
  * Interactive map of the battlescape.
@@ -77,6 +89,7 @@ private:
 	Projectile *_projectile;
 	bool _projectileInFOV;
 	std::list<Explosion *> _explosions;
+	std::vector<std::vector<Particle>> _vaporParticles;
 	bool _explosionInFOV, _launch;
 	BattlescapeMessage *_message;
 	Camera *_camera;
@@ -88,10 +101,10 @@ private:
 	Text *_txtAccuracy;
 	SurfaceSet *_projectileSet;
 
-	void drawUnit(UnitSprite &unitSprite, Tile *unitTile, Tile *currTile, Position tileScreenPosition, int shade, int obstacleShade, bool topLayer);
+	void drawUnit(UnitSprite &unitSprite, Tile *unitTile, Tile *currTile, Position tileScreenPosition, bool topLayer, BattleUnit* movingUnit = nullptr);
 	void drawTerrain(Surface *surface);
 	int getTerrainLevel(const Position& pos, int size) const;
-	int getWallShade(TilePart part, Tile* tileFrot, Tile* tileBehind);
+	int getWallShade(TilePart part, Tile* tileFrot);
 	int _iconHeight, _iconWidth, _messageColor;
 	const std::vector<Uint8> *_transparencies;
 	bool _showObstacles;
@@ -118,24 +131,30 @@ public:
 	void keyboardPress(Action *action, State *state) override;
 	/// Special handling for key releases.
 	void keyboardRelease(Action *action, State *state) override;
-	/// Rotates the tileframes 0-7
+	/// Rotates the tile frames 0-7
 	void animate(bool redraw);
-	/// Sets the battlescape selector position relative to mouseposition.
+	/// Sets the battlescape selector position relative to mouse position.
 	void setSelectorPosition(int mx, int my);
 	/// Gets the currently selected position.
 	void getSelectorPosition(Position *pos) const;
 	/// Calculates the offset of a soldier, when it is walking in the middle of 2 tiles.
-	void calculateWalkingOffset(BattleUnit *unit, Position *offset, int *shadeOffset = 0);
+	UnitWalkingOffset calculateWalkingOffset(const BattleUnit *unit) const;
 	/// Sets the 3D cursor type.
 	void setCursorType(CursorType type, int size = 1);
 	/// Gets the 3D cursor type.
 	CursorType getCursorType() const;
+
 	/// Sets projectile.
 	void setProjectile(Projectile *projectile);
 	/// Gets projectile.
 	Projectile *getProjectile() const;
+	/// Add new vapor particle.
+	void addVaporParticle(const Tile* tile, Particle particle);
+	/// Get all vapor for tile.
+	Collections::Range<const Particle*> getVaporParticle(const Tile* tile, bool topLayer) const;
 	/// Gets explosion set.
 	std::list<Explosion*> *getExplosions();
+
 	/// Gets the pointer to the camera.
 	Camera *getCamera();
 	/// Mouse-scrolls the camera.

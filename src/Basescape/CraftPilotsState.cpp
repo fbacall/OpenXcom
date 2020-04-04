@@ -19,6 +19,7 @@
 #include "CraftPilotsState.h"
 #include "CraftPilotSelectState.h"
 #include <sstream>
+#include <algorithm>
 #include "../Engine/Game.h"
 #include "../Mod/Mod.h"
 #include "../Engine/LocalizedText.h"
@@ -32,6 +33,7 @@
 #include "../Mod/RuleCraft.h"
 #include "../Savegame/Soldier.h"
 #include "../Mod/RuleSoldier.h"
+#include "../Mod/RuleSoldierBonus.h"
 
 namespace OpenXcom
 {
@@ -86,7 +88,7 @@ CraftPilotsState::CraftPilotsState(Base *base, size_t craft) : _base(base), _cra
 	centerAllSurfaces();
 
 	// Set up objects
-	_window->setBackground(_game->getMod()->getSurface("BACK02.SCR"));
+	setWindowBackground(_window, "craftPilots");
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&CraftPilotsState::btnOkClick);
@@ -125,6 +127,14 @@ CraftPilotsState::CraftPilotsState(Base *base, size_t craft) : _base(base), _cra
 	_txtAccuracyBonus->setText(tr("STR_ACCURACY_BONUS"));
 	_txtDodgeBonus->setText(tr("STR_DODGE_BONUS"));
 	_txtApproachSpeed->setText(tr("STR_APPROACH_SPEED"));
+
+	for (std::vector<Soldier*>::iterator i = _base->getSoldiers()->begin(); i != _base->getSoldiers()->end(); ++i)
+	{
+		if ((*i)->getCraft() == c)
+		{
+			(*i)->prepareStatsWithBonuses(_game->getMod()); // refresh soldier bonuses
+		}
+	}
 }
 
 /**
@@ -157,11 +167,11 @@ void CraftPilotsState::updateUI()
 	for (std::vector<Soldier*>::const_iterator i = pilots.begin(); i != pilots.end(); ++i)
 	{
 		std::ostringstream ss1;
-		ss1 << (*i)->getCurrentStats()->firing;
+		ss1 << (*i)->getStatsWithSoldierBonusesOnly()->firing;
 		std::ostringstream ss2;
-		ss2 << (*i)->getCurrentStats()->reactions;
+		ss2 << (*i)->getStatsWithSoldierBonusesOnly()->reactions;
 		std::ostringstream ss3;
-		ss3 << (*i)->getCurrentStats()->bravery;
+		ss3 << (*i)->getStatsWithSoldierBonusesOnly()->bravery;
 		_lstPilots->addRow(5, (*i)->getName(false).c_str(), ss1.str().c_str(), ss2.str().c_str(), ss3.str().c_str(), "");
 	}
 
