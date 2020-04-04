@@ -35,8 +35,7 @@ class OptionsControlsState : public OptionsBaseState
 {
 private:
 	TextList *_lstControls;
-	std::vector<OptionInfo> _controlsGeneral, _controlsGeo, _controlsBattle, _controlsOxce, _controlsBase;
-	std::vector<std::vector<OptionInfo>*> _controlGroups;
+	std::vector<OptionInfo> _controlsGeneral, _controlsGeo, _controlsBattle, _controlsOxce;
 	int _selected;
 	OptionInfo *_selKey;
 	Uint8 _colorGroup, _colorSel, _colorNormal;

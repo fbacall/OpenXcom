@@ -23,7 +23,6 @@
 #include "../Interface/Window.h"
 #include "../Interface/TextList.h"
 #include "../Engine/Action.h"
-#include <iostream>
 
 namespace OpenXcom
 {
@@ -88,14 +87,8 @@ OptionsControlsState::OptionsControlsState(OptionsOrigin origin) : OptionsBaseSt
 			{
 				_controlsOxce.push_back(*i);
 			}
-			else if (i->category() == "STR_BASE")
-			{
-				_controlsBase.push_back(*i);
-			}
 		}
 	}
-
-	_controlGroups = {&_controlsGeneral, &_controlsGeo, &_controlsBattle, &_controlsOxce, &_controlsBase};
 }
 
 /**
@@ -112,19 +105,21 @@ void OptionsControlsState::init()
 {
 	OptionsBaseState::init();
 	_lstControls->clearList();
-	size_t controlGroupOffset = 0;
-
-	for (std::vector<std::vector<OptionInfo>*>::iterator i = _controlGroups.begin(); i != _controlGroups.end(); ++i)
-	{
-        if ((*i)->size())
-        {
-        	_lstControls->addRow(2, tr((**i)[0].category()).c_str(), "");
-        	_lstControls->setCellColor(controlGroupOffset, 0, _colorGroup);
-        	addControls(**i);
-			_lstControls->addRow(2, "", "");
-        	controlGroupOffset += ((*i)->size() + 2);
-        }
-    }
+	_lstControls->addRow(2, tr("STR_GENERAL").c_str(), "");
+	_lstControls->setCellColor(0, 0, _colorGroup);
+	addControls(_controlsGeneral);
+	_lstControls->addRow(2, "", "");
+	_lstControls->addRow(2, tr("STR_GEOSCAPE").c_str(), "");
+	_lstControls->setCellColor(_controlsGeneral.size() + 2, 0, _colorGroup);
+	addControls(_controlsGeo);
+	_lstControls->addRow(2, "", "");
+	_lstControls->addRow(2, tr("STR_BATTLESCAPE").c_str(), "");
+	_lstControls->setCellColor(_controlsGeneral.size() + 2 + _controlsGeo.size() + 2, 0, _colorGroup);
+	addControls(_controlsBattle);
+	_lstControls->addRow(2, "", "");
+	_lstControls->addRow(2, tr("STR_OXCE").c_str(), "");
+	_lstControls->setCellColor(_controlsGeneral.size() + 2 + _controlsGeo.size() + 2 + _controlsBattle.size() + 2, 0, _colorGroup);
+	addControls(_controlsOxce);
 }
 
 /**
@@ -172,20 +167,30 @@ void OptionsControlsState::addControls(const std::vector<OptionInfo> &keys)
  */
 OptionInfo *OptionsControlsState::getControl(size_t sel)
 {
-	if (sel > 0)
+	if (sel > 0 &&
+		sel <= _controlsGeneral.size())
 	{
-		size_t controlGroupOffset = 0;
-		for (std::vector<std::vector<OptionInfo>*>::iterator i = _controlGroups.begin(); i != _controlGroups.end(); ++i)
-		{
-			if (sel > controlGroupOffset && sel <= controlGroupOffset + (*i)->size())
-			{
-				return &((**i)[sel - (controlGroupOffset + 1)]);
-			}
-			controlGroupOffset += ((*i)->size() + 2);
-		}
+		return &_controlsGeneral[sel - 1];
 	}
-
-	return 0;
+	else if (sel > _controlsGeneral.size() + 2 &&
+			 sel <= _controlsGeneral.size() + 2 + _controlsGeo.size())
+	{
+		return &_controlsGeo[sel - 1 - _controlsGeneral.size() - 2];
+	}
+	else if (sel > _controlsGeneral.size() + 2 + _controlsGeo.size() + 2 &&
+			 sel <= _controlsGeneral.size() + 2 + _controlsGeo.size() + 2 + _controlsBattle.size())
+	{
+		return &_controlsBattle[sel - 1 - _controlsGeneral.size() - 2 - _controlsGeo.size() - 2];
+	}
+	else if (sel > _controlsGeneral.size() + 2 + _controlsGeo.size() + 2 + _controlsBattle.size() + 2 &&
+		sel <= _controlsGeneral.size() + 2 + _controlsGeo.size() + 2 + _controlsBattle.size() + 2 + _controlsOxce.size())
+	{
+		return &_controlsOxce[sel - 1 - _controlsGeneral.size() - 2 - _controlsGeo.size() - 2 - _controlsBattle.size() - 2];
+	}
+	else
+	{
+		return 0;
+	}
 }
 
 /**
